@@ -12,6 +12,17 @@ import {
 
 // Initialize the Bedevere Wise application
 async function initApplication() {
+  // WebGL exploratory spike — reachable via `?webgl-spike` in the URL.
+  // Hands the page over to the spike entry; never returns. Lives outside
+  // the normal app boot to keep its experimental nature explicit.
+  if (typeof location !== "undefined" && location.search.includes("webgl-spike")) {
+    const { runWebGLSpike } = await import("./webgl-spike");
+    const host = document.getElementById("app") || document.body;
+    host.innerHTML = "";
+    await runWebGLSpike(host);
+    return;
+  }
+
   const debugMode = true;
   const appVersion = "0.7-son-of-uther-pendragon";
 
