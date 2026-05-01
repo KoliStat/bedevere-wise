@@ -2,7 +2,7 @@
 
 **Open SAS, SPSS, Stata, Parquet, and Excel files in your browser. Query them with SQL — no install, no upload.**
 
-Drop a `.sas7bdat`, `.sav`, `.dta`, `.xpt`, `.parquet`, `.xlsx`, `.csv`, or `.tsv` and start querying. Runs entirely in your browser via [DuckDB-WASM](https://duckdb.org/docs/api/wasm/overview) — your data never leaves your machine.
+Drop a `.sas7bdat`, `.sav`, `.dta`, `.xpt`, `.parquet`, `.xlsx`, `.csv`, or `.tsv` and start querying. Runs entirely in your browser via [DuckDB-WASM](https://duckdb.org/docs/api/wasm/overview) — your data rows never leave your machine. (Optional AI features, when enabled, send your prompt and dataset *schema* to the LLM provider you configure — your row data still stays local.)
 
 [**Live app · bedeverewise.app**](https://bedeverewise.app/) · [Changelog](CHANGELOG.md)
 
@@ -26,7 +26,7 @@ Most SQL clients (DBeaver, TablePlus, DataGrip) speak to database servers and wo
 - **High-performance grid** — canvas-rendered, virtually scrolled, HiDPI-sharp
 - **Dot-command shell** — `.import`, `.open`, `.export`, `.tables`, `.columns`, `.help`, plus argument autocomplete
 - **Persistent workspace** — saved queries and settings survive page reloads
-- **Fully client-side** — no server, no uploads; data stays in your browser
+- **Fully client-side** — no server, no uploads; data rows stay in your browser. AI features are opt-in and only send prompt + schema (never row data) to the provider you configure.
 
 ## License
 

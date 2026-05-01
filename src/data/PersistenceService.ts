@@ -20,6 +20,18 @@ export interface AppSettings {
   maxStringLength?: number;
   /** Most-recent-last ring of command-bar lines. Capped at ~200 entries. */
   shellHistory?: string[];
+  /**
+   * AI-assistant settings. Off by default — enabling this is the user's
+   * explicit opt-in to send the prompt + dataset schema to the configured
+   * LLM provider. The API key is stored in localStorage; document the
+   * trade-off in the Settings UI.
+   */
+  aiEnabled?: boolean;
+  aiMode?: "direct" | "proxy";
+  aiProvider?: "anthropic";
+  aiApiKey?: string;
+  aiProxyUrl?: string;
+  aiModel?: string;
 }
 
 const STORAGE_KEYS = {

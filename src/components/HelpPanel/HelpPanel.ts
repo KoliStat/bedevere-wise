@@ -30,7 +30,23 @@ export interface HelpPanelOptions {
   setCopyOptions?: (opts: { delimiter: "tab" | "comma"; includeHeader: boolean }) => void;
   getFormatOptions?: () => FormatPrefs;
   setFormatOptions?: (opts: FormatPrefs) => void;
+  getAiOptions?: () => AiPrefs;
+  setAiOptions?: (opts: AiPrefs) => void;
 }
+
+export interface AiPrefs {
+  enabled: boolean;
+  mode: "direct" | "proxy";
+  apiKey: string;
+  proxyUrl: string;
+  model: string;
+}
+
+export const AI_MODEL_PRESETS: Array<{ value: string; label: string }> = [
+  { value: "claude-sonnet-4-6", label: "Sonnet 4.6 (recommended)" },
+  { value: "claude-haiku-4-5", label: "Haiku 4.5 (fast & cheap)" },
+  { value: "claude-opus-4-7", label: "Opus 4.7 (most capable)" },
+];
 
 export interface FormatPrefs {
   dateFormat: string;
@@ -426,7 +442,9 @@ export class HelpPanel {
         <div class="help-panel__callout-title">\uD83D\uDD12 Your data stays on your device</div>
         <p>
           All parsing and querying happens locally in your browser via <strong>DuckDB-WASM</strong>.
-          No telemetry, no uploads, nothing crosses the network unless you explicitly fetch a remote file.
+          No telemetry, no uploads, nothing crosses the network unless you explicitly fetch a remote file
+          <strong>or enable AI features</strong> (which send your prompt and the current dataset schema to
+          the LLM provider you configure in <em>Help \u2192 Settings \u2192 AI assistant</em>; off by default).
         </p>
       </div>
 
@@ -1253,6 +1271,11 @@ export class HelpPanel {
       ));
     }));
 
+    // --- AI assistant ---
+    body.appendChild(this.buildSettingsSection("AI assistant", (section) => {
+      this.buildAiSettings(section);
+    }));
+
     // --- Reset keymap ---
     body.appendChild(this.buildSettingsSection("Reset keymap", (section) => {
       const hint = document.createElement("p");
@@ -1370,6 +1393,136 @@ export class HelpPanel {
     return seg;
   }
 
+  /**
+   * AI assistant settings section. Off by default. Enabling carves an
+   * exception out of the project's local-first promise — the prompt + the
+   * current dataset schema get sent to the configured LLM provider. The
+   * privacy note above the toggle states this verbatim.
+   */
+  private buildAiSettings(section: HTMLElement): void {
+    const current: AiPrefs = this.options.getAiOptions?.() ?? {
+      enabled: false,
+      mode: "direct",
+      apiKey: "",
+      proxyUrl: "",
+      model: AI_MODEL_PRESETS[0].value,
+    };
+
+    const note = document.createElement("p");
+    note.className = "help-panel__hint";
+    note.textContent =
+      "Enabling this sends your prompt and the schema of your loaded tables to the LLM provider you configure. Your data rows do NOT leave the device. The API key below is stored locally in your browser; clear it via Clear All Data.";
+    section.appendChild(note);
+
+    // Master toggle.
+    const toggleRow = document.createElement("label");
+    toggleRow.className = "help-panel__settings-row help-panel__settings-row--checkbox";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = current.enabled;
+    const toggleLabel = document.createElement("span");
+    toggleLabel.textContent = "Enable AI features (.ai shell command)";
+    toggleRow.appendChild(toggle);
+    toggleRow.appendChild(toggleLabel);
+    section.appendChild(toggleRow);
+
+    // The rest of the controls live in a sub-container that we hide when
+    // the master toggle is off — they're unreachable until the user opts in.
+    const detail = document.createElement("div");
+    detail.className = "help-panel__settings-detail";
+    section.appendChild(detail);
+
+    const setDetailVisible = (visible: boolean) => {
+      detail.style.display = visible ? "" : "none";
+    };
+    setDetailVisible(current.enabled);
+
+    // Mode (direct vs proxy).
+    detail.appendChild(this.buildLabeledRow(
+      "Mode",
+      this.buildSegmented<"direct" | "proxy">(
+        ["direct", "proxy"],
+        current.mode,
+        (m) => (m === "direct" ? "Direct (your key)" : "Proxy (worker URL)"),
+        (m) => {
+          const latest = this.options.getAiOptions?.() ?? current;
+          this.options.setAiOptions?.({ ...latest, mode: m });
+          // Re-render so the conditional input below swaps.
+          renderConditional(m);
+        },
+      ),
+    ));
+
+    // Conditional input area: API key (direct) or proxy URL (proxy).
+    const conditional = document.createElement("div");
+    detail.appendChild(conditional);
+
+    const renderConditional = (mode: "direct" | "proxy") => {
+      conditional.innerHTML = "";
+      if (mode === "direct") {
+        const row = document.createElement("label");
+        row.className = "help-panel__settings-row";
+        const lbl = document.createElement("span");
+        lbl.className = "help-panel__settings-label";
+        lbl.textContent = "API key";
+        const input = document.createElement("input");
+        input.className = "help-panel__feedback-input";
+        input.type = "password";
+        input.placeholder = "sk-ant-…";
+        input.autocomplete = "off";
+        input.value = (this.options.getAiOptions?.() ?? current).apiKey;
+        input.addEventListener("change", () => {
+          const latest = this.options.getAiOptions?.() ?? current;
+          this.options.setAiOptions?.({ ...latest, apiKey: input.value.trim() });
+        });
+        row.appendChild(lbl);
+        row.appendChild(input);
+        conditional.appendChild(row);
+      } else {
+        const row = document.createElement("label");
+        row.className = "help-panel__settings-row";
+        const lbl = document.createElement("span");
+        lbl.className = "help-panel__settings-label";
+        lbl.textContent = "Worker URL";
+        const input = document.createElement("input");
+        input.className = "help-panel__feedback-input";
+        input.type = "url";
+        input.placeholder = "https://agent-worker.example.workers.dev";
+        input.autocomplete = "off";
+        input.value = (this.options.getAiOptions?.() ?? current).proxyUrl;
+        input.addEventListener("change", () => {
+          const latest = this.options.getAiOptions?.() ?? current;
+          this.options.setAiOptions?.({ ...latest, proxyUrl: input.value.trim() });
+        });
+        row.appendChild(lbl);
+        row.appendChild(input);
+        conditional.appendChild(row);
+      }
+    };
+    renderConditional(current.mode);
+
+    // Model picker.
+    detail.appendChild(this.buildLabeledRow(
+      "Model",
+      this.buildSegmented<string>(
+        AI_MODEL_PRESETS.map((p) => p.value),
+        current.model,
+        (v) => AI_MODEL_PRESETS.find((p) => p.value === v)?.label ?? v,
+        (v) => {
+          const latest = this.options.getAiOptions?.() ?? current;
+          this.options.setAiOptions?.({ ...latest, model: v });
+        },
+      ),
+    ));
+
+    // Wire the master toggle last so the detail area exists when it fires.
+    toggle.addEventListener("change", () => {
+      const latest = this.options.getAiOptions?.() ?? current;
+      this.options.setAiOptions?.({ ...latest, enabled: toggle.checked });
+      setDetailVisible(toggle.checked);
+    });
+  }
+
   private buildAboutBody(): HTMLElement {
     const body = document.createElement("div");
     body.className = "help-panel__tab-body help-panel__tab-body--about";
@@ -1377,7 +1530,7 @@ export class HelpPanel {
 
     body.innerHTML = `
       <p class="help-panel__about-version">v${this.options.version}</p>
-      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL — no install, no upload.</p>
+      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL — no install, no upload (AI features, when enabled, send prompts + schema to the configured provider).</p>
       <div class="help-panel__about-section">
         <h3 class="help-panel__about-section-title">Shell</h3>
         <p class="help-panel__about-shell-intro">

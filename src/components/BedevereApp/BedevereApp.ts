@@ -23,6 +23,7 @@ import { commandRegistry } from "@/data/CommandRegistry";
 import { formatCommandHelp } from "@/data/Shell";
 import { FileImportService } from "@/data/FileImportService";
 import { DuckDBExtensionLoader } from "@/data/DuckDBExtensionLoader";
+import { AgentService } from "@/data/AgentService";
 import { ExcelFormatHandler } from "@/data/formats/ExcelFormatHandler";
 import { StatFormatHandler } from "@/data/formats/StatFormatHandler";
 import { AliasManager } from "@/data/AliasManager";
@@ -60,6 +61,7 @@ export class BedevereApp implements EventHandler {
   private fileImportService: FileImportService;
   private extensionLoader: DuckDBExtensionLoader;
   private aliasManager: AliasManager;
+  private agentService: AgentService;
 
   // Event system
   private focusManager: FocusManager;
@@ -85,6 +87,7 @@ export class BedevereApp implements EventHandler {
     this.extensionLoader = new DuckDBExtensionLoader(duckDBService);
     this.fileImportService = new FileImportService(duckDBService);
     this.aliasManager = new AliasManager(duckDBService);
+    this.agentService = new AgentService(this.persistenceService);
 
     // Initialize event system
     this.focusManager = new FocusManager({ debugMode: options.debugMode || false });
@@ -323,6 +326,26 @@ export class BedevereApp implements EventHandler {
         s.maxStringLength = opts.maxStringLength;
         this.persistenceService.saveAppSettings(s);
         this.applyFormatSettings(opts);
+      },
+      getAiOptions: () => {
+        const s = this.persistenceService.loadAppSettings();
+        return {
+          enabled: s.aiEnabled ?? false,
+          mode: s.aiMode ?? "direct",
+          apiKey: s.aiApiKey ?? "",
+          proxyUrl: s.aiProxyUrl ?? "",
+          model: s.aiModel ?? "claude-sonnet-4-6",
+        };
+      },
+      setAiOptions: (opts) => {
+        const s = this.persistenceService.loadAppSettings();
+        s.aiEnabled = opts.enabled;
+        s.aiMode = opts.mode;
+        s.aiProvider = "anthropic";
+        s.aiApiKey = opts.apiKey;
+        s.aiProxyUrl = opts.proxyUrl;
+        s.aiModel = opts.model;
+        this.persistenceService.saveAppSettings(s);
       },
     });
     this.statusBar?.setOnHelpClickCallback(() => this.helpPanel.show("howto"));
@@ -971,6 +994,46 @@ export class BedevereApp implements EventHandler {
         if (!dataset || !alias) throw new Error(".alias requires a dataset and a new name");
         await this.aliasManager.setAlias(dataset, alias);
         this.showMessage(`Alias "${alias}" set`, "success");
+      },
+    });
+
+    commandRegistry.register({
+      id: "shell.ai",
+      shellName: "ai",
+      title: "Generate SQL from a prompt",
+      description:
+        "Send a natural-language prompt + the current schema to the configured AI provider. The response replaces the SQL editor's contents — review and run it with Ctrl+Enter. Configure / enable in Help → Settings → AI assistant.",
+      category: "AI",
+      parameters: [
+        {
+          name: "prompt",
+          type: "string",
+          required: true,
+          description: "What you want to compute (e.g. 'top 10 penguins by body mass')",
+        },
+      ],
+      when: () => this.agentService.isEnabled(),
+      execute: async (params) => {
+        const positional = (params?._args as string[] | undefined) ?? [];
+        const prompt = positional.length > 0 ? positional.join(" ") : (params?.prompt as string | undefined) ?? "";
+        if (!prompt.trim()) throw new Error(".ai needs a prompt — try `.ai show me the top 10 penguins by body mass`.");
+
+        const sqlEditor = this.tabManager.getSqlEditor();
+        if (!sqlEditor) throw new Error(".ai needs the SQL editor to be available — open it via Ctrl+E first.");
+
+        this.showMessage("AI is thinking…", "info");
+        try {
+          const response = await this.agentService.complete(prompt, {
+            duckDBService: this.duckDBService,
+          });
+          sqlEditor.expand();
+          sqlEditor.setQuery(response);
+          this.showMessage("AI response inserted into the SQL editor — review and run with Ctrl+Enter.", "success");
+        } catch (err) {
+          // Surface the AgentService's already-friendly error text directly.
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(msg);
+        }
       },
     });
   }

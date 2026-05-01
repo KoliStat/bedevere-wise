@@ -1,0 +1,27 @@
+# Cloudflare Worker config for the Bedevere Wise AI proxy.
+#
+# Designed but NOT deployed in this branch. The proxy holds the project's
+# Anthropic API key and forwards browser requests so end users don't have
+# to manage their own keys. Sibling to feedback-worker.
+#
+# First-time setup (when ready to deploy):
+#   bun install
+#   bunx wrangler login
+#   bunx wrangler secret put ANTHROPIC_API_KEY  # the project's key
+#   bunx wrangler secret put ALLOWED_ORIGIN     # e.g. https://bedeverewise.app
+#   bunx wrangler deploy
+#
+# Once deployed, paste the *.workers.dev URL into Help → Settings → AI
+# assistant → Proxy mode.
+
+name = "bedevere-agent"
+main = "src/index.ts"
+compatibility_date = "2026-04-30"
+compatibility_flags = ["nodejs_compat"]
+
+# Routes: omit `routes` to use the default *.workers.dev URL. Attach a
+# custom subdomain (e.g. ai.bedevere.example.com) by adding a `routes`
+# block here AND a CNAME in the Cloudflare DNS dashboard.
+
+[observability]
+enabled = true

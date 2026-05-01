@@ -72,6 +72,7 @@
   "type": "module",
   "types": "dist/index.d.ts",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-sql": "^6.10.0",

@@ -1,6 +1,7 @@
 import { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { DuckDBService } from "../../data/DuckDBService";
 import { KNOWN_DIRECTIVES } from "../../data/sqlScript";
+import { getSchemaSnapshot } from "../../data/agent/schemaSnapshot";
 import { STATS_DUCK_FUNCTIONS } from "./sqlDialect";
 
 const DUCKDB_FUNCTIONS: string[] = [
@@ -85,19 +86,14 @@ export class SqlAutoComplete {
   }
 
   public async refreshSchema(): Promise<void> {
-    try {
-      const tables = await this.duckDBService.listTables();
-      const newSchema: Map<string, string[]> = new Map();
-
-      for (const table of tables) {
-        const columns = await this.duckDBService.getTableInfo(table);
-        newSchema.set(table, columns.map((col: any) => col.column_name));
-      }
-
-      this.schema = { tables: newSchema, lastRefresh: Date.now() };
-    } catch (e) {
-      console.error("Failed to refresh SQL schema:", e);
+    // Reuse the shared snapshot helper that the agent prompt builder also
+    // uses, so completion + agent-prompt always see the same schema.
+    const snapshot = await getSchemaSnapshot(this.duckDBService);
+    const newSchema = new Map<string, string[]>();
+    for (const table of snapshot.tables) {
+      newSchema.set(table.name, table.columns.map((c) => c.name));
     }
+    this.schema = { tables: newSchema, lastRefresh: Date.now() };
 
     // Pull function names so extension-contributed functions (stats_duck,
     // etc.) round-trip into autocomplete without us hand-maintaining a list.
