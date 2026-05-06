@@ -984,8 +984,9 @@ export class HelpPanel {
 
     body.innerHTML = `
       <p class="help-panel__lead">
-        Found a bug? Wanted feature? Just here to say hi? \u2014 send a note. Email is optional;
-        leave it blank to stay anonymous.
+        Found a bug? Wanted feature? Just here to say hi? \u2014 send a note via the form
+        below, or email <a href="mailto:contact@bedeverewise.app">contact@bedeverewise.app</a>
+        directly. The form's email field is optional; leave it blank to stay anonymous.
       </p>
 
       ${
