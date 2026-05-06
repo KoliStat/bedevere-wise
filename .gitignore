@@ -29,8 +29,11 @@ yarn-error.log*
 *.sln
 *.sw?
 
-# Local DuckDB WASM extensions (loaded from remote at runtime)
-public/extensions/
+# Per-machine DuckDB WASM extension builds, except `stats-duck` —
+# that snapshot is committed so production deploys (CI or manual) ship
+# the same parser-extension bytes regardless of the build machine.
+public/extensions/*
+!public/extensions/stats-duck/
 
 # Claude Code local settings
 .claude/
