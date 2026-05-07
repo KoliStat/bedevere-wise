@@ -161,6 +161,8 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
     // Cells (5) → Selection (4) → CellHover (1). ColHover is independent.
     if (this.toDraw === ToDraw.ColHover) {
       this.drawColHover();
+    } else if (this.toDraw === ToDraw.RowHover) {
+      this.drawRowHover(visibleStartRow);
     } else {
       if (this.toDraw >= ToDraw.Cells) {
         // Sync now — cache misses no longer block the frame, they render
@@ -184,7 +186,6 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   protected async selectColumn(col: number) {
     if (this.selectedCols.includes(col)) {
       this.selectedCols = this.selectedCols.filter((i) => i !== col);
-      this.statsVisualizer?.hide();
     } else {
       if (this.singleColSelectionMode) {
         this.selectedCols = [col];
@@ -193,9 +194,17 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
       } else {
         this.selectedCols.push(col);
       }
+    }
 
-      if (this.statsVisualizer) {
-        await this.statsVisualizer.showStats(this.columns[col]);
+    // Stats panel: pin to the first selected column (click order). Hide
+    // when the last column is deselected. With multi-column selections
+    // this avoids the N-stats-panes problem and gives the user a stable
+    // reading even as they ctrl-click around.
+    if (this.statsVisualizer) {
+      if (this.selectedCols.length > 0) {
+        await this.statsVisualizer.showStats(this.columns[this.selectedCols[0]]);
+      } else {
+        this.statsVisualizer.hide();
       }
     }
 
@@ -367,7 +376,6 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
     const rhw = this.options.rowHeaderWidth;
     const height = Math.min(this.totalHeight, this.hoverCanvas.height);
-    const overflows = this.totalHeight > this.hoverCanvas.height;
 
     let x = this.colOffsets[col] - this.scrollX;
     let width = this.colWidths[col];
@@ -377,23 +385,39 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
     }
     if (width <= 0) return;
 
-    const atBoundary = x === rhw;
-    // Inner stroke base height: when the column overflows the viewport,
-    // the right edge runs to y=height (signals "continues below"); when
-    // it fits, the right edge stops at y=height-1 like a closed rect.
-    const innerH = overflows ? height - 1 : height - 2;
-
     this.withCellAreaClip(this.hoverCtx, () => {
       this.hoverCtx.fillStyle = this.options.hoverColor;
-      this.hoverCtx.strokeStyle = this.options.hoverBorderColor || this.options.borderColor;
       this.hoverCtx.fillRect(x, 0, width, height);
-
-      this.hoverCtx.lineWidth = 2;
-      this.strokeRectEdges(this.hoverCtx, x, 0, width, height, atBoundary, overflows);
-
-      this.hoverCtx.lineWidth = 1;
-      this.strokeRectEdges(this.hoverCtx, x + 1, 1, width - 2, innerH, atBoundary, overflows);
     });
+  }
+
+  /**
+   * Row-gutter hover: paints across the full width including the gutter,
+   * matching `drawRowSelection`'s borderless fill style. Header strip
+   * stays uncovered via the same Math.max-clip the row selection uses.
+   */
+  private drawRowHover(visibleStartRow: number) {
+    this.hoverCtx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
+    this.lastCellHoverRect = null;
+
+    if (!this.hoveredCell) return;
+    const { row } = this.hoveredCell;
+    if (row < 1) return; // header row is not a body row
+
+    const cellH = this.options.cellHeight;
+    const headerH = this.options.cellHeight;
+    const width = Math.min(this.totalWidth, this.viewportWidth);
+
+    const y = (row - visibleStartRow) * cellH;
+    if (y + cellH <= headerH) return;
+    if (y >= this.viewportHeight) return;
+
+    const drawY = Math.max(y, headerH);
+    const drawH = y + cellH - drawY;
+    if (drawH <= 0) return;
+
+    this.hoverCtx.fillStyle = this.options.hoverColor;
+    this.hoverCtx.fillRect(0, drawY, width, drawH);
   }
 
   private drawSelection(visibleStartRow: number) {
@@ -504,13 +528,11 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   }
 
   private drawColSelection() {
+    if (this.selectedCols.length === 0) return;
     this.selectionCtx.fillStyle = this.options.selectionColor;
-    this.selectionCtx.strokeStyle = this.options.selectionBorderColor || this.options.borderColor;
 
     const rhw = this.options.rowHeaderWidth;
     const height = Math.min(this.totalHeight, this.selectionCanvas.height);
-    const overflows = this.totalHeight > this.selectionCanvas.height;
-    const innerH = overflows ? height - 1 : height - 2;
 
     this.selectedCols.forEach((col) => {
       if (this.colOffsets[col + 1] - this.scrollX < rhw) return; // off-screen
@@ -522,14 +544,8 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
         width = this.colOffsets[col + 1] - this.scrollX - rhw;
       }
       if (width <= 0) return;
-      const atBoundary = x === rhw;
 
       this.selectionCtx.fillRect(x, 0, width, height);
-
-      this.selectionCtx.lineWidth = 2;
-      this.strokeRectEdges(this.selectionCtx, x, 0, width, height, atBoundary, overflows);
-      this.selectionCtx.lineWidth = 1;
-      this.strokeRectEdges(this.selectionCtx, x + 1, 1, width - 2, innerH, atBoundary, overflows);
     });
   }
 
