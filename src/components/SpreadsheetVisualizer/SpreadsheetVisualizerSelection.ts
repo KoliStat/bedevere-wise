@@ -534,14 +534,84 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   }
 
   public async getSelection(): Promise<{ rows: number[]; columns: Column[]; values: any[][]; formatted: string[][] } | null> {
+    // Column selection: every row, sliced to the selected columns. Cols
+    // are emitted in left-to-right visual order regardless of click order
+    // so exports are deterministic.
     if (this.selectedCols.length > 0) {
-      return {
-        rows: [],
-        columns: this.selectedCols.map((col) => this.columns[col] as Column),
-        values: [],
-        formatted: [],
-      };
-    } else if (this.selectedCells) {
+      try {
+        const sortedCols = [...this.selectedCols].sort((a, b) => a - b);
+        const allRows = await this.cache.getData(0, this.totalRows);
+        const data = allRows.map((row) => sortedCols.map((c) => row[c]));
+        const formatted = data.map((row) =>
+          row.map((cell, idx) => {
+            const column = this.columns[sortedCols[idx]];
+            if (!column) return "";
+            return getFormattedValueAndStyle(cell, column, this.options).formatted;
+          }),
+        );
+        const columns = sortedCols.map((c) => this.columns[c]) as Column[];
+        const indices = Array.from({ length: allRows.length }, (_, i) => i + 1);
+        return { rows: indices, columns, values: data, formatted };
+      } catch (error) {
+        console.error("Failed to fetch column data for selection:", error);
+        return null;
+      }
+    }
+
+    // Row selection: fetch each contiguous run of selected rows, concat
+    // the results, emit every column. Splitting by run keeps shift-extend
+    // selections to a single fetch and ctrl-click selections to as many
+    // fetches as there are gaps — both better than over-fetching the
+    // outer hull when the selection is sparse.
+    if (this.selectedRows.length > 0) {
+      try {
+        const sorted = [...this.selectedRows].sort((a, b) => a - b);
+        const runs: { start: number; end: number }[] = [];
+        let curStart = sorted[0];
+        let curEnd = sorted[0];
+        for (let i = 1; i < sorted.length; i++) {
+          if (sorted[i] === curEnd + 1) {
+            curEnd = sorted[i];
+          } else {
+            runs.push({ start: curStart, end: curEnd });
+            curStart = sorted[i];
+            curEnd = sorted[i];
+          }
+        }
+        runs.push({ start: curStart, end: curEnd });
+
+        const data: any[][] = [];
+        const indices: number[] = [];
+        for (const run of runs) {
+          // selectedRows are 1-indexed (row 0 = header), cache is 0-indexed.
+          const rows = await this.cache.getData(run.start - 1, run.end);
+          for (let i = 0; i < rows.length; i++) {
+            data.push(rows[i]);
+            indices.push(run.start + i);
+          }
+        }
+
+        const formatted = data.map((row) =>
+          row.map((cell, idx) => {
+            const column = this.columns[idx];
+            if (!column) return "";
+            return getFormattedValueAndStyle(cell, column, this.options).formatted;
+          }),
+        );
+
+        return {
+          rows: indices,
+          columns: this.columns as Column[],
+          values: data,
+          formatted,
+        };
+      } catch (error) {
+        console.error("Failed to fetch row data for selection:", error);
+        return null;
+      }
+    }
+
+    if (this.selectedCells) {
       try {
         const firstVisibleColumnIndex = this.getFirstVisibleColumnIndex();
         const lastVisibleColumnIndex = this.getLastVisibleColumnIndex();
