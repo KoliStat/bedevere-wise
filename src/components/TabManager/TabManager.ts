@@ -9,7 +9,7 @@ import { DuckDBService } from "../../data/DuckDBService";
 import { ColumnFilterManager } from "../../data/ColumnFilterManager";
 import { FilteredDuckDBDataProvider } from "../../data/FilteredDuckDBDataProvider";
 import { EventDispatcher } from "../BedevereApp/EventDispatcher";
-import { ICellSelection } from "../SpreadsheetVisualizer/types";
+import { CellInspectInfo, ICellSelection } from "../SpreadsheetVisualizer/types";
 import { parseShellLine, runShellLine, ShellResult } from "../../data/Shell";
 import { commandRegistry } from "../../data/CommandRegistry";
 import {
@@ -95,7 +95,7 @@ export class TabManager {
   private duckDBService: DuckDBService | null = null;
   private eventDispatcher?: EventDispatcher;
   private onCellSelectionCallback?: (cellSelection?: ICellSelection) => void;
-  private onCellInspectCallback?: (info: import("../SpreadsheetVisualizer/types").CellInspectInfo) => void;
+  private onCellInspectCallback?: (info: CellInspectInfo) => void;
   private onCloseTabCallback?: () => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
   private onChartActivateCallback?: (chartName: string) => void;
@@ -388,7 +388,7 @@ export class TabManager {
     }
   }
 
-  public setOnCellInspectCallback(callback: (info: import("../SpreadsheetVisualizer/types").CellInspectInfo) => void): void {
+  public setOnCellInspectCallback(callback: (info: CellInspectInfo) => void): void {
     this.onCellInspectCallback = callback;
     for (const tab of this.tabs) {
       if (tab.kind === "dataset") {

@@ -209,9 +209,10 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
     const column = this.columns[cell.col];
     if (!column || !isComplexType(column.dataType)) return false;
 
+    // isComplexType already screened the column, but getComplexKind
+    // returns ComplexKind | null so TS still needs the check.
     const kind = getComplexKind(column.dataType);
-    if (!kind) return false; // belt-and-braces: isComplexType guarantees non-null, but the
-    // ComplexKind | null shape forces a check.
+    if (!kind) return false;
 
     const value = await this.cache.getValue(cell.row - 1, cell.col);
     this.notifyCellInspectRequested({

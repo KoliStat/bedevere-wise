@@ -21,7 +21,6 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   protected dragStartY = 0;
   protected lastScrollX = 0;
   protected lastScrollY = 0;
-  protected singleColSelectionMode: boolean = true;
   protected selectedRows: number[] = [];
   protected selectedCols: number[] = [];
 

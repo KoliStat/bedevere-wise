@@ -1,4 +1,4 @@
-import { Column } from "@/data/types";
+import { Column, ComplexKind } from "@/data/types";
 
 export interface SpreadsheetOptions {
   // Viewport options
@@ -79,6 +79,6 @@ export interface ICellSelection {
  */
 export interface CellInspectInfo {
   columnName: string;
-  kind: import("../../data/types").ComplexKind;
+  kind: ComplexKind;
   value: any;
 }
