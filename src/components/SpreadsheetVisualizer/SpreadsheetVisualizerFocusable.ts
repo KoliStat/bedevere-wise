@@ -59,7 +59,10 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
       if (!cell) return false;
       const { col } = cell;
 
-      await this.selectColumn(col);
+      await this.selectColumn(col, {
+        shift: event.shiftKey,
+        ctrl: event.ctrlKey || event.metaKey,
+      });
     }
 
     // Row gutter (left-side index strip, excluding the top-left corner

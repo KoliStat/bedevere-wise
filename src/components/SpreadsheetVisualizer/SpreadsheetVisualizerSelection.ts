@@ -31,6 +31,9 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   // behaviour). Null until the user has clicked at least once.
   protected lastRowAnchor: number | null = null;
 
+  // Same anchor concept for column-header shift-extend.
+  protected lastColAnchor: number | null = null;
+
   // Stats visualizer (now lives in the ControlPanel, not as an overlay)
   protected statsVisualizer: ColumnStatsVisualizer;
 
@@ -107,36 +110,17 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   }
 
   public async getSelectedFormattedValues(): Promise<{ headers: string[]; indices: number[]; data: string[][] }> {
-    if (!this.selectedCells) return { headers: [], indices: [], data: [] };
-
-    const { startRow, endRow, startCol, endCol } = this.selectedCells;
-    const minRow = Math.min(startRow, endRow);
-    const maxRow = Math.max(startRow, endRow);
-    const minCol = Math.min(startCol, endCol);
-    const maxCol = Math.max(startCol, endCol);
-
-    // selectedCells rows are 1-indexed (row 0 = header), cache is 0-indexed
-    const data = (await this.cache.getData(minRow - 1, maxRow)).map((row) =>
-      row.slice(minCol, maxCol + 1),
-    );
-
-    const formattedData = data.map((row) =>
-      row.map((cell, col) => getFormattedValueAndStyle(cell, this.columns[col + minCol], this.options).formatted),
-    );
-
-    // Get column headers for the selected range
-    const headers = [];
-    for (let col = minCol; col <= maxCol; col++) {
-      headers.push(this.columns[col].name);
-    }
-
-    // Get row indices for the selected range
-    const rowIndices = [];
-    for (let row = minRow; row <= maxRow; row++) {
-      rowIndices.push(row);
-    }
-
-    return { headers, indices: rowIndices, data: formattedData };
+    // Delegates to getSelection so all three selection modes (cells /
+    // rows / cols) flow through the same fetch + format pipeline. The
+    // copy keymap action (Ctrl+C) was wired to this method and would
+    // silently return empty for row/col selections before.
+    const sel = await this.getSelection();
+    if (!sel) return { headers: [], indices: [], data: [] };
+    return {
+      headers: sel.columns.map((c) => c.name),
+      indices: sel.rows,
+      data: sel.formatted,
+    };
   }
 
   protected updateToDraw(newToDraw: ToDraw) {
@@ -183,17 +167,29 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
     this.toDraw = ToDraw.None;
   }
 
-  protected async selectColumn(col: number) {
-    if (this.selectedCols.includes(col)) {
-      this.selectedCols = this.selectedCols.filter((i) => i !== col);
-    } else {
-      if (this.singleColSelectionMode) {
-        this.selectedCols = [col];
+  protected async selectColumn(col: number, mods: { shift: boolean; ctrl: boolean } = { shift: false, ctrl: false }) {
+    if (mods.shift && this.lastColAnchor !== null) {
+      const start = Math.min(this.lastColAnchor, col);
+      const end = Math.max(this.lastColAnchor, col);
+      const range: number[] = [];
+      for (let c = start; c <= end; c++) range.push(c);
+      this.selectedCols = range;
+      this.selectedRows = [];
+      this.selectedCells = null;
+    } else if (mods.ctrl) {
+      if (this.selectedCols.includes(col)) {
+        this.selectedCols = this.selectedCols.filter((c) => c !== col);
+      } else {
+        this.selectedCols = [...this.selectedCols, col];
         this.selectedRows = [];
         this.selectedCells = null;
-      } else {
-        this.selectedCols.push(col);
       }
+      this.lastColAnchor = col;
+    } else {
+      this.selectedCols = [col];
+      this.selectedRows = [];
+      this.selectedCells = null;
+      this.lastColAnchor = col;
     }
 
     // Stats panel: pin to the first selected column (click order). Hide
@@ -669,8 +665,64 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   }
 
   protected async notifySelectionChange(): Promise<void> {
-    const selection = await this.getSelection();
-    this.onSelectionChange.forEach((callback) => callback(selection as ICellSelection | undefined));
+    // IMPORTANT: must NOT call getSelection() here. The col-selection
+    // branch of getSelection fetches every row in the dataset to build
+    // the full data matrix — fine for a copy/export call site, fatal for
+    // a notification fired on every click (column clicks would trigger
+    // a full-dataset cache load + skeleton placeholders + redraws).
+    //
+    // The status-bar / command-bar listeners only need counts + column
+    // metadata + (optionally) the first cell's formatted value. Build
+    // that summary cheaply without touching the cache except for the
+    // single first-cell preview.
+    const selection = await this.buildSelectionSummary();
+    this.onSelectionChange.forEach((callback) => callback(selection));
+  }
+
+  /**
+   * Cheap selection metadata for change notifications. Skips the full
+   * data fetch `getSelection()` does. Cells mode delegates to
+   * getSelection (its fetch is bounded to the selected range, not the
+   * whole dataset). Rows mode fetches one cell for the status-bar
+   * preview. Cols mode returns metadata only — the status bar's
+   * cell-value display ignores col selections anyway.
+   */
+  private async buildSelectionSummary(): Promise<ICellSelection | undefined> {
+    if (this.selectedCols.length > 0) {
+      const sortedCols = [...this.selectedCols].sort((a, b) => a - b);
+      return {
+        rows: [],
+        columns: sortedCols.map((c) => this.columns[c]).filter(Boolean) as Column[],
+        values: [],
+        formatted: [],
+      };
+    }
+    if (this.selectedRows.length > 0) {
+      const sortedRows = [...this.selectedRows].sort((a, b) => a - b);
+      let values: any[][] = [];
+      let formatted: string[][] = [];
+      try {
+        const firstRow = await this.cache.getData(sortedRows[0] - 1, sortedRows[0]);
+        if (firstRow.length > 0 && this.columns.length > 0) {
+          const firstValue = firstRow[0][0];
+          values = [[firstValue]];
+          formatted = [[getFormattedValueAndStyle(firstValue, this.columns[0], this.options).formatted]];
+        }
+      } catch {
+        // Preview is optional — fall through with empty values.
+      }
+      return {
+        rows: sortedRows,
+        columns: this.columns as Column[],
+        values,
+        formatted,
+      };
+    }
+    if (this.selectedCells) {
+      const sel = await this.getSelection();
+      return sel ?? undefined;
+    }
+    return undefined;
   }
 
   // Public methods for external access to selection state
