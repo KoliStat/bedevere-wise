@@ -61,7 +61,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && node scripts/verify-build.mjs",
     "build:lib": "vite build --config vite.config.ts",
     "preview": "vite preview",
     "test": "vitest",
