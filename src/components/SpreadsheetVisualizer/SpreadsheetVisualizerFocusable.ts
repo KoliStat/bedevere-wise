@@ -62,6 +62,21 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
       await this.selectColumn(col);
     }
 
+    // Row gutter (left-side index strip, excluding the top-left corner
+    // which is part of the column-header zone). Click selects, shift
+    // extends from the last-clicked row, ctrl/cmd toggles.
+    else if (x <= this.options.rowHeaderWidth && y >= this.options.cellHeight) {
+      const cell = this.getCellAtPosition(x, y);
+      if (cell && cell.row >= 1 && cell.row <= this.totalRows) {
+        await this.selectRow(cell.row, {
+          shift: event.shiftKey,
+          ctrl: event.ctrlKey || event.metaKey,
+        });
+        await this.draw();
+        return true;
+      }
+    }
+
     // Handle cell selection
     else {
       // Right click is handled by the context menu

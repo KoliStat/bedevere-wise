@@ -25,6 +25,12 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   protected selectedRows: number[] = [];
   protected selectedCols: number[] = [];
 
+  // Anchor for shift-extend on row-gutter clicks. Set on every plain or
+  // ctrl click; shift-click extends from this anchor without overwriting
+  // it, so successive shift-clicks pivot around the same origin (Excel
+  // behaviour). Null until the user has clicked at least once.
+  protected lastRowAnchor: number | null = null;
+
   // Stats visualizer (now lives in the ControlPanel, not as an overlay)
   protected statsVisualizer: ColumnStatsVisualizer;
 
@@ -198,6 +204,48 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   }
 
   /**
+   * Row-gutter click handler. `row` is the absolute row index returned by
+   * `getCellAtPosition` (1-indexed; row 0 is the column-header strip and
+   * is filtered out by the caller).
+   *
+   * Modifier semantics mirror Excel:
+   *   - plain click   → replace selection with just `row`, set anchor
+   *   - shift click   → extend from anchor to `row` (anchor unchanged)
+   *   - ctrl click    → toggle `row` in the current selection, set anchor
+   *
+   * Selecting a row clears any cell or column selection — the three
+   * selection modes are mutually exclusive.
+   */
+  protected async selectRow(row: number, mods: { shift: boolean; ctrl: boolean }) {
+    if (mods.shift && this.lastRowAnchor !== null) {
+      const start = Math.min(this.lastRowAnchor, row);
+      const end = Math.max(this.lastRowAnchor, row);
+      const range: number[] = [];
+      for (let r = start; r <= end; r++) range.push(r);
+      this.selectedRows = range;
+      this.selectedCols = [];
+      this.selectedCells = null;
+    } else if (mods.ctrl) {
+      if (this.selectedRows.includes(row)) {
+        this.selectedRows = this.selectedRows.filter((r) => r !== row);
+      } else {
+        this.selectedRows = [...this.selectedRows, row];
+        this.selectedCols = [];
+        this.selectedCells = null;
+      }
+      this.lastRowAnchor = row;
+    } else {
+      this.selectedRows = [row];
+      this.selectedCols = [];
+      this.selectedCells = null;
+      this.lastRowAnchor = row;
+    }
+
+    this.updateToDraw(ToDraw.Selection);
+    this.notifySelectionChange();
+  }
+
+  /**
    * Last cell-hover rect painted onto the hover canvas. `drawCellHover`
    * uses it to scope its clear to the previous paint instead of wiping
    * the full canvas on every mouse-move. `null` means the canvas may
@@ -350,9 +398,37 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
   private drawSelection(visibleStartRow: number) {
     this.selectionCtx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
+    // Row selection extends across the full width including the gutter
+    // (clicking a row index highlights the index too), so it paints
+    // *outside* the cell-area clip the cell/col selections are scoped to.
+    this.drawRowSelection(visibleStartRow);
     this.withCellAreaClip(this.selectionCtx, () => {
       this.drawCellSelection(visibleStartRow);
       this.drawColSelection();
+    });
+  }
+
+  private drawRowSelection(visibleStartRow: number) {
+    if (this.selectedRows.length === 0) return;
+
+    this.selectionCtx.fillStyle = this.options.selectionColor;
+
+    const cellH = this.options.cellHeight;
+    const headerH = this.options.cellHeight; // header row occupies y=0..cellHeight
+    const width = Math.min(this.totalWidth, this.viewportWidth);
+
+    this.selectedRows.forEach((row) => {
+      const y = (row - visibleStartRow) * cellH;
+      if (y + cellH <= headerH) return; // entirely behind the header
+      if (y >= this.viewportHeight) return; // off-screen below
+
+      // Clip the top of the row when it's partly behind the header so we
+      // don't paint over the column-name strip.
+      const drawY = Math.max(y, headerH);
+      const drawH = y + cellH - drawY;
+      if (drawH <= 0) return;
+
+      this.selectionCtx.fillRect(0, drawY, width, drawH);
     });
   }
 
