@@ -314,6 +314,14 @@ export class BedevereApp implements EventHandler {
       onShowMessage: (msg, type) => this.showMessage(msg, type),
       onBrowseFolder: () => this.leftPanel?.openFolderPicker(),
       onFilesReceived: (files) => this.leftPanel?.addFilesFromDrop(files, true),
+      getRecentFolders: () => {
+        // Only surface the recents shortcut on browsers where the FSA
+        // directory handle could be persisted. The webkitdirectory
+        // fallback can't re-open a folder without a fresh user pick.
+        if (typeof window === "undefined" || !("showDirectoryPicker" in window)) return [];
+        return this.persistenceService.getRecentFolders().map((e) => ({ id: e.id, name: e.name }));
+      },
+      onRecentFolderClick: (id: string) => this.leftPanel?.openRecentFolder(id),
       supportedFormats: this.fileImportService.getSupportedExtensions(),
       initialTheme: this.persistenceService.loadAppSettings().theme ?? "auto",
       onThemeChange: (theme) => {

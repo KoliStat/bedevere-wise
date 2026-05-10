@@ -30,6 +30,10 @@ export interface HelpPanelOptions {
   setCopyOptions?: (opts: { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" }) => void;
   getFormatOptions?: () => FormatPrefs;
   setFormatOptions?: (opts: FormatPrefs) => void;
+  /** Recent folders shortcut list (FSA-API-only browsers). Empty array
+   *  hides the section in the Import tab. */
+  getRecentFolders?: () => Array<{ id: string; name: string }>;
+  onRecentFolderClick?: (id: string) => void;
 }
 
 export interface FormatPrefs {
@@ -673,6 +677,36 @@ export class HelpPanel {
     actions.appendChild(folderBtn);
 
     body.appendChild(actions);
+
+    // Recent folders shortcuts (only on browsers where the directory
+    // handle could be persisted — `getRecentFolders` returns []
+    // otherwise, which hides the section).
+    const recents = this.options.getRecentFolders?.() ?? [];
+    if (recents.length > 0) {
+      const recentsSection = document.createElement("div");
+      recentsSection.className = "help-panel__import-recents";
+      const heading = document.createElement("div");
+      heading.className = "help-panel__import-recents-title";
+      heading.textContent = "Recent folders";
+      recentsSection.appendChild(heading);
+
+      const list = document.createElement("div");
+      list.className = "help-panel__import-recents-list";
+      for (const entry of recents) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "help-panel__import-recents-item";
+        btn.title = entry.name;
+        btn.textContent = entry.name;
+        btn.addEventListener("click", () => {
+          this.options.onRecentFolderClick?.(entry.id);
+          this.hide();
+        });
+        list.appendChild(btn);
+      }
+      recentsSection.appendChild(list);
+      body.appendChild(recentsSection);
+    }
 
     // Status area for inline feedback
     const status = document.createElement("div");

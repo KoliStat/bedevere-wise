@@ -764,6 +764,50 @@
     }
   }
 
+  &__import-recents {
+    margin-top: 18px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  &__import-recents-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-muted);
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+  }
+
+  &__import-recents-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__import-recents-item {
+    background: var(--bg-highlight);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    border-radius: 2px;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+
+    &:hover {
+      background: var(--bg-dark);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+  }
+
   &__import-status {
     margin-top: 12px;
     font-size: 12px;

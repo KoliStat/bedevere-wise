@@ -28,6 +28,20 @@ export interface AppSettings {
   maxStringLength?: number;
   /** Most-recent-last ring of command-bar lines. Capped at ~200 entries. */
   shellHistory?: string[];
+  /**
+   * Recently-opened folders (most-recent-first), capped at 5. Each entry's
+   * `id` is also the IDB key under `folder_handles` where the actual
+   * `FileSystemDirectoryHandle` lives. Only populated on browsers with the
+   * File System Access API; the webkitdirectory fallback can't persist
+   * handles.
+   */
+  recentFolders?: RecentFolderEntry[];
+}
+
+export interface RecentFolderEntry {
+  id: string;
+  name: string;
+  lastUsed: number;
 }
 
 const STORAGE_KEYS = {
@@ -36,8 +50,10 @@ const STORAGE_KEYS = {
 } as const;
 
 const DB_NAME = "bedevere_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const TABLE_STORE = "table_snapshots";
+const FOLDER_HANDLE_STORE = "folder_handles";
+const RECENT_FOLDERS_CAP = 5;
 
 export class PersistenceService {
   // --- Query Bookmarks (localStorage) ---
@@ -97,6 +113,9 @@ export class PersistenceService {
         if (!db.objectStoreNames.contains(TABLE_STORE)) {
           db.createObjectStore(TABLE_STORE);
         }
+        if (!db.objectStoreNames.contains(FOLDER_HANDLE_STORE)) {
+          db.createObjectStore(FOLDER_HANDLE_STORE);
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -141,6 +160,101 @@ export class PersistenceService {
       request.onsuccess = () => resolve(request.result as string[]);
       request.onerror = () => reject(request.error);
     });
+  }
+
+  // --- Recent folder handles (IndexedDB + AppSettings) -----------------
+
+  /**
+   * Persist a directory handle and stamp it on the recent-folders MRU.
+   * Existing entries with the same `name` are dropped (newer wins) so
+   * the list never shows the same folder twice. Returns the persisted
+   * entry — useful for UI updates.
+   *
+   * Silently no-ops on failure (storage quota, browser refusing to
+   * structured-clone the handle); callers shouldn't have their import
+   * flow blocked by a recents-list write.
+   */
+  public async pushRecentFolder(handle: FileSystemDirectoryHandle): Promise<RecentFolderEntry | null> {
+    try {
+      const id = `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const db = await this.openDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(FOLDER_HANDLE_STORE, "readwrite");
+        tx.objectStore(FOLDER_HANDLE_STORE).put(handle, id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+
+      const settings = this.loadAppSettings();
+      const existing = settings.recentFolders ?? [];
+      // Dedupe by name and drop any pruned ids from IDB at the same time.
+      const purged: string[] = [];
+      const remaining = existing.filter((e) => {
+        if (e.name === handle.name) {
+          purged.push(e.id);
+          return false;
+        }
+        return true;
+      });
+      const entry: RecentFolderEntry = { id, name: handle.name, lastUsed: Date.now() };
+      const next = [entry, ...remaining].slice(0, RECENT_FOLDERS_CAP);
+      // Anything beyond the cap also gets its handle deleted.
+      const trimmed = [entry, ...remaining].slice(RECENT_FOLDERS_CAP);
+      for (const t of trimmed) purged.push(t.id);
+      settings.recentFolders = next;
+      this.saveAppSettings(settings);
+
+      if (purged.length > 0) {
+        await new Promise<void>((resolve) => {
+          const tx = db.transaction(FOLDER_HANDLE_STORE, "readwrite");
+          for (const id of purged) tx.objectStore(FOLDER_HANDLE_STORE).delete(id);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve(); // best-effort cleanup
+        });
+      }
+
+      return entry;
+    } catch (err) {
+      console.warn("pushRecentFolder: persistence failed; recents list will not include this folder", err);
+      return null;
+    }
+  }
+
+  public async loadRecentFolderHandle(id: string): Promise<FileSystemDirectoryHandle | null> {
+    try {
+      const db = await this.openDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(FOLDER_HANDLE_STORE, "readonly");
+        const req = tx.objectStore(FOLDER_HANDLE_STORE).get(id);
+        req.onsuccess = () => resolve((req.result ?? null) as FileSystemDirectoryHandle | null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (err) {
+      console.warn("loadRecentFolderHandle: read failed", err);
+      return null;
+    }
+  }
+
+  /** Drop a folder from both the AppSettings list and the IDB store. */
+  public async removeRecentFolder(id: string): Promise<void> {
+    const settings = this.loadAppSettings();
+    settings.recentFolders = (settings.recentFolders ?? []).filter((e) => e.id !== id);
+    this.saveAppSettings(settings);
+    try {
+      const db = await this.openDB();
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction(FOLDER_HANDLE_STORE, "readwrite");
+        tx.objectStore(FOLDER_HANDLE_STORE).delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } catch {
+      // best effort
+    }
+  }
+
+  public getRecentFolders(): RecentFolderEntry[] {
+    return this.loadAppSettings().recentFolders ?? [];
   }
 
   /**

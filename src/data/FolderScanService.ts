@@ -13,16 +13,33 @@ export class FolderScanService {
     return typeof window !== "undefined" && "showDirectoryPicker" in window;
   }
 
-  /** Open a directory picker (File System Access API, Chrome/Edge) */
-  public async scanWithDirectoryPicker(): Promise<FileTreeNode | null> {
+  /** Open a directory picker (File System Access API, Chrome/Edge).
+   *  Returns the picked handle alongside the scanned tree so callers
+   *  can persist the handle for the recent-folders list.
+   */
+  public async scanWithDirectoryPicker(): Promise<{ handle: FileSystemDirectoryHandle; tree: FileTreeNode } | null> {
     try {
       const dirHandle = await (window as any).showDirectoryPicker();
-      return this.buildTreeFromHandle(dirHandle, "");
+      const tree = await this.buildTreeFromHandle(dirHandle, "");
+      return { handle: dirHandle, tree };
     } catch (error) {
       // User cancelled or API not available
       if ((error as Error).name !== "AbortError") {
         console.error("Directory picker failed:", error);
       }
+      return null;
+    }
+  }
+
+  /** Re-scan an existing directory handle (for recent-folders re-open).
+   *  The caller is responsible for any required `requestPermission` call;
+   *  this method assumes read access has already been granted.
+   */
+  public async scanFromHandle(handle: FileSystemDirectoryHandle): Promise<FileTreeNode | null> {
+    try {
+      return await this.buildTreeFromHandle(handle, "");
+    } catch (error) {
+      console.error("Re-scan from saved handle failed:", error);
       return null;
     }
   }

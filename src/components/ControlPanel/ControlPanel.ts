@@ -1,6 +1,6 @@
 import duckPng from "@/assets/duck.png?url";
 import { DataProvider, DatasetMetadata } from "../../data/types";
-import { PersistenceService } from "../../data/PersistenceService";
+import { PersistenceService, persistenceService } from "../../data/PersistenceService";
 import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
@@ -348,7 +348,16 @@ export class ControlPanel {
     let tree: FileTreeNode | null = null;
 
     if (this.folderScanService.supportsDirectoryPicker()) {
-      tree = await this.folderScanService.scanWithDirectoryPicker();
+      const picked = await this.folderScanService.scanWithDirectoryPicker();
+      if (picked) {
+        tree = picked.tree;
+        // Persist the handle for the recent-folders list. Best-effort —
+        // a quota-exceeded or structured-clone failure shouldn't block
+        // the import flow.
+        persistenceService.pushRecentFolder(picked.handle).catch((e) => {
+          console.warn("Recent folders: persist failed", e);
+        });
+      }
     } else {
       // Fallback: webkitdirectory input
       const input = document.createElement("input");
@@ -367,27 +376,76 @@ export class ControlPanel {
       });
     }
 
-    if (tree) {
-      // If the same folder (by id) is already open, replace it in place so
-      // a re-browse acts as a refresh instead of duplicating the subtree.
-      const existingIdx = this.fileTree.findIndex((n) => n.id === tree.id);
-      if (existingIdx >= 0) {
-        const existing = this.fileTree[existingIdx];
-        this.preserveImportedState(existing, tree);
-        this.fileTree[existingIdx] = tree;
-        this.renderTree();
-        this.expandSection("datasets");
+    this.attachFolderTree(tree);
+  }
+
+  /** Re-open a folder picked earlier (recent-folders shortcut). */
+  public async openRecentFolder(id: string): Promise<void> {
+    const handle = await persistenceService.loadRecentFolderHandle(id);
+    if (!handle) {
+      this.onShowMessageCallback?.(
+        "That folder is no longer accessible — re-pick it from Browse Folder.",
+        "warning",
+      );
+      await persistenceService.removeRecentFolder(id);
+      return;
+    }
+    try {
+      // queryPermission first; only requestPermission if needed (avoids an
+      // unnecessary browser prompt when access is still granted).
+      const queried = await (handle as any).queryPermission?.({ mode: "read" }) ?? "granted";
+      let granted = queried;
+      if (granted !== "granted") {
+        granted = await (handle as any).requestPermission?.({ mode: "read" });
+      }
+      if (granted !== "granted") {
         this.onShowMessageCallback?.(
-          `Refreshed folder "${tree.name}"`,
-          "info",
+          `Permission denied for "${handle.name}"`,
+          "warning",
         );
         return;
       }
+      const tree = await this.folderScanService!.scanFromHandle(handle);
+      if (!tree) {
+        this.onShowMessageCallback?.(
+          `Couldn't read "${handle.name}" — folder may have been moved or deleted.`,
+          "warning",
+        );
+        await persistenceService.removeRecentFolder(id);
+        return;
+      }
+      // Touch the entry so it bumps to the top of the MRU.
+      await persistenceService.pushRecentFolder(handle);
+      this.attachFolderTree(tree);
+    } catch (err) {
+      console.error("openRecentFolder failed:", err);
+      this.onShowMessageCallback?.(
+        `Failed to re-open "${handle.name}"`,
+        "error",
+      );
+    }
+  }
 
-      this.fileTree.push(tree);
+  /** Common path for both fresh picks and recent re-opens: dedupe on
+   *  matching id, otherwise push to the file tree. */
+  private attachFolderTree(tree: FileTreeNode | null): void {
+    if (!tree) return;
+    const existingIdx = this.fileTree.findIndex((n) => n.id === tree.id);
+    if (existingIdx >= 0) {
+      const existing = this.fileTree[existingIdx];
+      this.preserveImportedState(existing, tree);
+      this.fileTree[existingIdx] = tree;
       this.renderTree();
       this.expandSection("datasets");
+      this.onShowMessageCallback?.(
+        `Refreshed folder "${tree.name}"`,
+        "info",
+      );
+      return;
     }
+    this.fileTree.push(tree);
+    this.renderTree();
+    this.expandSection("datasets");
   }
 
   /**
