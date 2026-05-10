@@ -550,6 +550,9 @@ export class SpreadsheetVisualizerBase {
     const COLS_PER_CHUNK = 16;
     const total = this.columns.length;
 
+    const isMultiSort =
+      this.filterManager !== null && this.filterManager.getSorts(this.datasetName).length > 1;
+
     for (let chunkStart = 0; chunkStart < total; chunkStart += COLS_PER_CHUNK) {
       const chunkEnd = Math.min(chunkStart + COLS_PER_CHUNK, total);
       for (let i = chunkStart; i < chunkEnd; i++) {
@@ -559,7 +562,13 @@ export class SpreadsheetVisualizerBase {
         // Widen columns with active sort/filter to fit indicators.
         if (this.filterManager) {
           let indicatorSpace = 0;
-          if (this.filterManager.isColumnSorted(this.datasetName, col.name)) indicatorSpace += 16;
+          if (this.filterManager.isColumnSorted(this.datasetName, col.name)) {
+            indicatorSpace += 16;
+            // Multi-sort: the position-number superscript adds another
+            // ~12px to the right-side indicator stack. Without this the
+            // header text truncates on top of the number.
+            if (isMultiSort) indicatorSpace += 12;
+          }
           if (this.filterManager.isColumnFiltered(this.datasetName, col.name)) indicatorSpace += 10;
           if (indicatorSpace > 0) {
             col.widthPx = Math.min(col.widthPx + indicatorSpace, this.options.maxCellWidth);
@@ -575,8 +584,13 @@ export class SpreadsheetVisualizerBase {
 
       // Yield between chunks so input / paint can run. The first chunk
       // runs without yielding so the very first frame has reasonable
-      // widths.
+      // widths. The Cells-level bump ensures the rAF-scheduled draw
+      // actually repaints the cell canvas with the chunk's new widths
+      // — without it, the next draw sees toDraw=None and no-ops, so
+      // chunks 2+ silently mutate `colOffsets/colWidths` without ever
+      // hitting the screen.
       if (chunkEnd < total) {
+        this.updateToDraw(ToDraw.Cells);
         this.scheduleDraw();
         await this.yieldToBrowser();
       }
