@@ -58,13 +58,16 @@ export class SpreadsheetVisualizer extends SpreadsheetVisualizerFocusable {
     // to real data on fetch resolution. The previous cache's listeners
     // were wiped by its own clear() above.
     this.attachCacheListener();
-    this.selectedCells = null;
-    this.selectedCols = [];
-    this.selectedRows = [];
-    // Hover/selection canvas state references positions in the old data
-    // ordering. The next render pass repaints the cell canvas; null out
-    // the hover ref so a stale ghost rect doesn't survive on the
-    // overlay layer until the user moves the mouse.
+    // Selection state is preserved across reinitialize. Sort doesn't
+    // change which cells live at a given screen position (only which
+    // *data* sits under them); filters shrink the row count, but the
+    // selection-painting paths skip out-of-range entries. Keeping the
+    // selection means clicking a stats-panel sort button doesn't drop
+    // the column the user just sorted.
+    //
+    // Hover state is the exception — `hoveredCell` is a transient
+    // pointer position. Null it out so the next mouse move repaints
+    // hover at the post-sort layout instead of ghosting an old rect.
     this.hoveredCell = null;
     await this.initialize();
     // Sync scrollX/Y to whatever the scroll container is showing — for

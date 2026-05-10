@@ -559,21 +559,20 @@ export class SpreadsheetVisualizerBase {
         const col = this.columns[i];
         col.widthPx = this.guessColumnWidths(rows, col, i);
 
-        // Widen columns with active sort/filter to fit indicators.
+        // Reserve room for the right-edge indicator stack. Every column
+        // gets the +16px sort-arrow slot now (sorted columns paint it
+        // solid; unsorted columns paint a faded "sortable" hint), so
+        // header text truncates consistently.
+        let indicatorSpace = 16;
         if (this.filterManager) {
-          let indicatorSpace = 0;
-          if (this.filterManager.isColumnSorted(this.datasetName, col.name)) {
-            indicatorSpace += 16;
-            // Multi-sort: the position-number superscript adds another
-            // ~12px to the right-side indicator stack. Without this the
-            // header text truncates on top of the number.
-            if (isMultiSort) indicatorSpace += 12;
+          if (this.filterManager.isColumnSorted(this.datasetName, col.name) && isMultiSort) {
+            // Multi-sort position superscript — only when the chain
+            // has 2+ keys so the lone-key case stays compact.
+            indicatorSpace += 12;
           }
           if (this.filterManager.isColumnFiltered(this.datasetName, col.name)) indicatorSpace += 10;
-          if (indicatorSpace > 0) {
-            col.widthPx = Math.min(col.widthPx + indicatorSpace, this.options.maxCellWidth);
-          }
         }
+        col.widthPx = Math.min(col.widthPx + indicatorSpace, this.options.maxCellWidth);
 
         this.colWidths[i] = col.widthPx;
       }
@@ -862,8 +861,10 @@ export class SpreadsheetVisualizerBase {
       }
       const hasNullBadge = column.hasNulls === true;
       const showSortPosition = sortDir !== null && isMultiSort && sortPosition !== null;
-      let indicatorSpace = 0;
-      if (sortDir) indicatorSpace += 16;
+      // Always reserve room for a sort arrow — sorted columns paint a
+      // solid one, unsorted columns get a faded "sortable" hint, so the
+      // affordance is consistent across the whole header strip.
+      let indicatorSpace = 16;
       if (showSortPosition) indicatorSpace += 12;
       if (isFiltered) indicatorSpace += 10;
       if (hasNullBadge) indicatorSpace += 10;
@@ -880,10 +881,10 @@ export class SpreadsheetVisualizerBase {
       let indicatorRight = hx + colWidth - pad;
       const arrowSize = 5;
 
+      ctx.fillStyle = o.headerTextColor;
+      const arrowX = indicatorRight - arrowSize;
       if (sortDir) {
-        ctx.fillStyle = o.headerTextColor;
         ctx.beginPath();
-        const arrowX = indicatorRight - arrowSize;
         if (sortDir === "asc") {
           ctx.moveTo(arrowX - arrowSize, headerY + arrowSize / 2);
           ctx.lineTo(arrowX, headerY - arrowSize / 2);
@@ -895,21 +896,36 @@ export class SpreadsheetVisualizerBase {
         }
         ctx.closePath();
         ctx.fill();
-        indicatorRight -= 16;
+      } else {
+        // Disabled "sortable" hint — faded up-arrow at the same slot as
+        // the active indicator so the right-edge click zone is visually
+        // marked even before the user sorts. globalAlpha trims contrast
+        // without re-deriving a tinted color.
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.beginPath();
+        ctx.moveTo(arrowX - arrowSize, headerY + arrowSize / 2);
+        ctx.lineTo(arrowX, headerY - arrowSize / 2);
+        ctx.lineTo(arrowX + arrowSize, headerY + arrowSize / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      indicatorRight -= 16;
 
-        // Multi-sort position number (1, 2, 3, ...) sits to the left of
-        // the arrow. Only rendered when the chain has 2+ keys — a lone
-        // "1" superscript next to a single arrow is just clutter.
-        if (showSortPosition) {
-          ctx.save();
-          ctx.font = `9px ${o.fontFamily}`;
-          ctx.fillStyle = o.headerTextColor;
-          ctx.globalAlpha = 0.7;
-          ctx.textAlign = "right";
-          ctx.fillText(String(sortPosition), Math.round(indicatorRight), Math.round(headerY));
-          ctx.restore();
-          indicatorRight -= 12;
-        }
+      // Multi-sort position number (1, 2, 3, ...) sits to the left of
+      // the arrow. Only rendered when the chain has 2+ keys — a lone
+      // "1" superscript next to a single arrow is just clutter. The
+      // showSortPosition guard subsumes the sortDir check.
+      if (showSortPosition) {
+        ctx.save();
+        ctx.font = `9px ${o.fontFamily}`;
+        ctx.fillStyle = o.headerTextColor;
+        ctx.globalAlpha = 0.7;
+        ctx.textAlign = "right";
+        ctx.fillText(String(sortPosition), Math.round(indicatorRight), Math.round(headerY));
+        ctx.restore();
+        indicatorRight -= 12;
       }
 
       if (isFiltered) {
