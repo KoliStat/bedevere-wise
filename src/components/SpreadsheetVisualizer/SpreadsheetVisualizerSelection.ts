@@ -1,7 +1,7 @@
 import { CellInspectInfo, ICellSelection, SpreadsheetOptions } from "./types";
 import { DataProvider, Column } from "../../data/types";
 import { ColumnStatsVisualizer } from "../ColumnStatsVisualizer/ColumnStatsVisualizer";
-import { getFormattedValueAndStyle } from "./utils/formatting";
+import { formatForExport, getFormattedValueAndStyle } from "./utils/formatting";
 import { SpreadsheetVisualizerBase, ToDraw, MouseState } from "./SpreadsheetVisualizerBase";
 import {
   DEFAULT_IMAGE_SMOOTHING_ENABLED,
@@ -557,7 +557,7 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
           row.map((cell, idx) => {
             const column = this.columns[sortedCols[idx]];
             if (!column) return "";
-            return getFormattedValueAndStyle(cell, column, this.options).formatted;
+            return formatForExport(cell, column, this.options);
           }),
         );
         const columns = sortedCols.map((c) => this.columns[c]) as Column[];
@@ -606,7 +606,7 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
           row.map((cell, idx) => {
             const column = this.columns[idx];
             if (!column) return "";
-            return getFormattedValueAndStyle(cell, column, this.options).formatted;
+            return formatForExport(cell, column, this.options);
           }),
         );
 
@@ -636,7 +636,7 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
           row.map((cell, index) => {
             const column = this.columns[index + this.selectedCells!.startCol];
             if (!column) return "";
-            return getFormattedValueAndStyle(cell, column, this.options).formatted;
+            return formatForExport(cell, column, this.options);
           }),
         );
 

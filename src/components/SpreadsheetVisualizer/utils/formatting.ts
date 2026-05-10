@@ -208,6 +208,39 @@ function getPreviewNumberFormatter(options: SpreadsheetOptions): Intl.NumberForm
 }
 
 /**
+ * Export-flavoured formatter. Complex cells (STRUCT/LIST/MAP/JSON/UNION)
+ * serialise to JSON so copy + .export carry the *whole* structure; the
+ * truncated `formatComplex` preview is for screen rendering only. Everything
+ * else falls through to the regular formatter so dates, numbers, blobs etc.
+ * keep their user-configured presentation.
+ *
+ * BigInt and binary values are coerced to JSON-safe forms (number string
+ * for BigInt, regular array for Uint8Array). Defensive `try/catch` falls
+ * back to `String(value)` so a circular or otherwise pathological structure
+ * doesn't break the whole export.
+ */
+export function formatForExport(value: any, column: ColumnInternal, options: SpreadsheetOptions): string {
+  if (isComplexType(column.dataType)) {
+    return stringifyForExport(value);
+  }
+  return getFormattedValueAndStyle(value, column, options).formatted;
+}
+
+function stringifyForExport(value: any): string {
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value, (_, v) => {
+      if (typeof v === "bigint") return v.toString();
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+      if (v instanceof Uint8Array) return Array.from(v);
+      return v;
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+/**
  * Format a complex type (LIST, STRUCT, MAP, JSON) as a compact one-line
  * preview. Objects render as `{ k: v, k: v, k: v, \u2026 N more }`; arrays
  * as `[ v, v, v, \u2026 N more ]`. Nested objects/arrays collapse to
