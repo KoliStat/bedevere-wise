@@ -26,8 +26,8 @@ export interface HelpPanelOptions {
   onThemeChange?: (theme: "light" | "dark" | "auto") => void;
   onResetKeymap?: () => void;
   onClearAllData?: () => Promise<void> | void;
-  getCopyOptions?: () => { delimiter: "tab" | "comma"; includeHeader: boolean };
-  setCopyOptions?: (opts: { delimiter: "tab" | "comma"; includeHeader: boolean }) => void;
+  getCopyOptions?: () => { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" };
+  setCopyOptions?: (opts: { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" }) => void;
   getFormatOptions?: () => FormatPrefs;
   setFormatOptions?: (opts: FormatPrefs) => void;
 }
@@ -1167,10 +1167,13 @@ export class HelpPanel {
       section.appendChild(seg);
     }));
 
-    // --- Copy format ---
-    body.appendChild(this.buildSettingsSection("Copy format", (section) => {
-      const current = this.options.getCopyOptions?.() ?? { delimiter: "tab" as const, includeHeader: true };
+    // --- Copy & export format ---
+    body.appendChild(this.buildSettingsSection("Copy & export format", (section) => {
+      const defaults = { delimiter: "tab" as const, includeHeader: true, quoteEscape: "double" as const };
+      const current = this.options.getCopyOptions?.() ?? defaults;
+      const getLatest = () => this.options.getCopyOptions?.() ?? defaults;
 
+      // --- Delimiter
       const delimRow = document.createElement("div");
       delimRow.className = "help-panel__settings-row";
       const delimLabel = document.createElement("span");
@@ -1195,22 +1198,56 @@ export class HelpPanel {
             sibling.classList.remove("help-panel__segmented-btn--active");
           }
           btn.classList.add("help-panel__segmented-btn--active");
-          const latest = this.options.getCopyOptions?.() ?? { delimiter: "tab" as const, includeHeader: true };
-          this.options.setCopyOptions?.({ delimiter: opt.value, includeHeader: latest.includeHeader });
+          const latest = getLatest();
+          this.options.setCopyOptions?.({ ...latest, delimiter: opt.value });
         });
         delimSeg.appendChild(btn);
       }
       delimRow.appendChild(delimSeg);
       section.appendChild(delimRow);
 
+      // --- Quote escape (CSV / TSV with embedded quotes)
+      const quoteRow = document.createElement("div");
+      quoteRow.className = "help-panel__settings-row";
+      const quoteLabel = document.createElement("span");
+      quoteLabel.className = "help-panel__settings-label";
+      quoteLabel.textContent = "Quote escape";
+      quoteRow.appendChild(quoteLabel);
+
+      const quoteSeg = document.createElement("div");
+      quoteSeg.className = "help-panel__segmented";
+      const quoteOpts: Array<{ value: "double" | "backslash"; label: string }> = [
+        { value: "double", label: "\"\" (RFC 4180)" },
+        { value: "backslash", label: "\\\" (JSON-style)" },
+      ];
+      for (const opt of quoteOpts) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "help-panel__segmented-btn";
+        btn.textContent = opt.label;
+        if (opt.value === current.quoteEscape) btn.classList.add("help-panel__segmented-btn--active");
+        btn.addEventListener("click", () => {
+          for (const sibling of quoteSeg.querySelectorAll("button")) {
+            sibling.classList.remove("help-panel__segmented-btn--active");
+          }
+          btn.classList.add("help-panel__segmented-btn--active");
+          const latest = getLatest();
+          this.options.setCopyOptions?.({ ...latest, quoteEscape: opt.value });
+        });
+        quoteSeg.appendChild(btn);
+      }
+      quoteRow.appendChild(quoteSeg);
+      section.appendChild(quoteRow);
+
+      // --- Include header
       const headerRow = document.createElement("label");
       headerRow.className = "help-panel__settings-row help-panel__settings-row--checkbox";
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = current.includeHeader;
       cb.addEventListener("change", () => {
-        const latest = this.options.getCopyOptions?.() ?? { delimiter: "tab" as const, includeHeader: true };
-        this.options.setCopyOptions?.({ delimiter: latest.delimiter, includeHeader: cb.checked });
+        const latest = getLatest();
+        this.options.setCopyOptions?.({ ...latest, includeHeader: cb.checked });
       });
       const cbLabel = document.createElement("span");
       cbLabel.textContent = "Include header row";

@@ -19,7 +19,8 @@ export const exportAsText = async (
   includeIndex: boolean,
   separator: string = ",",
   eol: string = "\n",
-  datasetName: string = "export"
+  datasetName: string = "export",
+  quoteEscape: "double" | "backslash" = "double",
 ) => {
   const { rows, columns, formatted } = selection;
 
@@ -44,7 +45,10 @@ export const exportAsText = async (
           .map((formattedCell) => {
             // Escape quotes and wrap in quotes if contains comma, quote, or newline
             if (formattedCell.includes(separator) || formattedCell.includes('"') || formattedCell.includes(eol)) {
-              return `"${formattedCell.replace(/"/g, '""')}"`;
+              const escaped = quoteEscape === "backslash"
+                ? formattedCell.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+                : formattedCell.replace(/"/g, '""');
+              return `"${escaped}"`;
             }
             return formattedCell;
           })

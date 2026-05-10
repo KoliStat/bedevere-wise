@@ -11,6 +11,14 @@ export interface AppSettings {
   hasSeenOnboarding?: boolean;
   copyDelimiter?: "tab" | "comma";
   copyIncludeHeader?: boolean;
+  /**
+   * Quote-escape mode for copy + `.export csv|tsv`.
+   * - "double" (default, RFC 4180): an embedded `"` is doubled to `""`.
+   * - "backslash": an embedded `"` becomes `\"` (non-RFC, but some tools
+   *   prefer it — matches JSON-like escaping). Useful when the data is
+   *   nested-JSON-heavy and the consumer reads `\"`-style escapes.
+   */
+  csvQuoteEscape?: "double" | "backslash";
   dateFormat?: string;
   datetimeFormat?: string;
   numberMinDecimals?: number;
