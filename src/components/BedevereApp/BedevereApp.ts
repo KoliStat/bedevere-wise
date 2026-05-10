@@ -332,12 +332,14 @@ export class BedevereApp implements EventHandler {
         return {
           delimiter: s.copyDelimiter ?? "tab",
           includeHeader: s.copyIncludeHeader ?? true,
+          quoteEscape: s.csvQuoteEscape ?? "double",
         };
       },
       setCopyOptions: (opts) => {
         const s = this.persistenceService.loadAppSettings();
         s.copyDelimiter = opts.delimiter;
         s.copyIncludeHeader = opts.includeHeader;
+        s.csvQuoteEscape = opts.quoteEscape;
         this.persistenceService.saveAppSettings(s);
       },
       getFormatOptions: () => {
@@ -1163,24 +1165,33 @@ export class BedevereApp implements EventHandler {
     const activeDataset = this.tabManager.getActiveDatasetTab();
 
     if (activeDataset) {
-      const selection = await activeDataset.spreadsheetVisualizer.getSelection();
+      // No selection -> fall back to the whole dataset. Matches the
+      // mental model "running .export with nothing selected exports the
+      // whole table"; an explicit row/col/cell selection still scopes
+      // the export down.
+      let selection = await activeDataset.spreadsheetVisualizer.getSelection();
       if (!selection) {
-        this.showMessage("No selection to export", "warning");
+        selection = await activeDataset.spreadsheetVisualizer.exportFullDataset();
+      }
+      if (!selection) {
+        this.showMessage("Nothing to export (dataset is empty)", "warning");
         return;
       }
 
       const { includeHeader, includeIndex, format } = params || {};
       const datasetName = activeDataset.metadata.name;
+      const settings = this.persistenceService.loadAppSettings();
+      const quoteEscape = settings.csvQuoteEscape ?? "double";
 
       let ext = "";
       switch (format) {
         case "csv":
           ext = "csv";
-          await exportAsText(selection, includeHeader, includeIndex, ",", "\n", datasetName);
+          await exportAsText(selection, includeHeader, includeIndex, ",", "\n", datasetName, quoteEscape);
           break;
         case "tsv":
           ext = "tsv";
-          await exportAsText(selection, includeHeader, includeIndex, "\t", "\n", datasetName);
+          await exportAsText(selection, includeHeader, includeIndex, "\t", "\n", datasetName, quoteEscape);
           break;
         case "html":
           ext = "html";

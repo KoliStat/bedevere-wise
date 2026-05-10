@@ -544,6 +544,36 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
     });
   }
 
+  /**
+   * Whole-dataset selection shape for `.export` when no rows/cols/cells
+   * are selected — every row, every column, formatted via
+   * `formatForExport` so complex cells JSON-serialise the same way they
+   * do for partial-selection exports.
+   */
+  public async exportFullDataset(): Promise<{ rows: number[]; columns: Column[]; values: any[][]; formatted: string[][] } | null> {
+    if (this.totalRows === 0 || this.columns.length === 0) return null;
+    try {
+      const allRows = await this.cache.getData(0, this.totalRows);
+      const formatted = allRows.map((row) =>
+        row.map((cell, idx) => {
+          const column = this.columns[idx];
+          if (!column) return "";
+          return formatForExport(cell, column, this.options);
+        }),
+      );
+      const indices = Array.from({ length: allRows.length }, (_, i) => i + 1);
+      return {
+        rows: indices,
+        columns: this.columns as Column[],
+        values: allRows,
+        formatted,
+      };
+    } catch (error) {
+      console.error("Failed to fetch full dataset for export:", error);
+      return null;
+    }
+  }
+
   public async getSelection(): Promise<{ rows: number[]; columns: Column[]; values: any[][]; formatted: string[][] } | null> {
     // Column selection: every row, sliced to the selected columns. Cols
     // are emitted in left-to-right visual order regardless of click order
