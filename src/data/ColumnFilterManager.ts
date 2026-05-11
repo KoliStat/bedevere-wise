@@ -34,6 +34,10 @@ export interface SortConfig {
 export class ColumnFilterManager {
   private filters: Map<string, ColumnFilter[]> = new Map(); // dataset name -> filters
   private sorts: Map<string, SortConfig[]> = new Map(); // dataset name -> sorts
+  // dataset name -> set of column names hidden from the spreadsheet view.
+  // Hide is a presentation-only concern; filter / sort still reference
+  // hidden columns by name and apply correctly to the underlying data.
+  private hiddenColumns: Map<string, Set<string>> = new Map();
   private onChangeCallbacks: Array<(datasetName: string) => void> = [];
 
   public setFilter(datasetName: string, filter: ColumnFilter): void {
@@ -201,6 +205,46 @@ export class ColumnFilterManager {
 
   public hasAnyFiltersOrSorts(datasetName: string): boolean {
     return this.hasFilters(datasetName) || (this.sorts.get(datasetName)?.length ?? 0) > 0;
+  }
+
+  // ---- Hidden columns -----------------------------------------------------
+
+  /**
+   * Replace the hidden-column set for a dataset. Empty array (or empty
+   * set) clears hidden state. Fires `onChange` so the spreadsheet's
+   * `handleFilterChange` re-projects the data provider.
+   */
+  public setHiddenColumns(datasetName: string, columnNames: Iterable<string>): void {
+    const names = new Set(columnNames);
+    if (names.size === 0) {
+      this.hiddenColumns.delete(datasetName);
+    } else {
+      this.hiddenColumns.set(datasetName, names);
+    }
+    this.notifyChange(datasetName);
+  }
+
+  public getHiddenColumns(datasetName: string): string[] {
+    const set = this.hiddenColumns.get(datasetName);
+    return set ? Array.from(set) : [];
+  }
+
+  public isColumnHidden(datasetName: string, columnName: string): boolean {
+    return this.hiddenColumns.get(datasetName)?.has(columnName) ?? false;
+  }
+
+  public hasHiddenColumns(datasetName: string): boolean {
+    return (this.hiddenColumns.get(datasetName)?.size ?? 0) > 0;
+  }
+
+  /**
+   * Predicate the TabManager uses to decide between
+   * `FilteredDuckDBDataProvider` and the plain provider. Hidden columns
+   * count as state — even with no filter / sort, hiding a column
+   * requires the projection-aware provider.
+   */
+  public hasAnyState(datasetName: string): boolean {
+    return this.hasAnyFiltersOrSorts(datasetName) || this.hasHiddenColumns(datasetName);
   }
 
   public onChange(callback: (datasetName: string) => void): void {

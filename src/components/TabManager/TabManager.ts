@@ -623,8 +623,9 @@ export class TabManager {
       sourceTableName = tab.metadata.name;
     }
 
-    if (this.filterManager.hasAnyFiltersOrSorts(datasetName)) {
-      // Create a filtered provider
+    if (this.filterManager.hasAnyState(datasetName)) {
+      // Any of filter / sort / hidden columns active — route through the
+      // filtered provider, which knows how to project + WHERE + ORDER BY.
       const filteredProvider = new FilteredDuckDBDataProvider(
         this.duckDBService,
         sourceTableName,
@@ -635,7 +636,6 @@ export class TabManager {
       tab.dataProvider = filteredProvider;
       await tab.spreadsheetVisualizer.reinitialize(filteredProvider);
     } else {
-      // No filters - use the original DuckDBDataProvider
       const { DuckDBDataProvider } = await import("../../data/DuckDBDataProvider");
       const originalProvider = new DuckDBDataProvider(this.duckDBService, sourceTableName, tab.metadata.fileName ?? "");
       tab.dataProvider = originalProvider;

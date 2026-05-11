@@ -36,6 +36,14 @@ export interface AppSettings {
    * handles.
    */
   recentFolders?: RecentFolderEntry[];
+  /**
+   * Per-dataset list of column names hidden from the spreadsheet view.
+   * Filtering / sorting still operates on the underlying column even
+   * when hidden (the SQL clause references it by name regardless of
+   * whether the projection includes it); unhiding restores the column
+   * with whatever filter / sort state was active.
+   */
+  hiddenColumns?: Record<string, string[]>;
 }
 
 export interface RecentFolderEntry {
