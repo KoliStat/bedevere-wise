@@ -102,6 +102,7 @@ export class TabManager {
   private onQueryErrorCallback?: (error: Error) => void;
   private onQueryCompletedCallback?: (result: { elapsedMs: number; error?: Error }) => void;
   private onShellMessageCallback?: (text: string, details?: string) => void;
+  private onDatasetAddedCallback?: (metadata: DatasetMetadata) => void;
   // Monotonic counter for default result-tab names (`result_1`, `result_2`,
   // …). Resets per session — these tables don't survive a page reload.
   private resultCounter = 0;
@@ -255,6 +256,11 @@ export class TabManager {
     if (this.tabs.length === 1) {
       await this.activateTab(metadata.name);
     }
+
+    // Fire after the visualizer is on screen so consumers (e.g.
+    // BedevereApp restoring persisted hidden-columns) can call into
+    // the filter manager and trigger a clean handleFilterChange swap.
+    this.onDatasetAddedCallback?.(metadata);
   }
 
   public async switchToDataset(id: string): Promise<void> {
@@ -433,6 +439,10 @@ export class TabManager {
 
   public setOnQueryCompletedCallback(callback: (result: { elapsedMs: number; error?: Error }) => void): void {
     this.onQueryCompletedCallback = callback;
+  }
+
+  public setOnDatasetAddedCallback(callback: (metadata: DatasetMetadata) => void): void {
+    this.onDatasetAddedCallback = callback;
   }
 
   private createTabElement(tab: Tab): void {

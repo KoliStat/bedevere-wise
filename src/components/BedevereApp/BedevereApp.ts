@@ -27,6 +27,8 @@ import { ExcelFormatHandler } from "@/data/formats/ExcelFormatHandler";
 import { StatFormatHandler } from "@/data/formats/StatFormatHandler";
 import { AliasManager } from "@/data/AliasManager";
 import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
+import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
+import { HideColumnsDialog } from "../HideColumnsDialog";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -405,6 +407,23 @@ export class BedevereApp implements EventHandler {
     // click-to-expand for long content.
     this.tabManager.setOnShellMessageCallback((text, details) => {
       this.showMessage(text, "info", { details, duration: 0 });
+    });
+
+    // Restore persisted per-dataset hide state when a dataset opens.
+    // Fires after the visualizer's first init, so the user sees the
+    // unfiltered view momentarily before the filtered re-init kicks in.
+    // That's intentional: the alternative (pre-restore inside addDataset)
+    // requires TabManager to know about persistence, which we keep
+    // outside the tab/visualizer layer.
+    this.tabManager.setOnDatasetAddedCallback((metadata) => {
+      const persisted = this.persistenceService.loadAppSettings().hiddenColumns?.[metadata.name];
+      if (!persisted || persisted.length === 0) return;
+      // Filter to columns that still exist in the current metadata —
+      // stale entries (renamed / dropped columns) are harmless to drop.
+      const live = new Set(metadata.columns.map((c) => c.name));
+      const surviving = persisted.filter((c) => live.has(c));
+      if (surviving.length === 0) return;
+      this.tabManager.getFilterManager().setHiddenColumns(metadata.name, surviving);
     });
 
     // Dataset panel
@@ -809,6 +828,44 @@ export class BedevereApp implements EventHandler {
           `SELECT column_name, data_type, is_nullable, column_default, ordinal_position FROM information_schema.columns WHERE table_schema = 'main' AND table_name = '${tableLiteral}' ORDER BY ordinal_position`,
           this.duckDBService,
         );
+      },
+    });
+
+    commandRegistry.register({
+      id: "shell.hide",
+      shellName: "hide",
+      title: "Hide / Show Columns",
+      description:
+        "Open a dialog to toggle column visibility on the active dataset. Filter and sort still apply to hidden columns; the state persists per dataset name across reloads.",
+      category: "Dataset",
+      when: () => this.tabManager.getActiveDatasetTab() !== null,
+      execute: async () => {
+        const tab = this.tabManager.getActiveDatasetTab();
+        if (!tab) throw new Error(".hide needs an active dataset tab");
+        if (!this.duckDBService) throw new Error("Database not initialized");
+
+        // Source-table resolution matches handleFilterChange: a filtered
+        // provider knows its source; an unfiltered one is its own source.
+        const sourceTableName =
+          tab.dataProvider instanceof FilteredDuckDBDataProvider
+            ? tab.dataProvider.getSourceTableName()
+            : tab.metadata.name;
+
+        const tableInfo = await this.duckDBService.getTableInfo(sourceTableName);
+        const allCols = tableInfo.map((c: any) => c.column_name as string);
+
+        const filterManager = this.tabManager.getFilterManager();
+        const currentHidden = new Set(filterManager.getHiddenColumns(tab.metadata.name));
+
+        HideColumnsDialog.show({
+          title: `Hide / show columns — ${tab.metadata.name}`,
+          allColumns: allCols,
+          hidden: currentHidden,
+          onApply: (next) => {
+            filterManager.setHiddenColumns(tab.metadata.name, next);
+            this.persistHiddenColumns(tab.metadata.name, next);
+          },
+        });
       },
     });
 
@@ -1270,6 +1327,23 @@ export class BedevereApp implements EventHandler {
     this.tabManager.setOnCellInspectCallback((info) => {
       this.statusBar.openCellPopover(info);
     });
+  }
+
+  /**
+   * Write the per-dataset hidden-column set back to AppSettings. Empty
+   * sets prune the key so we don't accumulate dead entries for datasets
+   * the user has fully un-hidden.
+   */
+  private persistHiddenColumns(datasetName: string, hidden: Set<string>): void {
+    const settings = this.persistenceService.loadAppSettings();
+    const next = { ...(settings.hiddenColumns ?? {}) };
+    if (hidden.size === 0) {
+      delete next[datasetName];
+    } else {
+      next[datasetName] = Array.from(hidden);
+    }
+    settings.hiddenColumns = next;
+    this.persistenceService.saveAppSettings(settings);
   }
 
   /**
