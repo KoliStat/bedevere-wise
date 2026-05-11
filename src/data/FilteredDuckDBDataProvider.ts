@@ -3,7 +3,6 @@ import { Column, ColumnStats, DataProvider, DatasetMetadata, normalizeDuckDBType
 import { ColumnFilterManager } from "./ColumnFilterManager";
 import { unwrapArrowValue } from "./arrowUnwrap";
 import { parseDuckDBType, TypeNode } from "./duckdbTypeParser";
-import { quoteIdent } from "./sqlIdent";
 
 export class FilteredDuckDBDataProvider implements DataProvider {
   private name: string;
@@ -115,39 +114,17 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   }
 
   public async getColumnStats(column: string | Column): Promise<ColumnStats | null> {
+    // Stats run against the unfiltered source. Reflecting the filtered
+    // view would be nice (histograms move with the visible rows) but
+    // breaks the filter UI itself: a filtered `valueCounts` doesn't
+    // include the categories the user deselected, so there's no way
+    // to broaden the filter from the panel. Numeric/temporal sliders
+    // collapse to the filtered min/max for the same reason. Restoring
+    // unfiltered stats — the next release will introduce a dual-view
+    // shape (filtered for display, unfiltered for filter-UI bounds).
     const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
-    const whereClause = this.filterManager.buildWhereClause(this.name);
-
-    // No filters → stats can come straight from the source table; saves
-    // the temp-view roundtrip and keeps the SHOW TABLES list clean.
-    if (!whereClause) {
-      const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
-      return sourceProvider.getColumnStats(column);
-    }
-
-    // Filters active → wrap the source in a temp view and run the same
-    // stats queries against the filtered row set. Stats now reflect
-    // what the user is actually looking at (Excel-style: filtering
-    // moves the histograms, counts, and value-frequency lists with the
-    // visible rows). Sort isn't relevant for aggregates so we skip
-    // the ORDER BY clause.
-    const viewName = `__bedevere_stats_${this.name}`;
-    try {
-      await this.duckDBService.executeQuery(
-        `CREATE OR REPLACE TEMP VIEW ${quoteIdent(viewName)} AS ` +
-          `SELECT * FROM ${quoteIdent(this.sourceTableName)} ${whereClause}`,
-      );
-      const tempProvider = new DuckDBDataProvider(this.duckDBService, viewName, this.fileName);
-      return await tempProvider.getColumnStats(column);
-    } finally {
-      // Best-effort cleanup so the temp view doesn't linger in SHOW
-      // TABLES; failure to drop is fine (next stats call will REPLACE).
-      try {
-        await this.duckDBService.executeQuery(`DROP VIEW IF EXISTS ${quoteIdent(viewName)}`);
-      } catch {
-        // ignore
-      }
-    }
+    const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
+    return sourceProvider.getColumnStats(column);
   }
 
   public getSourceTableName(): string {
