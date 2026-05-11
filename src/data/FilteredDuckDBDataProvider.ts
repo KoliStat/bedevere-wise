@@ -148,10 +148,17 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       return sourceProvider.getColumnStats(column);
     }
 
+    // Regular (non-TEMP) view: `DuckDBService.executeQuery` opens and
+    // closes a fresh connection per call, and TEMP views are
+    // connection-scoped — they'd evaporate between the CREATE and the
+    // first stats query. Database-scoped views survive that, at the
+    // cost of brief visibility in SHOW TABLES while the stats fetch
+    // is in flight. The random suffix keeps concurrent callers from
+    // tripping over each other.
     const viewName = `__bedevere_stats_${this.name}_${Math.random().toString(36).slice(2, 10)}`;
     try {
       await this.duckDBService.executeQuery(
-        `CREATE OR REPLACE TEMP VIEW ${quoteIdent(viewName)} AS ` +
+        `CREATE OR REPLACE VIEW ${quoteIdent(viewName)} AS ` +
           `SELECT * FROM ${quoteIdent(this.sourceTableName)} ${whereClause}`,
       );
       const tempProvider = new DuckDBDataProvider(this.duckDBService, viewName, this.fileName);
@@ -160,7 +167,8 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       try {
         await this.duckDBService.executeQuery(`DROP VIEW IF EXISTS ${quoteIdent(viewName)}`);
       } catch {
-        // best-effort: temp views auto-clear on session end
+        // best-effort cleanup; an orphan view is harmless beyond
+        // showing up once in SHOW TABLES until the page reloads
       }
     }
   }
