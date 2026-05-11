@@ -48,6 +48,10 @@ export class DataProviderMock implements DataProvider {
     return null;
   }
 
+  async getColumnStatsFiltered(column: string | Column): Promise<ColumnStats | null> {
+    return this.getColumnStats(column);
+  }
+
   setName(name: string): void {
     this.metadata.name = name;
   }

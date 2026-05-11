@@ -104,6 +104,16 @@ export class DuckDBDataProvider implements DataProvider {
     );
   }
 
+  /**
+   * For the unfiltered source provider, filtered == unfiltered. The
+   * method exists so `FilteredDuckDBDataProvider` can override with a
+   * temp-view path; callers that don't care about the distinction
+   * should use the regular `getColumnStats`.
+   */
+  public async getColumnStatsFiltered(column: string | Column): Promise<ColumnStats | null> {
+    return this.getColumnStats(column);
+  }
+
   public async getColumnStats(
     column: string | Column,
     valueCountsLimit: number = 10

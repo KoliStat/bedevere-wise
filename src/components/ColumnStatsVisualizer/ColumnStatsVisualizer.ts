@@ -50,8 +50,20 @@ export class ColumnStatsVisualizer {
     this.container.classList.add("visible");
     this.onShowStatsCallback?.();
 
-    const stats = await this.spreadsheetVisualizer!.getDataProvider().getColumnStats(column);
-    this.render(stats);
+    // Two passes: filtered stats drive the display (mean / median /
+    // histogram move with the visible rows), unfiltered stats drive
+    // the filter UI controls (slider bounds + categorical value list)
+    // so the user can broaden the filter from the panel.
+    const provider = this.spreadsheetVisualizer!.getDataProvider();
+    const [filtered, unfiltered] = await Promise.all([
+      provider.getColumnStatsFiltered(column),
+      provider.getColumnStats(column),
+    ]);
+    // Bail if the selection changed while we were awaiting — avoids
+    // racing renders when handleFilterChange fires a refresh while
+    // the user is clicking a different column.
+    if (this.currentColumn !== column) return;
+    this.render(filtered ?? unfiltered, unfiltered ?? filtered);
   }
 
   public setOnShowStatsCallback(callback: () => void): void {
@@ -97,8 +109,8 @@ export class ColumnStatsVisualizer {
     }
   }
 
-  private render(stats: ColumnStats | null) {
-    if (!this.currentColumn || !stats) return;
+  private render(filteredStats: ColumnStats | null, unfilteredStats: ColumnStats | null) {
+    if (!this.currentColumn || !filteredStats || !unfilteredStats) return;
 
     const sortDirection = this.filterManager?.isColumnSorted(this.datasetName, this.currentColumn.name) ?? null;
 
@@ -117,14 +129,14 @@ export class ColumnStatsVisualizer {
           </div>
         </div>
         <div class="column-stats__container">
-          ${this.renderStats(stats)}
+          ${this.renderStats(filteredStats)}
         </div>
-        ${this.renderFilterControls(stats)}
-        ${this.renderVisualization(stats)}
+        ${this.renderFilterControls(unfilteredStats)}
+        ${this.renderVisualization(filteredStats)}
       </div>
     `;
 
-    this.attachEventListeners(stats);
+    this.attachEventListeners(unfilteredStats);
   }
 
   private renderFilterControls(stats: ColumnStats): string {

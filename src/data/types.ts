@@ -312,7 +312,20 @@ export interface DataProvider {
   getMetadata(): Promise<DatasetMetadata>;
   fetchData(startRow: number, endRow: number): Promise<any[][]>;
   fetchDataColumnRange(startRow: number, endRow: number, startCol: number, endCol: number): Promise<any[][]>;
+  /**
+   * Stats over the **unfiltered** source. Drives filter-UI bounds: the
+   * value-checkbox list, the numeric / temporal range-slider min/max.
+   * The full picture is essential there because filtering already
+   * removes some categories from view, and the user needs to be able
+   * to add them back.
+   */
   getColumnStats(column: string | Column): Promise<ColumnStats | null>;
+  /**
+   * Stats over the **filtered** view (the data the user is actually
+   * looking at). Drives the side-panel display: mean / median / sd /
+   * histogram. Identical to `getColumnStats` when no filter is active.
+   */
+  getColumnStatsFiltered(column: string | Column): Promise<ColumnStats | null>;
 
   setName(name: string): void;
   setDescription(description: string): void;
