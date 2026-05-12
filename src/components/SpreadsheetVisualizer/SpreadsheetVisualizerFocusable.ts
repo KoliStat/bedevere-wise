@@ -6,6 +6,7 @@ import { SpreadsheetVisualizerSelection } from "./SpreadsheetVisualizerSelection
 import { keymapService } from "../../data/KeymapService";
 import { persistenceService } from "../../data/PersistenceService";
 import { getComplexKind, isComplexType } from "../../data/types";
+import { ContextMenu, ContextMenuItem } from "./overlays/ContextMenu";
 
 export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelection implements FocusableComponent {
   private _isFocused: boolean = false;
@@ -240,6 +241,207 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
       value,
     });
     return true;
+  }
+
+  /**
+   * Right-click → DOM context menu positioned at the cursor. Hit-tests
+   * which zone of the canvas was clicked (header / row gutter / cell)
+   * and builds the menu accordingly. `preventDefault` is unconditional
+   * so the native menu never leaks even if the click falls outside
+   * a known zone.
+   *
+   * For body cells / row gutter clicks the visualizer also moves the
+   * selection to the clicked target unless that target is already
+   * inside the current selection — matches the Excel / Sheets
+   * convention so "Copy" in the menu always copies what the user
+   * just right-clicked on.
+   */
+  public async handleContextMenu(event: MouseEvent): Promise<boolean> {
+    if (!this._isFocused) return false;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (x < 0 || y < 0 || x > this.viewportWidth || y > this.viewportHeight) return false;
+
+    event.preventDefault();
+
+    const cell = this.getCellAtPosition(x, y);
+    if (!cell) {
+      ContextMenu.dismissActive();
+      return true;
+    }
+
+    const overHeader = this.isMouseOverColumnHeader(x, y);
+    const overRowGutter =
+      x <= this.options.rowHeaderWidth && y >= this.options.cellHeight && cell.row >= 1;
+
+    let items: ContextMenuItem[];
+    if (overHeader && cell.col >= 0) {
+      items = this.buildHeaderContextMenu(cell.col);
+    } else if (overRowGutter) {
+      if (!this.isRowInCurrentSelection(cell.row)) {
+        await this.selectRow(cell.row, { shift: false, ctrl: false });
+        await this.draw();
+      }
+      items = this.buildRowContextMenu();
+    } else if (cell.row >= 1 && cell.col >= 0) {
+      if (!this.isCellInCurrentSelection(cell.row, cell.col)) {
+        this.selectedCols = [];
+        this.selectedRows = [];
+        this.selectedCells = {
+          startRow: cell.row,
+          endRow: cell.row,
+          startCol: cell.col,
+          endCol: cell.col,
+        };
+        this.updateToDraw(ToDraw.Selection);
+        this.notifySelectionChange();
+        await this.draw();
+      }
+      items = await this.buildCellContextMenu(cell.row, cell.col);
+    } else {
+      ContextMenu.dismissActive();
+      return true;
+    }
+
+    if (items.length === 0) {
+      ContextMenu.dismissActive();
+      return true;
+    }
+
+    ContextMenu.show({ x: event.clientX, y: event.clientY, items });
+    return true;
+  }
+
+  private isCellInCurrentSelection(row: number, col: number): boolean {
+    if (this.selectedCells) {
+      const { startRow, endRow, startCol, endCol } = this.selectedCells;
+      const inRows = row >= Math.min(startRow, endRow) && row <= Math.max(startRow, endRow);
+      const inCols = col >= Math.min(startCol, endCol) && col <= Math.max(startCol, endCol);
+      if (inRows && inCols) return true;
+    }
+    if (this.selectedCols.includes(col)) return true;
+    if (this.selectedRows.includes(row)) return true;
+    return false;
+  }
+
+  private isRowInCurrentSelection(row: number): boolean {
+    if (this.selectedRows.includes(row)) return true;
+    if (this.selectedCells) {
+      const { startRow, endRow } = this.selectedCells;
+      if (row >= Math.min(startRow, endRow) && row <= Math.max(startRow, endRow)) return true;
+    }
+    return false;
+  }
+
+  private buildHeaderContextMenu(col: number): ContextMenuItem[] {
+    const column = this.columns[col];
+    if (!column) return [];
+    const dir = this.filterManager?.isColumnSorted(this.datasetName, column.name) ?? null;
+    return [
+      {
+        label: "Sort ascending",
+        disabled: dir === "asc",
+        action: () => {
+          this.filterManager?.setSort(this.datasetName, { columnName: column.name, direction: "asc" });
+        },
+      },
+      {
+        label: "Sort descending",
+        disabled: dir === "desc",
+        action: () => {
+          this.filterManager?.setSort(this.datasetName, { columnName: column.name, direction: "desc" });
+        },
+      },
+      {
+        label: "Clear sort",
+        disabled: dir === null,
+        action: () => {
+          this.filterManager?.removeSort(this.datasetName, column.name);
+        },
+      },
+      { separator: true },
+      {
+        label: "Hide column",
+        action: () => {
+          this.notifyHideColumnRequested({ datasetName: this.datasetName, columnName: column.name });
+        },
+      },
+    ];
+  }
+
+  private async buildCellContextMenu(_row: number, col: number): Promise<ContextMenuItem[]> {
+    const column = this.columns[col];
+    if (!column) return [];
+
+    const items: ContextMenuItem[] = [
+      {
+        label: "Copy",
+        shortcut: "Ctrl+C",
+        action: async () => {
+          await this.dispatchKeymapAction("spreadsheet.copy");
+        },
+      },
+    ];
+
+    // Inspect: only meaningful when the column carries a complex
+    // payload. We fetch the value at click time (same as
+    // handleDoubleClick) rather than precomputing, so the menu opens
+    // synchronously and only pays the cache hit if the user picks it.
+    if (isComplexType(column.dataType)) {
+      items.push({
+        label: "Inspect",
+        action: async () => {
+          const target = this.selectedCells;
+          if (!target) return;
+          const kind = getComplexKind(column.dataType);
+          if (!kind) return;
+          const value = await this.cache.getValue(target.startRow - 1, target.startCol);
+          this.notifyCellInspectRequested({ columnName: column.name, kind, value });
+        },
+      });
+    }
+
+    const dir = this.filterManager?.isColumnSorted(this.datasetName, column.name) ?? null;
+    items.push(
+      { separator: true },
+      {
+        label: "Sort by this column ↑",
+        disabled: dir === "asc",
+        action: () => {
+          this.filterManager?.setSort(this.datasetName, { columnName: column.name, direction: "asc" });
+        },
+      },
+      {
+        label: "Sort by this column ↓",
+        disabled: dir === "desc",
+        action: () => {
+          this.filterManager?.setSort(this.datasetName, { columnName: column.name, direction: "desc" });
+        },
+      },
+      { separator: true },
+      {
+        label: "Hide column",
+        action: () => {
+          this.notifyHideColumnRequested({ datasetName: this.datasetName, columnName: column.name });
+        },
+      },
+    );
+
+    return items;
+  }
+
+  private buildRowContextMenu(): ContextMenuItem[] {
+    return [
+      {
+        label: "Copy row",
+        shortcut: "Ctrl+C",
+        action: async () => {
+          await this.dispatchKeymapAction("spreadsheet.copy");
+        },
+      },
+    ];
   }
 
   public async handleWheel(event: WheelEvent): Promise<boolean> {

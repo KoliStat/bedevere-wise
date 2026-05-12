@@ -1,0 +1,73 @@
+// Spreadsheet right-click menu (Phase C item 2). Positioned absolutely
+// at the click coordinates, dismissed on outside click / Escape.
+// Tokyonight palette via tokens, shares the popover idiom from
+// message-popover.scss but stays compact (no header / footer).
+
+.context-menu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 180px;
+  max-width: 280px;
+  background: var(--bg-float);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  padding: 4px 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  animation: contextMenuFadeIn 0.1s ease-out;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    background: transparent;
+    color: var(--fg);
+    border: none;
+    padding: 5px 14px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+
+    &:hover:not(&--disabled) {
+      background: var(--bg-highlight);
+    }
+
+    &:focus {
+      outline: none;
+      background: var(--bg-highlight);
+    }
+
+    &--disabled {
+      color: var(--fg-muted);
+      cursor: default;
+    }
+  }
+
+  &__label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__shortcut {
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  &__separator {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 6px;
+  }
+}
+
+@keyframes contextMenuFadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

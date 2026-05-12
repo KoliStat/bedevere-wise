@@ -82,3 +82,13 @@ export interface CellInspectInfo {
   kind: ComplexKind;
   value: any;
 }
+
+/**
+ * Payload for the context menu's "Hide column" action. BedevereApp
+ * subscribes and performs the dual setHiddenColumns + persist write so
+ * a context-menu hide stays consistent with a `.hide`-dialog hide.
+ */
+export interface HideColumnRequest {
+  datasetName: string;
+  columnName: string;
+}

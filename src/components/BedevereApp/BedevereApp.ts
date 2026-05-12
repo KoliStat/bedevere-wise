@@ -426,6 +426,18 @@ export class BedevereApp implements EventHandler {
       this.tabManager.getFilterManager().setHiddenColumns(metadata.name, surviving);
     });
 
+    // Context menu's "Hide column" entry routes here so the column-
+    // dialog path and the menu path share the same setHiddenColumns +
+    // persist sequence. The menu emits an "add this one" intent; we
+    // union with the current hidden set before applying.
+    this.tabManager.setOnHideColumnCallback((req) => {
+      const fm = this.tabManager.getFilterManager();
+      const next = new Set(fm.getHiddenColumns(req.datasetName));
+      next.add(req.columnName);
+      fm.setHiddenColumns(req.datasetName, next);
+      this.persistHiddenColumns(req.datasetName, next);
+    });
+
     // Dataset panel
     if (this.options.showLeftPanel) {
       this.leftPanel = new ControlPanel(this.leftPanelContainer, this.tabManager);

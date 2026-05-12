@@ -1,4 +1,4 @@
-import { CellInspectInfo, ICellSelection, SpreadsheetOptions } from "./types";
+import { CellInspectInfo, HideColumnRequest, ICellSelection, SpreadsheetOptions } from "./types";
 import { DataProvider, Column } from "../../data/types";
 import { ColumnStatsVisualizer } from "../ColumnStatsVisualizer/ColumnStatsVisualizer";
 import { formatForExport, getFormattedValueAndStyle } from "./utils/formatting";
@@ -818,6 +818,23 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
   protected notifyCellInspectRequested(info: CellInspectInfo): void {
     this.onCellInspectRequested.forEach((cb) => cb(info));
+  }
+
+  // Hide-column-requested fires from the right-click context menu's
+  // "Hide column" entry. The data layer (setHiddenColumns + persist)
+  // is owned by BedevereApp, so the visualizer just emits intent.
+  private onHideColumnRequested: ((req: HideColumnRequest) => void)[] = [];
+
+  public addOnHideColumnRequestedSubscription(callback: (req: HideColumnRequest) => void): void {
+    this.onHideColumnRequested.push(callback);
+  }
+
+  public removeOnHideColumnRequestedSubscription(callback: (req: HideColumnRequest) => void): void {
+    this.onHideColumnRequested = this.onHideColumnRequested.filter((cb) => cb !== callback);
+  }
+
+  protected notifyHideColumnRequested(req: HideColumnRequest): void {
+    this.onHideColumnRequested.forEach((cb) => cb(req));
   }
 
   public getSelectedColumns(): Column[] {
