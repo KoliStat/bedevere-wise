@@ -1,7 +1,12 @@
-.file-tree__search {
-  display: block;
-  width: calc(100% - 16px);
+.file-tree__search-row {
+  display: flex;
+  gap: 4px;
   margin: 6px 8px 4px;
+}
+
+.file-tree__search {
+  flex: 1;
+  min-width: 0;
   padding: 4px 8px;
   background: var(--bg);
   color: var(--fg);
@@ -17,8 +22,30 @@
   &::placeholder { color: var(--fg-muted); }
 }
 
+.file-tree__regex-toggle {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-highlight);
+    color: var(--fg);
+  }
+
+  &--active {
+    background: var(--blue);
+    color: var(--bg-dark);
+    border-color: var(--blue);
+  }
+}
+
 .file-tree__tree {
-  // Container for the rendered nodes — siblings the search input.
+  // Container for the rendered nodes — siblings the search input row.
 }
 
 .file-tree__node {

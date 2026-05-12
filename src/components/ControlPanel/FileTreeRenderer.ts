@@ -25,11 +25,13 @@ const FILE_ICONS: Record<string, string> = {
 export class FileTreeRenderer {
   private container: HTMLElement;
   private searchInput: HTMLInputElement;
+  private regexToggle: HTMLButtonElement;
   private treeContainer: HTMLElement;
   private callbacks: FileTreeCallbacks;
-  // Lower-cased query — empty string means "no filter, render everything
-  // with each node's natural `isExpanded` state."
+  // Raw query (lower-cased only in substring mode). Empty string =
+  // "no filter, render everything with each node's natural isExpanded."
   private searchQuery: string = "";
+  private searchUseRegex: boolean = false;
   // Cached roots so the search input can re-render without the caller.
   private lastRoots: FileTreeNode[] = [];
 
@@ -38,15 +40,36 @@ export class FileTreeRenderer {
     this.callbacks = callbacks;
     this.container.innerHTML = "";
 
+    const searchRow = document.createElement("div");
+    searchRow.className = "file-tree__search-row";
+
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
     this.searchInput.placeholder = "Filter files…";
     this.searchInput.className = "file-tree__search";
     this.searchInput.addEventListener("input", () => {
-      this.searchQuery = this.searchInput.value.trim().toLowerCase();
+      this.searchQuery = this.searchInput.value;
       this.renderTree();
     });
-    this.container.appendChild(this.searchInput);
+    searchRow.appendChild(this.searchInput);
+
+    this.regexToggle = document.createElement("button");
+    this.regexToggle.type = "button";
+    this.regexToggle.className = "file-tree__regex-toggle";
+    this.regexToggle.textContent = ".*";
+    this.regexToggle.title = "Substring match (case-insensitive). Click to switch.";
+    this.regexToggle.addEventListener("click", () => {
+      this.searchUseRegex = !this.searchUseRegex;
+      this.regexToggle.classList.toggle("file-tree__regex-toggle--active", this.searchUseRegex);
+      this.regexToggle.title = this.searchUseRegex
+        ? "Regex match (case-insensitive). Click to switch."
+        : "Substring match (case-insensitive). Click to switch.";
+      this.searchInput.placeholder = this.searchUseRegex ? "Regex…" : "Filter files…";
+      this.renderTree();
+    });
+    searchRow.appendChild(this.regexToggle);
+
+    this.container.appendChild(searchRow);
 
     this.treeContainer = document.createElement("div");
     this.treeContainer.className = "file-tree__tree";
@@ -72,8 +95,18 @@ export class FileTreeRenderer {
 
   private matchNode(n: FileTreeNode): boolean {
     if (!this.searchQuery) return true;
-    const name = (n.alias || n.name).toLowerCase();
-    return name.includes(this.searchQuery);
+    const name = n.alias || n.name;
+    if (this.searchUseRegex) {
+      // Invalid regex falls back to literal substring so the field
+      // stays usable while the user is mid-typing (e.g. `[` without
+      // a closing bracket). Mirrors ColumnStatsVisualizer.
+      try {
+        return new RegExp(this.searchQuery, "i").test(name);
+      } catch {
+        return name.toLowerCase().includes(this.searchQuery.toLowerCase());
+      }
+    }
+    return name.toLowerCase().includes(this.searchQuery.toLowerCase());
   }
 
   /**
