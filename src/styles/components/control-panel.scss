@@ -114,6 +114,15 @@
     user-select: none;
     transition: background-color 0.12s ease;
 
+    // Stick to the top of the panel's scroll container so the
+    // section title stays visible while the user scrolls long
+    // bodies. Background is set so content scrolled underneath
+    // doesn't show through the header.
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-dark);
+
     &:hover { background: var(--bg-highlight); }
   }
 
