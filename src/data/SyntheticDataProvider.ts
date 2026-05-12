@@ -104,6 +104,17 @@ export class SyntheticDataProvider implements DataProvider {
     return this.getColumnStats(column);
   }
 
+  async searchColumnValues(
+    _column: string | Column,
+    _options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>> {
+    // Perf-harness data is synthetic and not meant to drive the filter
+    // UI; returning empty keeps the categorical-filter search bar
+    // functional (just yields no matches) without manufacturing fake
+    // values.
+    return [];
+  }
+
   setName(name: string): void { this.name = name; }
   setDescription(description: string): void { this.description = description; }
   setLabel(label: string): void { this.label = label; }

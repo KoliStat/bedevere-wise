@@ -52,6 +52,13 @@ export class DataProviderMock implements DataProvider {
     return this.getColumnStats(column);
   }
 
+  async searchColumnValues(
+    _column: string | Column,
+    _options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>> {
+    return [];
+  }
+
   setName(name: string): void {
     this.metadata.name = name;
   }

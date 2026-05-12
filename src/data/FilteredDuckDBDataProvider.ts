@@ -161,6 +161,18 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     return sourceProvider.getColumnStats(column);
   }
 
+  public async searchColumnValues(
+    column: string | Column,
+    options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>> {
+    // Search runs against the unfiltered source — same rationale as
+    // getColumnStats above: the filter UI needs to be able to find
+    // values the current filter is hiding.
+    const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
+    const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
+    return sourceProvider.searchColumnValues(column, options);
+  }
+
   /**
    * Filtered stats — runs the existing stats queries against a temp
    * view that applies the same WHERE clause the cell grid uses. Drives

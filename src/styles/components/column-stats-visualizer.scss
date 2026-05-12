@@ -223,6 +223,21 @@
     gap: 1px;
   }
 
+  &__filter-empty {
+    padding: 6px 4px;
+    color: var(--fg-muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+
+  &__filter-count {
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    margin-left: auto;
+  }
+
   &__filter-item {
     display: flex;
     align-items: center;

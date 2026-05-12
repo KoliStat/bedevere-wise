@@ -209,6 +209,47 @@ export class DuckDBDataProvider implements DataProvider {
     };
   }
 
+  public async searchColumnValues(
+    column: string | Column,
+    options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>> {
+    const columnName = typeof column === "string" ? column : column.name;
+    const col = `"${columnName}"`;
+    // CAST to VARCHAR so this works on enum / numeric / temporal columns
+    // too — the categorical filter is string-typed today but searching
+    // by display string is the sensible behaviour across types.
+    const colExpr = `CAST(${col} AS VARCHAR)`;
+
+    let whereClause: string;
+    if (options.mode === "regex") {
+      // Single-quote escaping; DuckDB regexp_matches handles invalid
+      // patterns by throwing — the UI guards by validating client-side
+      // first, so we expect well-formed regex at this point.
+      const safe = options.query.replace(/'/g, "''");
+      whereClause = `regexp_matches(${colExpr}, '${safe}', 'i')`;
+    } else {
+      // ILIKE is DuckDB's case-insensitive LIKE. Escape `%` and `_`
+      // so users typing them search for literal characters; use `\`
+      // as the escape (DuckDB default).
+      const safe = options.query.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[%_]/g, "\\$&");
+      whereClause = `${colExpr} ILIKE '%${safe}%' ESCAPE '\\'`;
+    }
+
+    const query = `
+      SELECT ${col} as val, COUNT(*) as cnt
+      FROM ${quoteIdent(this.name)}
+      WHERE ${col} IS NOT NULL AND ${whereClause}
+      GROUP BY ${col}
+      ORDER BY cnt DESC
+      LIMIT ${options.limit}
+    `;
+    const rows = await this.duckDBService.executeQuery(query);
+    return rows.map((row: any) => ({
+      value: String(row.val),
+      count: Number(row.cnt),
+    }));
+  }
+
   /**
    * Boolean stats: just TRUE/FALSE counts (and nulls).
    */

@@ -326,6 +326,27 @@ export interface DataProvider {
    * histogram. Identical to `getColumnStats` when no filter is active.
    */
   getColumnStatsFiltered(column: string | Column): Promise<ColumnStats | null>;
+  /**
+   * Look up distinct values in a column matching a pattern. Drives the
+   * categorical filter's search input, where the user wants to find a
+   * value that isn't in the default top-N list.
+   *
+   * Always queries the **unfiltered** source for the same reason
+   * `getColumnStats` does: the filter UI must let the user broaden
+   * the filter to values the current filter is already hiding.
+   *
+   * `mode`:
+   *   - "substring" — case-insensitive `LIKE '%query%'`
+   *   - "regex"     — DuckDB `regexp_matches(col, query, 'i')`
+   *
+   * Results are sorted by count descending (most-frequent first) and
+   * capped at `limit`. The caller decides what "too many" means by
+   * comparing returned length to limit.
+   */
+  searchColumnValues(
+    column: string | Column,
+    options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>>;
 
   setName(name: string): void;
   setDescription(description: string): void;
