@@ -25,6 +25,12 @@ export class ColumnStatsVisualizer {
   private datasetName: string = "";
   public onFilterChangeCallback?: () => void;
   private onShowStatsCallback?: () => void;
+  // Search state for the categorical filter's value list. Survives
+  // the apply-filter re-render so the user doesn't have to retype
+  // their query after each apply; resets to empty / off when the
+  // user picks a different column (see showStats).
+  private valueSearchQuery: string = "";
+  private valueSearchUseRegex: boolean = false;
 
   constructor(parent: HTMLElement, spreadsheetVisualizer: SpreadsheetVisualizer | null) {
     this.container = document.createElement("div");
@@ -45,6 +51,13 @@ export class ColumnStatsVisualizer {
   }
 
   public async showStats(column: Column) {
+    // Reset the value-list search when switching to a different
+    // column — the value space changed completely so a query
+    // carried over from the previous column would be confusing.
+    if (this.currentColumn?.name !== column.name) {
+      this.valueSearchQuery = "";
+      this.valueSearchUseRegex = false;
+    }
     this.currentColumn = column;
     this.container.style.display = "block";
     this.container.classList.add("visible");
@@ -173,11 +186,27 @@ export class ColumnStatsVisualizer {
 
   private renderCategoricalFilter(stats: ColumnStats, isFiltered: boolean, currentFilter?: ColumnFilter): string {
     const selectedValues = new Set(currentFilter?.values || []);
+    const regexActive = this.valueSearchUseRegex;
+    const query = this.valueSearchQuery;
     return `
       <div class="column-stats__filter">
         <div class="column-stats__filter-header">
           <span class="column-stats__filter-title">Filter Values</span>
           ${isFiltered ? `<button class="column-stats__filter-clear" data-action="clear-filter">Clear</button>` : ""}
+        </div>
+        <div class="column-stats__filter-search">
+          <input
+            type="search"
+            class="column-stats__filter-search-input"
+            placeholder="${regexActive ? "Regex\u2026" : "Search values\u2026"}"
+            value="${escapeAttr(query)}"
+            data-action="value-search"
+          />
+          <button
+            class="column-stats__filter-regex-toggle${regexActive ? " column-stats__filter-regex-toggle--active" : ""}"
+            data-action="toggle-regex"
+            title="${regexActive ? "Regex match (case-insensitive)" : "Substring match (case-insensitive)"}. Click to switch."
+          >.*</button>
         </div>
         <div class="column-stats__filter-list">
           ${Array.from(stats.valueCounts.entries())
@@ -185,7 +214,7 @@ export class ColumnStatsVisualizer {
               const checked = selectedValues.size === 0 || selectedValues.has(value);
               const display = value.length > 24 ? value.substring(0, 24) + "\u2026" : value;
               return `
-                <label class="column-stats__filter-item" title="${escapeAttr(value)}">
+                <label class="column-stats__filter-item" data-value="${escapeAttr(value)}" title="${escapeAttr(value)}">
                   <input type="checkbox" value="${escapeAttr(value)}" ${checked ? "checked" : ""} />
                   <span>${escapeHtml(display)}</span>
                 </label>
@@ -193,6 +222,7 @@ export class ColumnStatsVisualizer {
             })
             .join("")}
         </div>
+        <div class="column-stats__filter-search-summary"></div>
         <button class="column-stats__filter-apply" data-action="apply-filter">Apply Filter</button>
       </div>
     `;
@@ -385,6 +415,76 @@ export class ColumnStatsVisualizer {
         this.filterManager.setFilter(this.datasetName, filter);
       }
     });
+
+    // Value-list search (categorical filter only). Hides / shows rows
+    // in place — never alters checkbox state, so values hidden by the
+    // search still contribute to Apply Filter's included set.
+    const searchInput = this.container.querySelector<HTMLInputElement>("[data-action='value-search']");
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        this.valueSearchQuery = searchInput.value;
+        this.applyValueSearch();
+      });
+    }
+    const regexToggle = this.container.querySelector<HTMLButtonElement>("[data-action='toggle-regex']");
+    if (regexToggle) {
+      regexToggle.addEventListener("click", () => {
+        this.valueSearchUseRegex = !this.valueSearchUseRegex;
+        regexToggle.classList.toggle("column-stats__filter-regex-toggle--active", this.valueSearchUseRegex);
+        regexToggle.title = this.valueSearchUseRegex
+          ? "Regex match (case-insensitive). Click to switch."
+          : "Substring match (case-insensitive). Click to switch.";
+        if (searchInput) {
+          searchInput.placeholder = this.valueSearchUseRegex ? "Regex…" : "Search values…";
+        }
+        this.applyValueSearch();
+      });
+    }
+    // Re-apply on every render so a search carried over from a
+    // previous render (apply-filter re-renders the panel) shows the
+    // same hidden rows.
+    if (this.valueSearchQuery) this.applyValueSearch();
+  }
+
+  /**
+   * Apply the current value-list search to the rendered categorical
+   * filter's checkbox rows. Hidden rows keep their `checked` state
+   * so Apply Filter respects values the user ticked before searching.
+   * Invalid regex falls back to a literal-substring match so the
+   * field stays usable mid-typing (e.g. while the user has `[` typed
+   * but hasn't closed the bracket yet).
+   */
+  private applyValueSearch(): void {
+    const query = this.valueSearchQuery;
+    const useRegex = this.valueSearchUseRegex;
+    let re: RegExp | null = null;
+    if (query && useRegex) {
+      try {
+        re = new RegExp(query, "i");
+      } catch {
+        re = null;
+      }
+    }
+    const lower = query.toLowerCase();
+    const items = this.container.querySelectorAll<HTMLElement>(".column-stats__filter-item");
+    let hidden = 0;
+    items.forEach((item) => {
+      const value = item.dataset.value ?? "";
+      let match: boolean;
+      if (!query) {
+        match = true;
+      } else if (re) {
+        match = re.test(value);
+      } else {
+        match = value.toLowerCase().includes(lower);
+      }
+      item.style.display = match ? "" : "none";
+      if (!match) hidden++;
+    });
+    const summary = this.container.querySelector<HTMLElement>(".column-stats__filter-search-summary");
+    if (summary) {
+      summary.textContent = hidden > 0 && query ? `${hidden} hidden by search` : "";
+    }
   }
 
   private formatNum(n: number): string {

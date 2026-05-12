@@ -161,6 +161,60 @@
     }
   }
 
+  &__filter-search {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0.3rem;
+  }
+
+  &__filter-search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    &::placeholder { color: var(--fg-muted); }
+  }
+
+  &__filter-regex-toggle {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    background: transparent;
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--fg);
+    }
+
+    &--active {
+      background: var(--blue);
+      color: var(--bg-dark);
+      border-color: var(--blue);
+    }
+  }
+
+  &__filter-search-summary {
+    min-height: 12px;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+
   &__filter-list {
     max-height: 150px;
     overflow-y: auto;
