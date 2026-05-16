@@ -44,6 +44,15 @@ export interface AppSettings {
    * with whatever filter / sort state was active.
    */
   hiddenColumns?: Record<string, string[]>;
+  /**
+   * Per-dataset column display order. When set, the spreadsheet
+   * projects columns in this order instead of the source order.
+   * Names absent from the array (e.g. a column added to the source
+   * after the order was saved) are appended at the end in their
+   * source order; names present but missing from the source are
+   * skipped on apply.
+   */
+  columnOrder?: Record<string, string[]>;
 }
 
 export interface RecentFolderEntry {

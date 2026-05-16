@@ -409,21 +409,30 @@ export class BedevereApp implements EventHandler {
       this.showMessage(text, "info", { details, duration: 0 });
     });
 
-    // Restore persisted per-dataset hide state before the dataset's
-    // visualizer is constructed. Setting on the filter manager here
-    // fires `onChange`, but `handleFilterChange` no-ops because the
-    // tab isn't registered yet — `addDataset` then sees `hasAnyState`
-    // and constructs the filtered provider directly, so the first
-    // render is already projected.
+    // Restore persisted per-dataset hide state + column order before
+    // the dataset's visualizer is constructed. Setting on the filter
+    // manager here fires `onChange`, but `handleFilterChange` no-ops
+    // because the tab isn't registered yet — `addDataset` then sees
+    // `hasAnyState` and constructs the filtered provider directly, so
+    // the first render is already projected.
     this.tabManager.setOnBeforeAddDatasetCallback((metadata) => {
-      const persisted = this.persistenceService.loadAppSettings().hiddenColumns?.[metadata.name];
-      if (!persisted || persisted.length === 0) return;
-      // Filter to columns that still exist in the current metadata —
-      // stale entries (renamed / dropped columns) are harmless to drop.
+      const settings = this.persistenceService.loadAppSettings();
       const live = new Set(metadata.columns.map((c) => c.name));
-      const surviving = persisted.filter((c) => live.has(c));
-      if (surviving.length === 0) return;
-      this.tabManager.getFilterManager().setHiddenColumns(metadata.name, surviving);
+      const fm = this.tabManager.getFilterManager();
+
+      const persistedHidden = settings.hiddenColumns?.[metadata.name];
+      if (persistedHidden && persistedHidden.length > 0) {
+        // Filter to columns that still exist in the current metadata —
+        // stale entries (renamed / dropped columns) are harmless to drop.
+        const surviving = persistedHidden.filter((c) => live.has(c));
+        if (surviving.length > 0) fm.setHiddenColumns(metadata.name, surviving);
+      }
+
+      const persistedOrder = settings.columnOrder?.[metadata.name];
+      if (persistedOrder && persistedOrder.length > 0) {
+        const surviving = persistedOrder.filter((c) => live.has(c));
+        if (surviving.length > 0) fm.setColumnOrder(metadata.name, surviving);
+      }
     });
 
     // Context menu's "Hide column" entry routes here so the column-
@@ -436,6 +445,25 @@ export class BedevereApp implements EventHandler {
       next.add(req.columnName);
       fm.setHiddenColumns(req.datasetName, next);
       this.persistHiddenColumns(req.datasetName, next);
+    });
+
+    // Drag-to-reorder column header emits a drop intent here.
+    // Resolution: look up the dataset's current visible column order
+    // (which may already be customised), apply the move via the
+    // filter manager, then persist the resulting order.
+    this.tabManager.setOnReorderColumnCallback((req) => {
+      const fm = this.tabManager.getFilterManager();
+      const tab = this.tabManager.getDatasetTabByName(req.datasetName);
+      if (!tab) return;
+      const sourceNames = tab.metadata.columns.map((c) => c.name);
+      fm.moveColumn(
+        req.datasetName,
+        sourceNames,
+        req.sourceColumnName,
+        req.targetColumnName,
+        req.position,
+      );
+      this.persistColumnOrder(req.datasetName, fm.getColumnOrder(req.datasetName));
     });
 
     // Dataset panel
@@ -1355,6 +1383,22 @@ export class BedevereApp implements EventHandler {
       next[datasetName] = Array.from(hidden);
     }
     settings.hiddenColumns = next;
+    this.persistenceService.saveAppSettings(settings);
+  }
+
+  /**
+   * Write the per-dataset column-order array back to AppSettings.
+   * Empty arrays prune the key.
+   */
+  private persistColumnOrder(datasetName: string, order: string[]): void {
+    const settings = this.persistenceService.loadAppSettings();
+    const next = { ...(settings.columnOrder ?? {}) };
+    if (order.length === 0) {
+      delete next[datasetName];
+    } else {
+      next[datasetName] = order;
+    }
+    settings.columnOrder = next;
     this.persistenceService.saveAppSettings(settings);
   }
 

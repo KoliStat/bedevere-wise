@@ -38,6 +38,13 @@ export class ColumnFilterManager {
   // Hide is a presentation-only concern; filter / sort still reference
   // hidden columns by name and apply correctly to the underlying data.
   private hiddenColumns: Map<string, Set<string>> = new Map();
+  // dataset name -> user-defined column order. Like `hiddenColumns`,
+  // this is a presentation-only concern: filter / sort still address
+  // columns by name regardless of where they sit in the display order.
+  // Columns absent from the order array (a newly-added column to a
+  // dataset that already had a saved order) are appended in their
+  // source order — see `applyColumnOrder` consumers.
+  private columnOrder: Map<string, string[]> = new Map();
   private onChangeCallbacks: Array<(datasetName: string) => void> = [];
 
   public setFilter(datasetName: string, filter: ColumnFilter): void {
@@ -237,14 +244,103 @@ export class ColumnFilterManager {
     return (this.hiddenColumns.get(datasetName)?.size ?? 0) > 0;
   }
 
+  // ---- Column order -------------------------------------------------------
+
+  /**
+   * Replace the user-defined column order for a dataset. Empty array
+   * clears the override (columns then render in source order). Fires
+   * `onChange` so the spreadsheet re-projects.
+   */
+  public setColumnOrder(datasetName: string, order: Iterable<string>): void {
+    const arr = Array.from(order);
+    if (arr.length === 0) {
+      this.columnOrder.delete(datasetName);
+    } else {
+      this.columnOrder.set(datasetName, arr);
+    }
+    this.notifyChange(datasetName);
+  }
+
+  public getColumnOrder(datasetName: string): string[] {
+    return this.columnOrder.get(datasetName)?.slice() ?? [];
+  }
+
+  public hasColumnOrder(datasetName: string): boolean {
+    return (this.columnOrder.get(datasetName)?.length ?? 0) > 0;
+  }
+
+  /**
+   * Apply the saved column order to a list of source column names.
+   * Names present in the saved order render in that order first; any
+   * names not in the saved order (e.g. a column added to the source
+   * after the order was saved) are appended in their source order.
+   * Names in the saved order but not in `sourceNames` (e.g. a column
+   * that was renamed / dropped) are silently skipped.
+   *
+   * No-op when there is no saved order for the dataset — returns
+   * `sourceNames` unchanged.
+   */
+  public applyColumnOrder(datasetName: string, sourceNames: string[]): string[] {
+    const order = this.columnOrder.get(datasetName);
+    if (!order || order.length === 0) return sourceNames;
+    const present = new Set(sourceNames);
+    const ordered = order.filter((n) => present.has(n));
+    const orderedSet = new Set(ordered);
+    const trailing = sourceNames.filter((n) => !orderedSet.has(n));
+    return [...ordered, ...trailing];
+  }
+
+  /**
+   * Move a column from one position to another within the order. If
+   * no saved order exists yet, the move is computed against
+   * `sourceNames` (the natural order) and stored. Drop semantics:
+   * `position === "before"` inserts before `targetName`, `"after"`
+   * inserts after.
+   *
+   * No-op when `sourceColumnName === targetColumnName` or when either
+   * name is missing from `sourceNames`.
+   */
+  public moveColumn(
+    datasetName: string,
+    sourceNames: string[],
+    sourceColumnName: string,
+    targetColumnName: string,
+    position: "before" | "after",
+  ): void {
+    if (sourceColumnName === targetColumnName) return;
+    const current = this.columnOrder.get(datasetName)?.slice() ?? sourceNames.slice();
+    // Ensure both names are present in `current` (a freshly-loaded
+    // dataset may have columns not yet in the persisted order).
+    const presentInCurrent = new Set(current);
+    for (const n of sourceNames) {
+      if (!presentInCurrent.has(n)) current.push(n);
+    }
+
+    const srcIdx = current.indexOf(sourceColumnName);
+    const tgtIdx = current.indexOf(targetColumnName);
+    if (srcIdx === -1 || tgtIdx === -1) return;
+
+    const [moved] = current.splice(srcIdx, 1);
+    const insertIdx = current.indexOf(targetColumnName) + (position === "after" ? 1 : 0);
+    current.splice(insertIdx, 0, moved);
+
+    this.columnOrder.set(datasetName, current);
+    this.notifyChange(datasetName);
+  }
+
   /**
    * Predicate the TabManager uses to decide between
-   * `FilteredDuckDBDataProvider` and the plain provider. Hidden columns
-   * count as state — even with no filter / sort, hiding a column
-   * requires the projection-aware provider.
+   * `FilteredDuckDBDataProvider` and the plain provider. Hidden
+   * columns and column-order overrides both count as state — even
+   * with no filter / sort, they require the projection-aware
+   * provider.
    */
   public hasAnyState(datasetName: string): boolean {
-    return this.hasAnyFiltersOrSorts(datasetName) || this.hasHiddenColumns(datasetName);
+    return (
+      this.hasAnyFiltersOrSorts(datasetName) ||
+      this.hasHiddenColumns(datasetName) ||
+      this.hasColumnOrder(datasetName)
+    );
   }
 
   public onChange(callback: (datasetName: string) => void): void {

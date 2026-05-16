@@ -1,4 +1,4 @@
-import { CellInspectInfo, HideColumnRequest, ICellSelection, SpreadsheetOptions } from "./types";
+import { CellInspectInfo, HideColumnRequest, ICellSelection, ReorderColumnRequest, SpreadsheetOptions } from "./types";
 import { DataProvider, Column } from "../../data/types";
 import { ColumnStatsVisualizer } from "../ColumnStatsVisualizer/ColumnStatsVisualizer";
 import { formatForExport, getFormattedValueAndStyle } from "./utils/formatting";
@@ -835,6 +835,25 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
   protected notifyHideColumnRequested(req: HideColumnRequest): void {
     this.onHideColumnRequested.forEach((cb) => cb(req));
+  }
+
+  // Reorder-column-requested fires from the drag-to-reorder
+  // interaction on the column header. Like hide, the data layer
+  // (moveColumn + persist) is owned by BedevereApp; the visualizer
+  // emits the drop intent and waits for the filter-manager change
+  // event to redraw with the new projection.
+  private onReorderColumnRequested: ((req: ReorderColumnRequest) => void)[] = [];
+
+  public addOnReorderColumnRequestedSubscription(callback: (req: ReorderColumnRequest) => void): void {
+    this.onReorderColumnRequested.push(callback);
+  }
+
+  public removeOnReorderColumnRequestedSubscription(callback: (req: ReorderColumnRequest) => void): void {
+    this.onReorderColumnRequested = this.onReorderColumnRequested.filter((cb) => cb !== callback);
+  }
+
+  protected notifyReorderColumnRequested(req: ReorderColumnRequest): void {
+    this.onReorderColumnRequested.forEach((cb) => cb(req));
   }
 
   public getSelectedColumns(): Column[] {

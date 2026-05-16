@@ -9,7 +9,7 @@ import { DuckDBService } from "../../data/DuckDBService";
 import { ColumnFilterManager } from "../../data/ColumnFilterManager";
 import { FilteredDuckDBDataProvider } from "../../data/FilteredDuckDBDataProvider";
 import { EventDispatcher } from "../BedevereApp/EventDispatcher";
-import { CellInspectInfo, HideColumnRequest, ICellSelection } from "../SpreadsheetVisualizer/types";
+import { CellInspectInfo, HideColumnRequest, ICellSelection, ReorderColumnRequest } from "../SpreadsheetVisualizer/types";
 import { parseShellLine, runShellLine, ShellResult } from "../../data/Shell";
 import { commandRegistry } from "../../data/CommandRegistry";
 import {
@@ -97,6 +97,7 @@ export class TabManager {
   private onCellSelectionCallback?: (cellSelection?: ICellSelection) => void;
   private onCellInspectCallback?: (info: CellInspectInfo) => void;
   private onHideColumnCallback?: (req: HideColumnRequest) => void;
+  private onReorderColumnCallback?: (req: ReorderColumnRequest) => void;
   private onCloseTabCallback?: () => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
   private onChartActivateCallback?: (chartName: string) => void;
@@ -258,6 +259,9 @@ export class TabManager {
     if (this.onHideColumnCallback) {
       spreadsheetVisualizer.addOnHideColumnRequestedSubscription(this.onHideColumnCallback);
     }
+    if (this.onReorderColumnCallback) {
+      spreadsheetVisualizer.addOnReorderColumnRequestedSubscription(this.onReorderColumnCallback);
+    }
 
     const tab: DatasetTab = {
       kind: "dataset",
@@ -365,6 +369,11 @@ export class TabManager {
     return active && active.kind === "dataset" ? active : null;
   }
 
+  public getDatasetTabByName(datasetName: string): DatasetTab | null {
+    const tab = this.tabs.find((t) => t.kind === "dataset" && t.metadata.name === datasetName);
+    return (tab && tab.kind === "dataset") ? tab : null;
+  }
+
   public getActiveChartTab(): ChartTab | null {
     const active = this.tabs.find((t) => t.isActive);
     return active && active.kind === "chart" ? active : null;
@@ -430,6 +439,15 @@ export class TabManager {
     for (const tab of this.tabs) {
       if (tab.kind === "dataset") {
         tab.spreadsheetVisualizer.addOnHideColumnRequestedSubscription(callback);
+      }
+    }
+  }
+
+  public setOnReorderColumnCallback(callback: (req: ReorderColumnRequest) => void): void {
+    this.onReorderColumnCallback = callback;
+    for (const tab of this.tabs) {
+      if (tab.kind === "dataset") {
+        tab.spreadsheetVisualizer.addOnReorderColumnRequestedSubscription(callback);
       }
     }
   }

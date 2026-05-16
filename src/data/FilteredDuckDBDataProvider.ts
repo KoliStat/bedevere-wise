@@ -49,16 +49,30 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   }
 
   /**
-   * Returns the source columns minus any hidden by `filterManager`.
+   * Returns the source columns minus any hidden by `filterManager`,
+   * reordered according to the user's saved column order. Filter and
+   * sort clauses can still reference hidden columns — SQL allows
+   * WHERE / ORDER BY to mention columns absent from the SELECT.
    * `getMetadata` / `fetchData` / `fetchDataColumnRange` all project
-   * through this so the spreadsheet only sees columns it should render.
-   * Filter and sort clauses can still reference hidden columns — SQL
-   * allows WHERE / ORDER BY to mention columns absent from the SELECT.
+   * through this so the spreadsheet only sees columns it should render,
+   * in the order the user expects to see them.
    */
   private async getVisibleColumns(): Promise<Array<any>> {
     const columns = await this.duckDBService.getTableInfo(this.sourceTableName);
     const hidden = new Set(this.filterManager.getHiddenColumns(this.name));
-    return columns.filter((c: any) => !hidden.has(c.column_name));
+    const visible = columns.filter((c: any) => !hidden.has(c.column_name));
+
+    if (!this.filterManager.hasColumnOrder(this.name)) return visible;
+
+    // Reorder via filter manager's `applyColumnOrder`. Map back to
+    // the source column objects so downstream code (getMetadata,
+    // fetchData) keeps the type / nulls / extra fields intact.
+    const byName = new Map(visible.map((c: any) => [c.column_name, c]));
+    const ordered = this.filterManager.applyColumnOrder(
+      this.name,
+      visible.map((c: any) => c.column_name),
+    );
+    return ordered.map((n) => byName.get(n)).filter((c) => c !== undefined) as Array<any>;
   }
 
   private buildBaseQuery(): string {
