@@ -14,10 +14,23 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   private filterManager: ColumnFilterManager;
   private sourceTableName: string;
   private parsedColumnTypes: Array<TypeNode | undefined> | null = null;
+  // Cached source-table schema. `getTableInfo` runs a real DuckDB
+  // `DESCRIBE` round-trip; the spreadsheet calls `fetchData` once per
+  // viewport chunk, so leaving this uncached was a measurable scroll
+  // regression on wide tables (we'd hit DESCRIBE twice per fetch).
+  // The schema is stable for the provider's lifetime so a single cache
+  // is sufficient.
+  private sourceColumnsCache: Array<any> | null = null;
+
+  private async ensureSourceColumns(): Promise<Array<any>> {
+    if (this.sourceColumnsCache) return this.sourceColumnsCache;
+    this.sourceColumnsCache = await this.duckDBService.getTableInfo(this.sourceTableName);
+    return this.sourceColumnsCache;
+  }
 
   private async ensureColumnTypes(): Promise<Array<TypeNode | undefined>> {
     if (this.parsedColumnTypes) return this.parsedColumnTypes;
-    const info = await this.duckDBService.getTableInfo(this.sourceTableName);
+    const info = await this.ensureSourceColumns();
     this.parsedColumnTypes = info.map((c: any) => parseDuckDBType(c.column_type));
     return this.parsedColumnTypes;
   }
@@ -58,7 +71,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
    * in the order the user expects to see them.
    */
   private async getVisibleColumns(): Promise<Array<any>> {
-    const columns = await this.duckDBService.getTableInfo(this.sourceTableName);
+    const columns = await this.ensureSourceColumns();
     const hidden = new Set(this.filterManager.getHiddenColumns(this.name));
     const visible = columns.filter((c: any) => !hidden.has(c.column_name));
 
@@ -117,13 +130,13 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     const query =
       `SELECT ${projection} FROM "${this.sourceTableName}" ${where} ${orderBy} ` +
       `LIMIT ${endRow - startRow} OFFSET ${startRow}`;
-    const [rows, allTypes] = await Promise.all([
+    const [rows, allTypes, sourceColumns] = await Promise.all([
       this.duckDBService.executeQuery(query),
       this.ensureColumnTypes(),
+      this.ensureSourceColumns(),
     ]);
     // `allTypes` is keyed by the source table's column order; filter to
     // the visible-projection order so unwrapArrowValue lines up.
-    const sourceColumns = await this.duckDBService.getTableInfo(this.sourceTableName);
     const visibleSet = new Set(visible.map((c: any) => c.column_name));
     const types = sourceColumns
       .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
@@ -147,11 +160,11 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     const orderBy = this.filterManager.buildOrderByClause(this.name);
 
     const query = `SELECT ${columnNamesString} FROM "${this.sourceTableName}" ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
-    const [rows, allTypes] = await Promise.all([
+    const [rows, allTypes, sourceColumns] = await Promise.all([
       this.duckDBService.executeQuery(query),
       this.ensureColumnTypes(),
+      this.ensureSourceColumns(),
     ]);
-    const sourceColumns = await this.duckDBService.getTableInfo(this.sourceTableName);
     const visibleSet = new Set(visible.map((c: any) => c.column_name));
     const visibleTypes = sourceColumns
       .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
