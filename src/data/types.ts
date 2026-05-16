@@ -337,7 +337,7 @@ export interface DataProvider {
    *
    * `mode`:
    *   - "substring" — case-insensitive `LIKE '%query%'`
-   *   - "regex"     — DuckDB `regexp_matches(col, query, 'i')`
+   *   - "regex"     — DuckDB `regexp_full_match(col, query, 'i')` (anchored — the whole value must match)
    *
    * Results are sorted by count descending (most-frequent first) and
    * capped at `limit`. The caller decides what "too many" means by

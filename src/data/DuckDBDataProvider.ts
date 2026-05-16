@@ -222,11 +222,15 @@ export class DuckDBDataProvider implements DataProvider {
 
     let whereClause: string;
     if (options.mode === "regex") {
-      // Single-quote escaping; DuckDB regexp_matches handles invalid
-      // patterns by throwing — the UI guards by validating client-side
-      // first, so we expect well-formed regex at this point.
+      // `regexp_full_match` — the whole value must match the pattern.
+      // The categorical filter's regex semantics are anchored because
+      // each row in the value list is a discrete category, not free
+      // text: a query like `week [24]` means "exactly Week 2 or Week 4",
+      // not "any value containing those substrings". Users who want
+      // substring matching can write `.*foo.*` or use the substring
+      // mode toggle.
       const safe = options.query.replace(/'/g, "''");
-      whereClause = `regexp_matches(${colExpr}, '${safe}', 'i')`;
+      whereClause = `regexp_full_match(${colExpr}, '${safe}', 'i')`;
     } else {
       // ILIKE is DuckDB's case-insensitive LIKE. Escape `%` and `_`
       // so users typing them search for literal characters; use `\`
