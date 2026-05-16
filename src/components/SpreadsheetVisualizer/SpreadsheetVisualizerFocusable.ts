@@ -15,6 +15,28 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
   public readonly canReceiveFocus: boolean = true;
   public readonly focusableElement: HTMLElement;
 
+  // Column-header drag state. A header mousedown sets the candidate;
+  // a move past a small pixel threshold promotes it to an active drag
+  // (creates the ghost + drop indicator). Mouseup commits the drop
+  // when active, or falls through to the original `selectColumn`
+  // path when it was just a click.
+  //
+  // Document-level listeners (rather than the EventDispatcher-routed
+  // ones) so the drag continues even when the cursor exits the
+  // canvas. They live only for the duration of one gesture.
+  private static readonly HEADER_DRAG_THRESHOLD_PX = 4;
+  private headerDragCandidate: {
+    col: number;
+    columnName: string;
+    startClientX: number;
+    startClientY: number;
+    modifiers: { shift: boolean; ctrl: boolean };
+  } | null = null;
+  private headerDragActive: boolean = false;
+  private headerDragGhostEl: HTMLElement | null = null;
+  private headerDropIndicatorEl: HTMLElement | null = null;
+  private headerDropTarget: { columnName: string; position: "before" | "after" } | null = null;
+
   constructor(
     parent: HTMLElement,
     dataProvider: DataProvider,
@@ -88,10 +110,22 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
         }
       }
 
-      await this.selectColumn(col, {
-        shift: event.shiftKey,
-        ctrl: event.ctrlKey || event.metaKey,
-      });
+      // Defer the click resolution: this might be the start of a
+      // drag-to-reorder. The document-level mouseup listener
+      // installed below either commits the drop (if a drag
+      // activated) or falls back to `selectColumn` (pure click).
+      if (col >= 0 && col < this.columns.length) {
+        this.headerDragCandidate = {
+          col,
+          columnName: this.columns[col].name,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          modifiers: { shift: event.shiftKey, ctrl: event.ctrlKey || event.metaKey },
+        };
+        this.headerDragActive = false;
+        this.installHeaderDragListeners();
+        return true;
+      }
     }
 
     // Row gutter (left-side index strip, excluding the top-left corner
@@ -148,6 +182,11 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
 
   public async handleMouseMove(event: MouseEvent): Promise<boolean> {
     if (!this._isFocused) return false;
+
+    // A column-header drag is in flight — its document-level mousemove
+    // listener owns the gesture. Skip the canvas hover-tracking path
+    // so it doesn't fight with the drag ghost / drop indicator.
+    if (this.headerDragCandidate) return false;
 
     // Cursor over an overlay (context menu, dialog, help panel) must
     // not update the canvas hover highlight. Drag-select past the
@@ -629,5 +668,145 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
   // Public method to trigger resize from external components
   public async resize(): Promise<void> {
     await this.handleResize();
+  }
+
+  // -- Column-header drag-to-reorder ----------------------------------
+
+  /**
+   * Document-level listeners are installed lazily on header mousedown
+   * and torn down on mouseup. They run *outside* the
+   * EventDispatcher-routed handlers so the gesture continues even when
+   * the cursor leaves the canvas (e.g. mid-drag to the page edge).
+   */
+  private installHeaderDragListeners(): void {
+    document.addEventListener("mousemove", this.headerDragMouseMove, true);
+    document.addEventListener("mouseup", this.headerDragMouseUp, true);
+  }
+
+  private uninstallHeaderDragListeners(): void {
+    document.removeEventListener("mousemove", this.headerDragMouseMove, true);
+    document.removeEventListener("mouseup", this.headerDragMouseUp, true);
+  }
+
+  private headerDragMouseMove = (event: MouseEvent): void => {
+    if (!this.headerDragCandidate) return;
+
+    if (!this.headerDragActive) {
+      // Activate only after the cursor has moved more than the
+      // threshold. Below that, the gesture is treated as a click and
+      // resolved in mouseup → `selectColumn`.
+      const dx = Math.abs(event.clientX - this.headerDragCandidate.startClientX);
+      const dy = Math.abs(event.clientY - this.headerDragCandidate.startClientY);
+      if (dx < SpreadsheetVisualizerFocusable.HEADER_DRAG_THRESHOLD_PX &&
+          dy < SpreadsheetVisualizerFocusable.HEADER_DRAG_THRESHOLD_PX) {
+        return;
+      }
+      this.headerDragActive = true;
+      this.createHeaderDragGhost(this.headerDragCandidate.columnName);
+    }
+
+    this.updateHeaderDragGhost(event.clientX, event.clientY);
+    this.updateHeaderDropIndicator(event.clientX);
+  };
+
+  private headerDragMouseUp = async (_event: MouseEvent): Promise<void> => {
+    this.uninstallHeaderDragListeners();
+    const candidate = this.headerDragCandidate;
+    this.headerDragCandidate = null;
+    if (!candidate) return;
+
+    if (this.headerDragActive) {
+      const dropTarget = this.headerDropTarget;
+      this.headerDragActive = false;
+      this.headerDropTarget = null;
+      this.removeHeaderDragGhost();
+      this.removeHeaderDropIndicator();
+
+      if (dropTarget && dropTarget.columnName !== candidate.columnName) {
+        this.notifyReorderColumnRequested({
+          datasetName: this.datasetName,
+          sourceColumnName: candidate.columnName,
+          targetColumnName: dropTarget.columnName,
+          position: dropTarget.position,
+        });
+      }
+      return;
+    }
+
+    // No drag — treat as a plain click on the column header.
+    await this.selectColumn(candidate.col, candidate.modifiers);
+    await this.draw();
+  };
+
+  private createHeaderDragGhost(columnName: string): void {
+    const el = document.createElement("div");
+    el.className = "spreadsheet__column-drag-ghost";
+    el.textContent = columnName;
+    document.body.appendChild(el);
+    this.headerDragGhostEl = el;
+
+    const indicator = document.createElement("div");
+    indicator.className = "spreadsheet__column-drop-indicator";
+    document.body.appendChild(indicator);
+    this.headerDropIndicatorEl = indicator;
+  }
+
+  private updateHeaderDragGhost(clientX: number, clientY: number): void {
+    if (!this.headerDragGhostEl) return;
+    // Small offset so the ghost doesn't sit directly under the cursor
+    // (and so the cursor remains free to hit-test the drop target).
+    this.headerDragGhostEl.style.left = `${clientX + 12}px`;
+    this.headerDragGhostEl.style.top = `${clientY + 6}px`;
+  }
+
+  private updateHeaderDropIndicator(clientX: number): void {
+    if (!this.headerDropIndicatorEl) return;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+
+    // Outside the canvas or in the row-header gutter → no drop target.
+    if (x < this.options.rowHeaderWidth || x > this.viewportWidth) {
+      this.headerDropTarget = null;
+      this.headerDropIndicatorEl.style.display = "none";
+      return;
+    }
+
+    // Find the column under the cursor; left half → drop before, right
+    // half → drop after. Boundary x-coords are canvas-local (account
+    // for scrollX) but the indicator is fixed-positioned so add the
+    // canvas's left rect offset.
+    for (let i = 0; i < this.columns.length; i++) {
+      const colLeft = this.colOffsets[i] - this.scrollX;
+      const colRight = colLeft + this.colWidths[i];
+      if (x >= colLeft && x < colRight) {
+        const mid = colLeft + this.colWidths[i] / 2;
+        const position: "before" | "after" = x < mid ? "before" : "after";
+        const localBoundary = position === "before" ? colLeft : colRight;
+        this.headerDropTarget = { columnName: this.columns[i].name, position };
+        this.headerDropIndicatorEl.style.display = "block";
+        this.headerDropIndicatorEl.style.left = `${rect.left + localBoundary - 1}px`;
+        this.headerDropIndicatorEl.style.top = `${rect.top}px`;
+        this.headerDropIndicatorEl.style.height = `${rect.height}px`;
+        return;
+      }
+    }
+
+    this.headerDropTarget = null;
+    this.headerDropIndicatorEl.style.display = "none";
+  }
+
+  private removeHeaderDragGhost(): void {
+    if (this.headerDragGhostEl) {
+      this.headerDragGhostEl.remove();
+      this.headerDragGhostEl = null;
+    }
+  }
+
+  private removeHeaderDropIndicator(): void {
+    if (this.headerDropIndicatorEl) {
+      this.headerDropIndicatorEl.remove();
+      this.headerDropIndicatorEl = null;
+    }
   }
 }

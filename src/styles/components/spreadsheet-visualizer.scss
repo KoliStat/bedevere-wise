@@ -111,3 +111,39 @@
 @media (prefers-reduced-motion: reduce) {
   #spreadsheet-container canvas { transition: none; }
 }
+
+// Column-header drag ghost (Phase D item 3). Follows the cursor while
+// the user drags a column to a new position. `position: fixed` so it
+// floats above every other surface; `pointer-events: none` so it never
+// intercepts hit-tests for the drop target underneath.
+.spreadsheet__column-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg-highlight);
+  border: 1px solid var(--blue);
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  opacity: 0.92;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Vertical bar marking where the dragged column would land on drop.
+// 2px wide, centred on the boundary between two columns; spans the
+// canvas height. Hidden when the cursor is outside any column zone.
+.spreadsheet__column-drop-indicator {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9998;
+  width: 2px;
+  background: var(--blue);
+  box-shadow: 0 0 4px var(--blue);
+}
