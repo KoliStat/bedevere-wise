@@ -134,15 +134,15 @@ export class ControlPanel {
   }
 
   private buildAccordion(): void {
-    // 1. DATASETS
-    this.datasetListElement = document.createElement("div");
-    this.datasetListElement.className = "control-panel__list";
-    this.createAccordionSection("datasets", "Datasets", true, this.datasetListElement);
-
-    // 2. COLUMN STATS
+    // 1. COLUMN STATS
     this.columnStatsContainer = document.createElement("div");
     this.columnStatsContainer.className = "control-panel__column-stats";
     this.createAccordionSection("column-stats", "Column Stats", false, this.columnStatsContainer);
+
+    // 2. DATASETS
+    this.datasetListElement = document.createElement("div");
+    this.datasetListElement.className = "control-panel__list";
+    this.createAccordionSection("datasets", "Datasets", true, this.datasetListElement);
 
     // 3. SAVED QUERIES
     this.queriesListElement = document.createElement("div");
