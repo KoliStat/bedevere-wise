@@ -334,6 +334,16 @@ export class DuckDBDataProvider implements DataProvider {
     const histogram = new Map<string, number>();
     const histogramEdges: number[] = [];
 
+    // "Discrete-category" integer path: one bin per distinct value.
+    // Only when BOTH the number of distinct values AND the integer
+    // range are small (a 1–5 rating, day-of-week 0–6, etc.) — Eurovision
+    // Total-score columns like [11, 534] satisfy the first condition but
+    // not the second, so they fall through to continuous binning and
+    // render as a real distribution instead of N bars of height 1.
+    const integerRange = isIntegerType(dataType) ? Math.floor(max - min) + 1 : Infinity;
+    const isDiscreteIntegerCategory =
+      isIntegerType(dataType) && distinctCount > 0 && distinctCount <= 20 && integerRange <= 50;
+
     if (min === max || nonNullCount === 0) {
       // Degenerate case — single-value histogram
       if (nonNullCount > 0) {
@@ -341,8 +351,9 @@ export class DuckDBDataProvider implements DataProvider {
         histogram.set(label, nonNullCount);
         histogramEdges.push(min, max);
       }
-    } else if (isIntegerType(dataType) && distinctCount > 0 && distinctCount <= 50) {
-      // Small-cardinality integer column: one bin per distinct value
+    } else if (isDiscreteIntegerCategory) {
+      // Small-cardinality, small-range integer column: one bin per
+      // distinct value (rating scales, day-of-week, etc.).
       const query = `
         SELECT "${columnName}" as val, COUNT(*) as cnt
         FROM ${quoteIdent(this.name)}
