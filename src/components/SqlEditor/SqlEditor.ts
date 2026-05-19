@@ -11,7 +11,7 @@ import {
   addCursorAbove,
   addCursorBelow,
 } from "@codemirror/commands";
-import { searchKeymap, selectNextOccurrence } from "@codemirror/search";
+import { searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { FocusableComponent } from "../BedevereApp/types";
@@ -338,11 +338,12 @@ export class SqlEditor implements FocusableComponent {
         override: [this.autoComplete.getCompletionSource()],
       }),
       // Standard CodeMirror keymaps. `searchKeymap` adds Ctrl+F (open
-      // find), F3 / Shift+F3 (next / previous match), and — load-
-      // bearing for the user request — Ctrl+D (selectNextOccurrence:
-      // extend the selection to the next occurrence of the currently
-      // selected text, the classic "multi-edit" workflow from
-      // VS Code / Sublime).
+      // find), F3 / Shift+F3 (next / previous match), and the panel
+      // close-with-Escape behaviour. (selectNextOccurrence / Ctrl+D
+      // is part of searchKeymap too, but didn't reliably fire even
+      // at `Prec.highest` — likely shadowed by something in this
+      // build that we couldn't pin down. Bookmark default wins in
+      // practice, so we don't advertise it.)
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       placeholder("Enter SQL query... (Ctrl+Enter to execute)"),
       EditorView.lineWrapping,
@@ -353,21 +354,10 @@ export class SqlEditor implements FocusableComponent {
       EditorView.updateListener.of((update) => {
         if (update.docChanged) this.scheduleAutoSave();
       }),
-      // Dedicated highest-precedence layer for Ctrl+D so nothing — not
-      // autocomplete's `Prec.highest` keymap, not the search panel's
-      // scoped bindings, not the browser's bookmark default — can
-      // shadow it. `selectNextOccurrence` already handles the no-
-      // selection case by selecting the word at the cursor, so the
-      // binding is a straight passthrough.
-      Prec.highest(
-        keymap.of([
-          { key: "Mod-d", run: selectNextOccurrence, preventDefault: true },
-        ])
-      ),
       // The Prec.high block owns every chord that would otherwise lose
       // to either the browser's built-in shortcut (Ctrl+S → "Save Page
-      // As", Ctrl+D → "Add Bookmark") or to a lower-precedence
-      // CodeMirror keymap (defaultKeymap's `Mod-Enter -> insertBlankLine`).
+      // As") or to a lower-precedence CodeMirror keymap (defaultKeymap's
+      // `Mod-Enter -> insertBlankLine`).
       //
       // Routing the save through CodeMirror's keymap instead of the
       // document-level `handleKeyDown` matters because the SqlEditor
