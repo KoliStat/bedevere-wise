@@ -100,9 +100,15 @@ export class SpreadsheetVisualizerBase {
 
   // Viewport size in CSS pixels. Distinct from `canvas.width`/`canvas.height`
   // which now hold the dpr-scaled backing-store dimensions. All layout math
-  // (scroll, hit-testing, scrollIntoView) reads these instead.
+  // (scroll, hit-testing, scrollIntoView) reads these instead. `viewportHeight`
+  // is snapped down to `header + N × rowHeight` so the canvas never shows
+  // a partial row at the bottom (see updateLayout); `lastObservedClientHeight`
+  // tracks the unsnapped scrollContainer height so the resize-observer's
+  // "did anything change" check doesn't loop on the snap delta.
   protected viewportWidth = 0;
   protected viewportHeight = 0;
+  protected lastObservedClientWidth = 0;
+  protected lastObservedClientHeight = 0;
   protected dpr = 1;
 
   // Filter/sort state for header indicators
@@ -324,9 +330,14 @@ export class SpreadsheetVisualizerBase {
         // horizontal scrollbar to appear, the scrollContainer's
         // clientHeight shrinks even though the outer container's stays
         // put, and we re-layout the canvas to fit the new content box.
+        //
+        // The check tracks the *unsnapped* clientWidth/Height; the
+        // snapped `viewportHeight` differs from clientHeight by up to
+        // `cellHeight - 1`, so comparing to viewportHeight directly
+        // would trigger a perpetual relayout loop after the first snap.
         if (
-          this.scrollContainer.clientWidth !== this.viewportWidth ||
-          this.scrollContainer.clientHeight !== this.viewportHeight
+          this.scrollContainer.clientWidth !== this.lastObservedClientWidth ||
+          this.scrollContainer.clientHeight !== this.lastObservedClientHeight
         ) {
           this.requestRelayout();
         }

@@ -213,9 +213,7 @@ const PENGUINS_TUTORIAL: TutorialNode[] = [
   {
     kind: "tip",
     html:
-      `Drop the <code>by</code> argument to get an overall (unstratified) Table 1. Pass ` +
-      `<code>by := ['species', 'sex']</code> to stratify on two factors at once — the pivot still works ` +
-      `because each row's stratum string carries the combination.`,
+      `Drop the <code>by</code> argument to get an overall (unstratified) Table 1.`,
   },
 
   { kind: "heading", text: "All in one query" },

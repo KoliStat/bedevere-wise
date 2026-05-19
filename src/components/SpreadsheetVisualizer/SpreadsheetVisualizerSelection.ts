@@ -57,8 +57,27 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
     // currently occupy, which used to leave the bottom row half-covered
     // by the horizontal scrollbar (and the rightmost column shifted
     // under the vertical scrollbar).
-    let width = Math.floor(minMax(this.scrollContainer.clientWidth, this.options.minWidth, this.options.maxWidth));
-    let height = Math.floor(minMax(this.scrollContainer.clientHeight, this.options.minHeight, this.options.maxHeight));
+    const rawClientWidth = this.scrollContainer.clientWidth;
+    const rawClientHeight = this.scrollContainer.clientHeight;
+    this.lastObservedClientWidth = rawClientWidth;
+    this.lastObservedClientHeight = rawClientHeight;
+    let width = Math.floor(minMax(rawClientWidth, this.options.minWidth, this.options.maxWidth));
+    let height = Math.floor(minMax(rawClientHeight, this.options.minHeight, this.options.maxHeight));
+
+    // Snap the height down to `header + N × rowHeight` so the visible
+    // canvas always holds an integer number of full rows. Without this,
+    // a pixel mismatch (e.g. viewport 250 px, row 24 px → 9 full rows
+    // fit but one extra row is drawn half-clipped at the bottom) leaves
+    // the bottom row half-visible. The leftover pixels — at most
+    // `cellHeight - 1` — sit below the canvas, inside the scrollContainer
+    // and above any horizontal scrollbar; they show through to
+    // `#spreadsheet-container`'s background, which matches the cell
+    // background in both themes, so the gap is visually seamless.
+    const ch = this.options.cellHeight;
+    if (height > ch) {
+      const dataRowsThatFit = Math.floor((height - ch) / ch);
+      height = ch + dataRowsThatFit * ch;
+    }
 
     // Fallback to options dimensions if container has no size (e.g., during initialization)
     if (width <= 0 && this.options.width !== undefined) {
