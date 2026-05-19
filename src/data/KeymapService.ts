@@ -87,6 +87,7 @@ const DEFAULT_KEYMAP: KeymapEntry[] = [
   // SQL Editor
   { action: "sqlEditor.execute",    description: "Execute query",      scope: "sqlEditor", binding: { key: "Enter", ctrl: true } },
   { action: "sqlEditor.collapse",   description: "Collapse editor",    scope: "sqlEditor", binding: { key: "Escape" } },
+  { action: "sqlEditor.saveQuery",  description: "Save query as…",     scope: "sqlEditor", binding: { key: "s", ctrl: true } },
 ];
 
 // ─── KeymapService ─────────────────────────────────────────────────

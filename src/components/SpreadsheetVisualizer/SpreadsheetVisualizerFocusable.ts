@@ -539,6 +539,34 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
 
     const action = keymapService.matchEvent(event, "spreadsheet");
     if (!action) return false;
+
+    // Defer the copy action to the browser's native handler when the
+    // user has selected text in the DOM *outside* the spreadsheet
+    // (column-stats panel, status bar, help panel, etc.). Without
+    // this guard the spreadsheet's cell-copy wins every Ctrl+C even
+    // when the user clearly intended to copy what their mouse drag
+    // selected.
+    if (action === "spreadsheet.copy") {
+      const selection = window.getSelection();
+      const selText = selection ? selection.toString() : "";
+      if (selText.length > 0) {
+        // Inspect the selection's anchor — if it sits outside the
+        // spreadsheet container, the browser will copy the selected
+        // text natively when we don't preventDefault. The spreadsheet
+        // has its own selection model (canvas-rendered cells); a
+        // DOM selection there is essentially impossible, so this
+        // check effectively means "real text is highlighted somewhere
+        // else on the page".
+        const anchor = selection?.anchorNode;
+        const anchorEl = anchor && anchor.nodeType === Node.ELEMENT_NODE
+          ? (anchor as Element)
+          : anchor?.parentElement ?? null;
+        if (anchorEl && !this.container.contains(anchorEl)) {
+          return false;
+        }
+      }
+    }
+
     event.preventDefault();
 
     return this.dispatchKeymapAction(action);

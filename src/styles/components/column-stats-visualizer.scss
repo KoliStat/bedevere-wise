@@ -23,7 +23,17 @@
       font-weight: 600;
       word-break: break-word;
       font-family: var(--font-mono);
+      cursor: pointer;
+
+      &:hover { color: var(--cyan); }
     }
+  }
+
+  // Click-to-copy flash: brief background-tint pulse on the clicked
+  // element so the user sees the click did something. Applied via JS
+  // to the header h3 or a categorical-histogram label.
+  &__copied {
+    animation: column-stats-copied-flash 0.6s ease-out;
   }
 
   &__header-left {
@@ -375,6 +385,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
+
+    // Hover affordance for the categorical click-to-copy path. The
+    // numerical / temporal chart uses `histogram__numerical-bar`, not
+    // `histogram__label`, so this rule only affects categorical rows
+    // — exactly where click-to-copy is wired.
+    &:hover { color: var(--fg); }
   }
 
   &__bar-track {
@@ -458,4 +474,13 @@
   &.visible {
     display: block;
   }
+}
+
+// Click-to-copy flash applied by `column-stats__copied` (set by JS for
+// ~0.6s after a successful clipboard write). Kept at the top level so
+// the same animation works on both the header text and the histogram
+// row labels.
+@keyframes column-stats-copied-flash {
+  0%   { background-color: var(--cyan); color: var(--bg-dark); }
+  100% { background-color: transparent; }
 }

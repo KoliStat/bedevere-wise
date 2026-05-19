@@ -371,6 +371,39 @@ export class ColumnStatsVisualizer {
   private attachEventListeners(_stats: ColumnStats): void {
     const dt = this.currentColumn?.dataType;
 
+    // Click-to-copy on the column header and each categorical-histogram
+    // value label. Mouse drag-selecting still works because `click`
+    // only fires when the press and release land on the same element
+    // with no drag.
+    this.container.querySelector(".column-stats__header h3")?.addEventListener("click", (e) => {
+      const el = e.currentTarget as HTMLElement;
+      const text = (el.textContent ?? "").trim();
+      this.copyToClipboard(text, el);
+    });
+
+    // Categorical histogram rows store the raw (untruncated) value on
+    // the row element via `data-value`. The `<div class="histogram__label">`
+    // shows the same text (possibly truncated with an ellipsis) — we
+    // want the full original on copy.
+    this.container.querySelectorAll<HTMLElement>(".histogram__chart .histogram__label").forEach((label) => {
+      // Skip the numerical / temporal chart's labels (they live under
+      // a different chart wrapper). The categorical chart is `histogram__chart`
+      // without the `--numerical` modifier, so this `querySelectorAll`
+      // already excludes the numerical chart since it doesn't use
+      // `histogram__label` elements.
+      label.style.cursor = "pointer";
+      label.title = `${label.getAttribute("title") || label.textContent || ""}\nClick to copy`;
+      label.addEventListener("click", (e) => {
+        const el = e.currentTarget as HTMLElement;
+        // Prefer the full value from the row's title attribute (set to
+        // the untruncated string by `renderVisualization`); fall back
+        // to the visible text.
+        const text = el.getAttribute("title")?.split("\nClick to copy")[0]
+          ?? (el.textContent ?? "").trim();
+        this.copyToClipboard(text, el);
+      });
+    });
+
     // Sort buttons
     this.container.querySelectorAll(".column-stats__sort-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -827,6 +860,31 @@ export class ColumnStatsVisualizer {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Best-effort copy + brief visual flash on the originating element.
+   * The flash is the user-visible confirmation that the click did
+   * something (no toast, no popover — the panel is already
+   * information-dense and a transient inline state is cheaper to read).
+   * The clipboard write is wrapped because some browsers / contexts
+   * (insecure HTTP, permission denied) reject `navigator.clipboard`.
+   */
+  private copyToClipboard(text: string, sourceElement: HTMLElement): void {
+    if (!text) return;
+    const writer = navigator.clipboard?.writeText?.(text);
+    if (writer) {
+      writer.then(() => this.flashCopied(sourceElement)).catch((err) => {
+        console.warn("ColumnStatsVisualizer: clipboard write failed", err);
+      });
+    } else {
+      console.warn("ColumnStatsVisualizer: clipboard API unavailable");
+    }
+  }
+
+  private flashCopied(element: HTMLElement): void {
+    element.classList.add("column-stats__copied");
+    window.setTimeout(() => element.classList.remove("column-stats__copied"), 700);
   }
 }
 
