@@ -656,8 +656,14 @@ export class SpreadsheetVisualizerBase {
     this.totalHeight = (this.totalRows + 1) * this.options.cellHeight;
     this.totalScrollY = Math.max(0, this.totalHeight - this.viewportHeight);
 
-    // Update spacer height for native scrollbar
-    this.scrollSpacer.style.height = `${Math.max(this.totalHeight, this.viewportHeight)}px`;
+    // The native scrollbar's max scrollTop is `spacer.height − clientHeight`,
+    // but `clientHeight` is the *unsnapped* scrollContainer height while
+    // our draw code uses the *snapped* `viewportHeight`. Extending the
+    // spacer by the snap delta keeps the two aligned — without this the
+    // user could never scroll far enough for the last data row to enter
+    // the snapped viewport, and the bottom row would stay hidden.
+    const snapDelta = Math.max(0, this.lastObservedClientHeight - this.viewportHeight);
+    this.scrollSpacer.style.height = `${Math.max(this.totalHeight + snapDelta, this.viewportHeight)}px`;
   }
 
   protected async preloadDataForScroll(scrollY: number): Promise<void> {

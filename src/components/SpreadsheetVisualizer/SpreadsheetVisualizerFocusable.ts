@@ -513,8 +513,10 @@ export class SpreadsheetVisualizerFocusable extends SpreadsheetVisualizerSelecti
     this.options.headerFontSize = Math.max(14, Math.min(24, this.options.headerFontSize * zoomFactor));
     this.options.cellPadding = Math.max(1, Math.min(10, this.options.cellPadding * zoomFactor));
 
-    this.calculateColumnWidths();
-    this.calculateRowHeight();
+    // Zoom changes cellHeight, which changes the row-snap result for the
+    // viewport. Re-run updateLayout (rather than just calculateRowHeight)
+    // so the snapped viewportHeight tracks the new cellHeight.
+    await this.updateLayout();
     this.updateToDraw(ToDraw.Cells);
 
     await this.draw();
