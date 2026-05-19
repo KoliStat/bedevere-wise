@@ -189,18 +189,16 @@ export class SqlEditor implements FocusableComponent {
   }
 
   public async handleKeyDown(event: KeyboardEvent): Promise<boolean> {
-    // Mod-Enter (execute) is wired through the CodeMirror keymap so the
-    // editor owns its primary chord and we don't double-fire when the
-    // event also bubbles up to this document-level handler. The actions
-    // we DO route here are the ones the user expects to be reachable
-    // from anywhere the editor has focus, including when a CodeMirror
-    // overlay (autocomplete dropdown, search panel) is in the way of
-    // CM's own keymap dispatch:
-    //   - sqlEditor.collapse  (Escape)
-    //   - sqlEditor.saveQuery (Ctrl+S) — must beat the browser's
-    //     "Save Page As…" default, hence the preventDefault below.
+    // Mod-Enter (execute) and Mod-s (save) are wired through the
+    // CodeMirror keymap directly so the editor owns those chords and
+    // they fire even when the SqlEditor isn't the FocusManager's
+    // tracked focused component (which it never actually is — nothing
+    // calls setFocus("sql-editor")). Escape is routed here as a
+    // belt-and-braces fallback in case the focused-component path ever
+    // gets wired in the future; today it's effectively dead code, but
+    // harmless.
     const action = keymapService.matchEvent(event, "sqlEditor");
-    if (action !== "sqlEditor.collapse" && action !== "sqlEditor.saveQuery") return false;
+    if (action !== "sqlEditor.collapse") return false;
     event.preventDefault();
     if (commandRegistry.has(action)) {
       try { await commandRegistry.run(action); }
@@ -329,13 +327,10 @@ export class SqlEditor implements FocusableComponent {
       autocompletion({
         override: [this.autoComplete.getCompletionSource()],
       }),
-      // Standard CodeMirror keymaps. `searchKeymap` adds Ctrl+F (open
-      // find), F3 / Shift+F3 (next / previous match), and the panel
-      // close-with-Escape behaviour. (selectNextOccurrence / Ctrl+D
-      // is part of searchKeymap too, but didn't reliably fire even
-      // at `Prec.highest` — likely shadowed by something in this
-      // build that we couldn't pin down. Bookmark default wins in
-      // practice, so we don't advertise it.)
+      // Standard CodeMirror keymaps. `searchKeymap` adds Ctrl+F
+      // (open find), F3 / Shift+F3 (next / previous match), and the
+      // panel close-with-Escape behaviour. See the `Mod-s` block
+      // below for the multi-cursor situation.
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       placeholder("Enter SQL query... (Ctrl+Enter to execute)"),
       EditorView.lineWrapping,
@@ -346,18 +341,14 @@ export class SqlEditor implements FocusableComponent {
       EditorView.updateListener.of((update) => {
         if (update.docChanged) this.scheduleAutoSave();
       }),
-      // The Prec.high block owns every chord that would otherwise lose
-      // to either the browser's built-in shortcut (Ctrl+S → "Save Page
-      // As") or to a lower-precedence CodeMirror keymap (defaultKeymap's
-      // `Mod-Enter -> insertBlankLine`).
-      //
-      // Routing the save through CodeMirror's keymap instead of the
-      // document-level `handleKeyDown` matters because the SqlEditor
-      // isn't tracked by the FocusManager — so the
-      // EventDispatcher → handleKeyDown path never fires when the user
-      // is typing in CM. CM's own keymap, on the other hand, runs
-      // synchronously inside the editor's `keydown` handler before the
-      // event bubbles, and the `preventDefault: true` flag stops the
+      // The Prec.high block owns chords that would otherwise lose to
+      // either the browser default (Ctrl+S → "Save Page As") or a
+      // lower-precedence CodeMirror keymap (defaultKeymap's
+      // `Mod-Enter -> insertBlankLine`). Routing through CM's keymap
+      // here matters because the SqlEditor isn't tracked by the
+      // FocusManager — the document-level `handleKeyDown` path is
+      // effectively dead code; CM's own keydown handler runs
+      // synchronously with `preventDefault: true` and stops the
       // browser shortcut cold.
       Prec.high(
         keymap.of([
@@ -371,12 +362,10 @@ export class SqlEditor implements FocusableComponent {
           },
           // Ctrl+S → open the "Save query as…" dialog. preventDefault
           // suppresses the browser's "Save Page As" dialog.
-          // (Multi-cursor bindings — Alt-ArrowUp/Down → addCursorAbove
-          // /Below, plus Ctrl+D → selectNextOccurrence — were tried at
-          // both `Prec.high` and `Prec.highest` and refused to fire in
-          // this build. Likely shadowed by something we couldn't pin
-          // down. They're left out rather than left as dead code
-          // pretending to work.)
+          // Note: multi-cursor bindings (`Mod-d`, `Alt-ArrowUp/Down`,
+          // `Mod-Alt-ArrowUp/Down`) were tried at both `Prec.high` and
+          // `Prec.highest` during 0.11 and refused to fire — they're
+          // intentionally absent rather than dead-code-pretending-to-work.
           {
             key: "Mod-s",
             preventDefault: true,

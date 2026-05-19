@@ -1476,15 +1476,15 @@ export class HelpPanel {
       <p class="help-panel__about-version">v${this.options.version}</p>
       <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
       <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.10</h3>
+        <h3 class="help-panel__about-section-title">What's new in 0.11</h3>
         <ul class="help-panel__about-list">
-          <li>Drag the right edge of any column header to <strong>resize the column</strong>; click the right-edge sort-arrow to <strong>sort</strong> (shift-click for multi-key, with <code>1</code> / <code>2</code> superscripts on each header).</li>
-          <li>Click a row index to select the <strong>whole row</strong> (shift to extend, ctrl/cmd to toggle). Selection survives sort and filter.</li>
-          <li><strong>Double-click a STRUCT / LIST / MAP / JSON cell</strong> to open the inspector popover, even after dismissing the auto-open.</li>
-          <li><strong>Recent folders</strong> shortcut in the Import tab — pick once, reopen with one click (Chrome / Edge).</li>
-          <li><code>.export</code> with no selection now exports the <strong>whole dataset</strong>; complex cells serialise as full JSON in CSV / TSV / HTML / Markdown (was: truncated <code>{ k: v, … N more }</code> preview).</li>
-          <li>Same-named files from different folders import as <code>study</code>, <code>study__2</code>, <code>study__3</code>; rename via <code>.alias</code>.</li>
-          <li>Configurable CSV / TSV quote-escape (<code>""</code> RFC 4180 or <code>\"</code> JSON-style) in Settings → "Copy &amp; export format".</li>
+          <li>The <strong>SQL editor autosaves</strong> while you type and restores the draft on reload. Press <code>Ctrl+S</code> to save the current query as a named bookmark; <code>Ctrl+F</code> opens an in-editor find panel.</li>
+          <li><strong>Import HTML tables</strong> from the clipboard (<code>.paste</code>) or from a saved <code>.html</code> file — multi-table pages open a picker; image-only cells (e.g. flag icons) fall back to the <code>alt</code> attribute or the <code>src</code> basename so a column of icons still carries data.</li>
+          <li><strong>Fetch remote files by URL</strong> (<code>.fetch &lt;url&gt;</code>) — CSV / JSON / Parquet / HTML routed through the same handlers as local files. CORS-blocked sources surface a clear "save and drag it in" hint.</li>
+          <li><strong>Drag-to-reorder columns</strong> in the spreadsheet header; the order persists per dataset alongside hide / sort / filter.</li>
+          <li><strong>Click-to-copy</strong> on the column-stats panel — clicking the column name or any categorical histogram value copies it to the clipboard with a brief flash.</li>
+          <li><strong>Ctrl+C respects text selections outside the spreadsheet</strong> — drag-select text in the column-stats panel, status bar, help panel, etc. and Ctrl+C copies that instead of the spreadsheet cells.</li>
+          <li>Dirty CSV / Excel imports recover gracefully — full-file type detection and an <code>ignore_errors</code> fallback handle stray non-numeric values that used to abort the whole import.</li>
         </ul>
       </div>
       <div class="help-panel__about-section">

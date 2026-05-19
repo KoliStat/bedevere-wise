@@ -386,10 +386,12 @@
     white-space: nowrap;
     font-family: var(--font-mono);
 
-    // Hover affordance for the categorical click-to-copy path. The
-    // numerical / temporal chart uses `histogram__numerical-bar`, not
-    // `histogram__label`, so this rule only affects categorical rows
-    // — exactly where click-to-copy is wired.
+    // Click-to-copy affordance for the categorical-histogram rows.
+    // The numerical / temporal chart uses `histogram__numerical-bar`,
+    // not `histogram__label`, so these rules only affect categorical
+    // labels — exactly where the JS click handler is wired.
+    cursor: pointer;
+
     &:hover { color: var(--fg); }
   }
 

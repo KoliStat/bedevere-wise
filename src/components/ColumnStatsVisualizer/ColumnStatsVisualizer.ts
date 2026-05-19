@@ -381,27 +381,15 @@ export class ColumnStatsVisualizer {
       this.copyToClipboard(text, el);
     });
 
-    // Categorical histogram rows store the raw (untruncated) value on
-    // the row element via `data-value`. The `<div class="histogram__label">`
-    // shows the same text (possibly truncated with an ellipsis) — we
-    // want the full original on copy.
+    // Click-to-copy on each categorical-histogram value label. The
+    // numerical / temporal chart uses `histogram__numerical-bar` and
+    // doesn't emit `histogram__label`, so this selector only ever
+    // touches categorical rows. The cursor + hover styling lives in
+    // SCSS (`.histogram__label`).
     this.container.querySelectorAll<HTMLElement>(".histogram__chart .histogram__label").forEach((label) => {
-      // Skip the numerical / temporal chart's labels (they live under
-      // a different chart wrapper). The categorical chart is `histogram__chart`
-      // without the `--numerical` modifier, so this `querySelectorAll`
-      // already excludes the numerical chart since it doesn't use
-      // `histogram__label` elements.
-      label.style.cursor = "pointer";
-      label.title = `${label.getAttribute("title") || label.textContent || ""}\nClick to copy`;
-      label.addEventListener("click", (e) => {
-        const el = e.currentTarget as HTMLElement;
-        // Prefer the full value from the row's title attribute (set to
-        // the untruncated string by `renderVisualization`); fall back
-        // to the visible text.
-        const text = el.getAttribute("title")?.split("\nClick to copy")[0]
-          ?? (el.textContent ?? "").trim();
-        this.copyToClipboard(text, el);
-      });
+      const fullText = label.getAttribute("title") ?? label.textContent ?? "";
+      label.title = `${fullText}\nClick to copy`;
+      label.addEventListener("click", () => this.copyToClipboard(fullText.trim(), label));
     });
 
     // Sort buttons

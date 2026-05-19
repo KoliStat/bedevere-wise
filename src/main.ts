@@ -27,7 +27,7 @@ async function initApplication() {
   }
 
   const debugMode = import.meta.env.DEV;
-  const appVersion = "0.10-defeator-of-the-saxons";
+  const appVersion = "0.11-sovereign-of-all-england";
 
   // Initialize DuckDB first
   try {
