@@ -25,6 +25,9 @@ import { FileImportService } from "@/data/FileImportService";
 import { DuckDBExtensionLoader } from "@/data/DuckDBExtensionLoader";
 import { ExcelFormatHandler } from "@/data/formats/ExcelFormatHandler";
 import { StatFormatHandler } from "@/data/formats/StatFormatHandler";
+import { HtmlFormatHandler } from "@/data/formats/HtmlFormatHandler";
+import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
+import { fetchAsFile } from "@/data/UrlImport";
 import { AliasManager } from "@/data/AliasManager";
 import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
@@ -179,6 +182,8 @@ export class BedevereApp implements EventHandler {
     // Register extension-based handlers (they self-check if extension loaded)
     this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
     this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
+    // HTML import is pure DOM parsing in the main thread — no extension required.
+    this.fileImportService.register(new HtmlFormatHandler());
 
     // Restore app settings
     const settings = this.persistenceService.loadAppSettings();
@@ -931,6 +936,49 @@ export class BedevereApp implements EventHandler {
           }
         });
         picker.click();
+      },
+    });
+
+    commandRegistry.register({
+      id: "shell.paste",
+      shellName: "paste",
+      title: "Paste HTML table",
+      description: "Open a dialog to paste an HTML table (e.g. copied from a web page) and import it as a dataset.",
+      category: "Dataset",
+      execute: async () => {
+        // The dialog handles parsing + multi-table selection itself; we
+        // just need to deliver the chosen table to FileImportService as
+        // a synthetic .csv File so the standard pipeline takes it from
+        // there.
+        HtmlPasteDialog.show({
+          defaultName: "pasted_table",
+          onImport: async (csvText, name) => {
+            const file = new File([csvText], `${name}.csv`, { type: "text/csv" });
+            await this.leftPanel?.addFilesFromDrop([file], true);
+          },
+        });
+      },
+    });
+
+    commandRegistry.register({
+      id: "shell.fetch",
+      shellName: "fetch",
+      title: "Fetch and import a remote file",
+      description: "Pass a URL to a CSV / JSON / Parquet / HTML resource (CORS permitting).",
+      category: "Dataset",
+      parameters: [
+        {
+          name: "url",
+          type: "string",
+          required: true,
+          description: "URL to fetch (http:// or https://)",
+        },
+      ],
+      execute: async (params) => {
+        const url = (params?.url as string | undefined)?.trim();
+        if (!url) throw new Error(".fetch needs a URL.");
+        const file = await fetchAsFile(url);
+        await this.leftPanel?.addFilesFromDrop([file], true);
       },
     });
 

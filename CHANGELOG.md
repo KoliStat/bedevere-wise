@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.11
+
+- [Preview] **Import from HTML and remote URLs.** Two new shell commands round out the import surface. `.paste` opens a dialog where you can paste an HTML `<table>` (or the surrounding markup) from the clipboard — copy a table in a browser, paste with the textarea's "Paste from clipboard" button or Ctrl+V, pick which `<table>` if the source has more than one, and the rows land as a dataset. `.fetch <url>` pulls a remote CSV / JSON / Parquet / HTML directly into DuckDB. `.html` / `.htm` files dropped on the Datasets panel work the same way; multi-table HTML opens the picker automatically. Image-only cells (e.g. flag icons) fall back to the `<img>` `alt` attribute or the `src` basename, so columns of icons preserve their identifier (Eurovision flags become `AL/AM/AT/…` instead of empty strings). URL fetches are direct browser requests — CORS-permissive sources (GitHub raw, jsdelivr, public data portals) work today; CORS-blocked sites surface a clear "save and drag it in" message rather than a generic network error. Both paths funnel through the existing `read_csv_auto(..., sample_size=-1)` pipeline so dirty real-world tables tolerate stray non-numeric values without crashing the import. Marked **preview** while we shake out rough edges (table-vs-layout detection on heavily styled pages, no proxy fallback yet for CORS-blocked URLs, no streaming for very large remote files).
+
 ## v0.10-defeator-of-the-saxons
 
 - [Feature] **Column resize + multi-column sort on the same header strip.** Drag the right edge of any column header (4px hit zone, faded line on hover) to resize. The rightmost ~22px doubles as a sort-arrow zone: plain click cycles asc → desc → unsorted, shift-click cycles in multi-key mode (small `1` / `2` / `3` superscripts mark the chain order). Every column always shows a faded up-arrow so the click target is visible before the first sort.

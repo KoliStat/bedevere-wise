@@ -4,6 +4,8 @@ import { PersistenceService, persistenceService } from "../../data/PersistenceSe
 import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
+import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
+import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
 import { TabManager } from "../TabManager";
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
@@ -656,7 +658,33 @@ export class ControlPanel {
           : node.alias || stripExt(node.name);
       const tableName = baseName;
       const options = node.kind === "sheet" && node.sheetName ? { sheetName: node.sheetName } : undefined;
-      const provider = await this.fileImportService.importFile(file, tableName, options);
+
+      let provider;
+      try {
+        provider = await this.fileImportService.importFile(file, tableName, options);
+      } catch (importErr) {
+        if (importErr instanceof MultipleHtmlTablesError) {
+          // Multi-table HTML — defer to the picker so the user chooses
+          // which table to ingest. The picker hands us a CSV string,
+          // which we route back through the import pipeline as a
+          // synthetic .csv file so the rest of the flow (provider
+          // construction, TabManager wiring, persistence) stays
+          // unchanged.
+          const picked = await HtmlPasteDialog.showAsync({
+            title: `Pick a table — ${importErr.sourceName}`,
+            initialTables: importErr.tables,
+            defaultName: tableName,
+          });
+          if (!picked) {
+            return { ok: false, error: { message: "Cancelled — no table picked." } };
+          }
+          const csvFile = new File([picked.csvText], `${picked.name}.csv`, { type: "text/csv" });
+          provider = await this.fileImportService.importFile(csvFile, picked.name);
+        } else {
+          throw importErr;
+        }
+      }
+
       const metadata = await provider.getMetadata();
 
       node.isImported = true;
