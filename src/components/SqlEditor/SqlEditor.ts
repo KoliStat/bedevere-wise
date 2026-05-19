@@ -353,6 +353,17 @@ export class SqlEditor implements FocusableComponent {
       EditorView.updateListener.of((update) => {
         if (update.docChanged) this.scheduleAutoSave();
       }),
+      // Dedicated highest-precedence layer for Ctrl+D so nothing — not
+      // autocomplete's `Prec.highest` keymap, not the search panel's
+      // scoped bindings, not the browser's bookmark default — can
+      // shadow it. `selectNextOccurrence` already handles the no-
+      // selection case by selecting the word at the cursor, so the
+      // binding is a straight passthrough.
+      Prec.highest(
+        keymap.of([
+          { key: "Mod-d", run: selectNextOccurrence, preventDefault: true },
+        ])
+      ),
       // The Prec.high block owns every chord that would otherwise lose
       // to either the browser's built-in shortcut (Ctrl+S → "Save Page
       // As", Ctrl+D → "Add Bookmark") or to a lower-precedence
@@ -382,29 +393,6 @@ export class SqlEditor implements FocusableComponent {
           // (matches VS Code's convention).
           { key: "Alt-ArrowUp", run: addCursorAbove },
           { key: "Alt-ArrowDown", run: addCursorBelow },
-          // Ctrl+D → if there's no current selection, select the word
-          // at the cursor; otherwise extend the selection to the next
-          // occurrence (VS Code / Sublime behaviour). CodeMirror's
-          // built-in `selectNextOccurrence` bails with `false` when
-          // every range is empty, which used to drop us through to
-          // the browser's bookmark default. Wrapping it here keeps
-          // both common workflows working from the same chord.
-          // High precedence with `preventDefault: true` so the
-          // browser's bookmark shortcut never wins.
-          {
-            key: "Mod-d",
-            preventDefault: true,
-            run: (view) => {
-              const { state } = view;
-              if (state.selection.ranges.every((r) => r.empty)) {
-                const word = state.wordAt(state.selection.main.head);
-                if (!word) return true; // nothing selectable; still swallow the chord
-                view.dispatch({ selection: { anchor: word.from, head: word.to } });
-                return true;
-              }
-              return selectNextOccurrence(view);
-            },
-          },
           // Ctrl+S → open the "Save query as…" dialog. preventDefault
           // suppresses the browser's "Save Page As" dialog.
           {
