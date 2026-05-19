@@ -14,6 +14,10 @@
 @use "components/file-tree";
 @use "components/help-panel";
 @use "components/chart-visualizer";
+@use "components/hide-columns-dialog";
+@use "components/html-paste-dialog";
+@use "components/save-query-dialog";
+@use "components/context-menu";
 
 // Global styles
 * {

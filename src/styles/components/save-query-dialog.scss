@@ -1,0 +1,139 @@
+// "Save query as…" modal — small, single-input variant of the
+// hide-columns dialog. Same overlay / accent / typography so the
+// two modals feel like one family.
+
+.save-query-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.save-query {
+  background: var(--bg-float);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-top: 3px solid var(--blue);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--font-sans);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  &__title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    font-family: var(--font-mono);
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 2px 8px;
+    line-height: 1;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--fg);
+    }
+  }
+
+  &__body {
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+
+  &__input {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+  }
+
+  &__warn {
+    min-height: 14px;
+    font-size: 11px;
+    color: var(--yellow);
+    font-family: var(--font-mono);
+
+    &--shown {
+      // No-op trigger — the rule exists so the JS can opt-in/out via a
+      // class instead of clearing inline content; styles are already
+      // applied by the parent.
+    }
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  &__btn {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--bg-highlight);
+      border-color: var(--border-strong);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    &--primary {
+      background: var(--blue);
+      color: var(--bg);
+      border-color: var(--blue);
+
+      &:hover:not(:disabled) {
+        background: var(--fg);
+        border-color: var(--fg);
+      }
+    }
+  }
+}

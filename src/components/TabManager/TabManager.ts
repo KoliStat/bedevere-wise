@@ -9,7 +9,7 @@ import { DuckDBService } from "../../data/DuckDBService";
 import { ColumnFilterManager } from "../../data/ColumnFilterManager";
 import { FilteredDuckDBDataProvider } from "../../data/FilteredDuckDBDataProvider";
 import { EventDispatcher } from "../BedevereApp/EventDispatcher";
-import { CellInspectInfo, ICellSelection } from "../SpreadsheetVisualizer/types";
+import { CellInspectInfo, HideColumnRequest, ICellSelection, ReorderColumnRequest } from "../SpreadsheetVisualizer/types";
 import { parseShellLine, runShellLine, ShellResult } from "../../data/Shell";
 import { commandRegistry } from "../../data/CommandRegistry";
 import {
@@ -96,12 +96,15 @@ export class TabManager {
   private eventDispatcher?: EventDispatcher;
   private onCellSelectionCallback?: (cellSelection?: ICellSelection) => void;
   private onCellInspectCallback?: (info: CellInspectInfo) => void;
+  private onHideColumnCallback?: (req: HideColumnRequest) => void;
+  private onReorderColumnCallback?: (req: ReorderColumnRequest) => void;
   private onCloseTabCallback?: () => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
   private onChartActivateCallback?: (chartName: string) => void;
   private onQueryErrorCallback?: (error: Error) => void;
   private onQueryCompletedCallback?: (result: { elapsedMs: number; error?: Error }) => void;
   private onShellMessageCallback?: (text: string, details?: string) => void;
+  private onBeforeAddDatasetCallback?: (metadata: DatasetMetadata) => void;
   // Monotonic counter for default result-tab names (`result_1`, `result_2`,
   // …). Resets per session — these tables don't survive a page reload.
   private resultCounter = 0;
@@ -161,6 +164,29 @@ export class TabManager {
   }
 
   public async addDataset(metadata: DatasetMetadata, dataProvider: DataProvider): Promise<void> {
+    // Pre-add hook fires before the visualizer is constructed so
+    // consumers (e.g. BedevereApp restoring persisted hidden-columns)
+    // can populate `filterManager` synchronously. The callback fires
+    // `onChange` → `handleFilterChange`, but the tab isn't in
+    // `this.tabs` yet, so handleFilterChange no-ops; the swap below
+    // does the real work in a single render pass.
+    this.onBeforeAddDatasetCallback?.(metadata);
+
+    // If filter / sort / hide state already exists for this dataset,
+    // route the visualizer through the filtered provider from the
+    // start. Source table for a fresh add is the dataset's own name
+    // (all callers pass an unfiltered DuckDBDataProvider).
+    let effectiveProvider = dataProvider;
+    if (this.filterManager.hasAnyState(metadata.name) && this.duckDBService) {
+      effectiveProvider = new FilteredDuckDBDataProvider(
+        this.duckDBService,
+        metadata.name,
+        this.filterManager,
+        metadata.name,
+        metadata.fileName ?? "",
+      );
+    }
+
     // Create a separate container for this dataset's spreadsheet visualizer
     const datasetContainer = document.createElement("div");
     datasetContainer.className = "tab-manager__dataset-container";
@@ -202,7 +228,7 @@ export class TabManager {
     // Create wrapper for event handling
     const spreadsheetVisualizer = new SpreadsheetVisualizer(
       datasetContainer,
-      dataProvider,
+      effectiveProvider,
       spreadsheetOptions,
       this.sharedStatsVisualizer,
       `spreadsheet-${metadata.name}`
@@ -230,11 +256,17 @@ export class TabManager {
     if (this.onCellInspectCallback) {
       spreadsheetVisualizer.addOnCellInspectRequestedSubscription(this.onCellInspectCallback);
     }
+    if (this.onHideColumnCallback) {
+      spreadsheetVisualizer.addOnHideColumnRequestedSubscription(this.onHideColumnCallback);
+    }
+    if (this.onReorderColumnCallback) {
+      spreadsheetVisualizer.addOnReorderColumnRequestedSubscription(this.onReorderColumnCallback);
+    }
 
     const tab: DatasetTab = {
       kind: "dataset",
       metadata,
-      dataProvider,
+      dataProvider: effectiveProvider,
       spreadsheetVisualizer,
       container: datasetContainer,
       isActive: false,
@@ -337,6 +369,11 @@ export class TabManager {
     return active && active.kind === "dataset" ? active : null;
   }
 
+  public getDatasetTabByName(datasetName: string): DatasetTab | null {
+    const tab = this.tabs.find((t) => t.kind === "dataset" && t.metadata.name === datasetName);
+    return (tab && tab.kind === "dataset") ? tab : null;
+  }
+
   public getActiveChartTab(): ChartTab | null {
     const active = this.tabs.find((t) => t.isActive);
     return active && active.kind === "chart" ? active : null;
@@ -397,6 +434,24 @@ export class TabManager {
     }
   }
 
+  public setOnHideColumnCallback(callback: (req: HideColumnRequest) => void): void {
+    this.onHideColumnCallback = callback;
+    for (const tab of this.tabs) {
+      if (tab.kind === "dataset") {
+        tab.spreadsheetVisualizer.addOnHideColumnRequestedSubscription(callback);
+      }
+    }
+  }
+
+  public setOnReorderColumnCallback(callback: (req: ReorderColumnRequest) => void): void {
+    this.onReorderColumnCallback = callback;
+    for (const tab of this.tabs) {
+      if (tab.kind === "dataset") {
+        tab.spreadsheetVisualizer.addOnReorderColumnRequestedSubscription(callback);
+      }
+    }
+  }
+
   /**
    * Propagate runtime format changes to every open tab so cell rendering and
    * column widths update without recreating tabs. Fire-and-forget — errors
@@ -433,6 +488,10 @@ export class TabManager {
 
   public setOnQueryCompletedCallback(callback: (result: { elapsedMs: number; error?: Error }) => void): void {
     this.onQueryCompletedCallback = callback;
+  }
+
+  public setOnBeforeAddDatasetCallback(callback: (metadata: DatasetMetadata) => void): void {
+    this.onBeforeAddDatasetCallback = callback;
   }
 
   private createTabElement(tab: Tab): void {
@@ -623,8 +682,9 @@ export class TabManager {
       sourceTableName = tab.metadata.name;
     }
 
-    if (this.filterManager.hasAnyFiltersOrSorts(datasetName)) {
-      // Create a filtered provider
+    if (this.filterManager.hasAnyState(datasetName)) {
+      // Any of filter / sort / hidden columns active — route through the
+      // filtered provider, which knows how to project + WHERE + ORDER BY.
       const filteredProvider = new FilteredDuckDBDataProvider(
         this.duckDBService,
         sourceTableName,
@@ -635,7 +695,6 @@ export class TabManager {
       tab.dataProvider = filteredProvider;
       await tab.spreadsheetVisualizer.reinitialize(filteredProvider);
     } else {
-      // No filters - use the original DuckDBDataProvider
       const { DuckDBDataProvider } = await import("../../data/DuckDBDataProvider");
       const originalProvider = new DuckDBDataProvider(this.duckDBService, sourceTableName, tab.metadata.fileName ?? "");
       tab.dataProvider = originalProvider;

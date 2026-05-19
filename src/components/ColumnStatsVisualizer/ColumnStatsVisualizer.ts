@@ -25,6 +25,29 @@ export class ColumnStatsVisualizer {
   private datasetName: string = "";
   public onFilterChangeCallback?: () => void;
   private onShowStatsCallback?: () => void;
+  // Search state for the categorical filter's value list. Survives
+  // the apply-filter re-render so the user doesn't have to retype
+  // their query after each apply; resets to empty / off when the
+  // user picks a different column (see showStats).
+  private valueSearchQuery: string = "";
+  private valueSearchUseRegex: boolean = false;
+  // Server-side search results when a query is active. `null` =
+  // no search → render the static top-N from `stats.valueCounts`.
+  private valueSearchResults: Array<{ value: string; count: number }> | null = null;
+  // Monotonic token to drop stale async results when the user keeps
+  // typing or toggles regex mode mid-flight.
+  private valueSearchSeq: number = 0;
+  private valueSearchDebounceTimer: number | null = null;
+  // Categorical filter "explicit exclusion" set. Surviving across
+  // searches lets the user uncheck a value found via search, then
+  // clear the search and have that exclusion still apply. Reset on
+  // column change; pre-populated from an existing exclude-type filter
+  // so the panel reflects what's already filtered.
+  private excludedValues: Set<string> = new Set();
+  // Per-column-session result cap from searchColumnValues. Lifted up
+  // so the "results capped" hint matches what the provider was asked
+  // for; a future setting could expose this.
+  private static readonly VALUE_SEARCH_LIMIT = 500;
 
   constructor(parent: HTMLElement, spreadsheetVisualizer: SpreadsheetVisualizer | null) {
     this.container = document.createElement("div");
@@ -45,6 +68,30 @@ export class ColumnStatsVisualizer {
   }
 
   public async showStats(column: Column) {
+    // Reset the value-list search when switching to a different
+    // column — the value space changed completely so a query carried
+    // over from the previous column would be confusing. Pre-load the
+    // exclusion set from any existing exclude-type filter so the
+    // checkbox UI matches what's already filtered.
+    if (this.currentColumn?.name !== column.name) {
+      this.valueSearchQuery = "";
+      this.valueSearchUseRegex = false;
+      this.valueSearchResults = null;
+      this.valueSearchSeq++;
+      if (this.valueSearchDebounceTimer !== null) {
+        window.clearTimeout(this.valueSearchDebounceTimer);
+        this.valueSearchDebounceTimer = null;
+      }
+      this.excludedValues = new Set();
+      if (this.filterManager) {
+        const existing = this.filterManager
+          .getFilters(this.datasetName)
+          .find((f) => f.columnName === column.name);
+        if (existing?.filterType === "exclude" && existing.values) {
+          this.excludedValues = new Set(existing.values);
+        }
+      }
+    }
     this.currentColumn = column;
     this.container.style.display = "block";
     this.container.classList.add("visible");
@@ -171,31 +218,69 @@ export class ColumnStatsVisualizer {
     return "";
   }
 
-  private renderCategoricalFilter(stats: ColumnStats, isFiltered: boolean, currentFilter?: ColumnFilter): string {
-    const selectedValues = new Set(currentFilter?.values || []);
+  private renderCategoricalFilter(stats: ColumnStats, isFiltered: boolean, _currentFilter?: ColumnFilter): string {
+    const regexActive = this.valueSearchUseRegex;
+    const query = this.valueSearchQuery;
+    // Initial list comes from the static top-N (`valueCounts`). The
+    // search handler later swaps this innerHTML out with server-side
+    // results when a query is typed.
+    const initialItems = Array.from(stats.valueCounts.entries()).map(([value, count]) => ({
+      value,
+      count,
+    }));
     return `
       <div class="column-stats__filter">
         <div class="column-stats__filter-header">
           <span class="column-stats__filter-title">Filter Values</span>
           ${isFiltered ? `<button class="column-stats__filter-clear" data-action="clear-filter">Clear</button>` : ""}
         </div>
-        <div class="column-stats__filter-list">
-          ${Array.from(stats.valueCounts.entries())
-            .map(([value]) => {
-              const checked = selectedValues.size === 0 || selectedValues.has(value);
-              const display = value.length > 24 ? value.substring(0, 24) + "\u2026" : value;
-              return `
-                <label class="column-stats__filter-item" title="${escapeAttr(value)}">
-                  <input type="checkbox" value="${escapeAttr(value)}" ${checked ? "checked" : ""} />
-                  <span>${escapeHtml(display)}</span>
-                </label>
-              `;
-            })
-            .join("")}
+        <div class="column-stats__filter-search">
+          <input
+            type="search"
+            class="column-stats__filter-search-input"
+            placeholder="${regexActive ? "Regex\u2026" : "Search values\u2026"}"
+            value="${escapeAttr(query)}"
+            data-action="value-search"
+          />
+          <button
+            class="column-stats__filter-regex-toggle${regexActive ? " column-stats__filter-regex-toggle--active" : ""}"
+            data-action="toggle-regex"
+            title="${regexActive ? "Regex match (case-insensitive)" : "Substring match (case-insensitive)"}. Click to switch."
+          >.*</button>
         </div>
+        <div class="column-stats__filter-list">
+          ${this.buildCategoricalListItems(initialItems)}
+        </div>
+        <div class="column-stats__filter-search-summary"></div>
         <button class="column-stats__filter-apply" data-action="apply-filter">Apply Filter</button>
       </div>
     `;
+  }
+
+  /**
+   * HTML for the `__filter-list` body. Shared between the initial
+   * render (inlined into renderCategoricalFilter) and the search-result
+   * re-render (set as innerHTML on the existing list element).
+   * Checkbox state comes from `excludedValues` \u2014 checked iff the value
+   * is NOT in the set \u2014 so re-renders keep prior selections intact.
+   */
+  private buildCategoricalListItems(items: Array<{ value: string; count: number }>): string {
+    if (items.length === 0) {
+      return `<div class="column-stats__filter-empty">No matching values.</div>`;
+    }
+    return items
+      .map(({ value, count }) => {
+        const checked = !this.excludedValues.has(value);
+        const display = value.length > 24 ? value.substring(0, 24) + "\u2026" : value;
+        return `
+          <label class="column-stats__filter-item" data-value="${escapeAttr(value)}" title="${escapeAttr(value)}">
+            <input type="checkbox" value="${escapeAttr(value)}" ${checked ? "checked" : ""} />
+            <span>${escapeHtml(display)}</span>
+            <span class="column-stats__filter-count">(${count.toLocaleString()})</span>
+          </label>
+        `;
+      })
+      .join("");
   }
 
   private renderBooleanFilter(stats: ColumnStats, isFiltered: boolean, currentFilter?: ColumnFilter): string {
@@ -286,6 +371,27 @@ export class ColumnStatsVisualizer {
   private attachEventListeners(_stats: ColumnStats): void {
     const dt = this.currentColumn?.dataType;
 
+    // Click-to-copy on the column header and each categorical-histogram
+    // value label. Mouse drag-selecting still works because `click`
+    // only fires when the press and release land on the same element
+    // with no drag.
+    this.container.querySelector(".column-stats__header h3")?.addEventListener("click", (e) => {
+      const el = e.currentTarget as HTMLElement;
+      const text = (el.textContent ?? "").trim();
+      this.copyToClipboard(text, el);
+    });
+
+    // Click-to-copy on each categorical-histogram value label. The
+    // numerical / temporal chart uses `histogram__numerical-bar` and
+    // doesn't emit `histogram__label`, so this selector only ever
+    // touches categorical rows. The cursor + hover styling lives in
+    // SCSS (`.histogram__label`).
+    this.container.querySelectorAll<HTMLElement>(".histogram__chart .histogram__label").forEach((label) => {
+      const fullText = label.getAttribute("title") ?? label.textContent ?? "";
+      label.title = `${fullText}\nClick to copy`;
+      label.addEventListener("click", () => this.copyToClipboard(fullText.trim(), label));
+    });
+
     // Sort buttons
     this.container.querySelectorAll(".column-stats__sort-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -309,20 +415,71 @@ export class ColumnStatsVisualizer {
       this.filterManager.removeFilter(this.datasetName, this.currentColumn.name);
     });
 
-    // Apply categorical/boolean include filter
+    // Apply filter — semantics depend on column type.
+    //   - String (categorical):
+    //       • Search active → write an *include* filter of
+    //         (currently matching values) ∩ (checked). The search
+    //         narrows the candidate set; checkboxes refine within it.
+    //         This is what the user means by "show only the values
+    //         matching the search and selected among them".
+    //       • No search    → write an *exclude* filter of unchecks,
+    //         so opening on a high-cardinality column and unchecking
+    //         a few values doesn't accidentally collapse the filter
+    //         to just the top-N.
+    //   - Boolean: keep the legacy include semantics (small fixed
+    //     value space — TRUE/FALSE — so the include list is trivial
+    //     to read straight from the DOM).
     this.container.querySelector("[data-action='apply-filter']")?.addEventListener("click", () => {
       if (!this.filterManager || !this.currentColumn) return;
 
+      if (dt && isStringType(dt)) {
+        const searchActive = this.valueSearchQuery !== "";
+
+        if (searchActive) {
+          // "Visible" = the values currently rendered in the filter
+          // list — either the server-side search results or, if the
+          // debounced fetch hasn't resolved yet, the static top-N.
+          const visible: string[] =
+            this.valueSearchResults !== null
+              ? this.valueSearchResults.map((r) => r.value)
+              : Array.from(_stats.valueCounts.keys());
+          const checked = visible.filter((v) => !this.excludedValues.has(v));
+
+          if (checked.length === 0) {
+            this.filterManager.removeFilter(this.datasetName, this.currentColumn.name);
+          } else {
+            const filter: ColumnFilter = {
+              columnName: this.currentColumn.name,
+              dataType: dt,
+              filterType: "include",
+              values: checked,
+            };
+            this.filterManager.setFilter(this.datasetName, filter);
+          }
+          return;
+        }
+
+        if (this.excludedValues.size === 0) {
+          this.filterManager.removeFilter(this.datasetName, this.currentColumn.name);
+        } else {
+          const filter: ColumnFilter = {
+            columnName: this.currentColumn.name,
+            dataType: dt,
+            filterType: "exclude",
+            values: [...this.excludedValues],
+          };
+          this.filterManager.setFilter(this.datasetName, filter);
+        }
+        return;
+      }
+
+      // Boolean path (legacy include).
       const checkboxes = this.container.querySelectorAll<HTMLInputElement>(".column-stats__filter-item input[type='checkbox']");
       const selectedValues: string[] = [];
       let allChecked = true;
-
       checkboxes.forEach((cb) => {
-        if (cb.checked) {
-          selectedValues.push(cb.value);
-        } else {
-          allChecked = false;
-        }
+        if (cb.checked) selectedValues.push(cb.value);
+        else allChecked = false;
       });
 
       if (allChecked || selectedValues.length === 0) {
@@ -385,6 +542,149 @@ export class ColumnStatsVisualizer {
         this.filterManager.setFilter(this.datasetName, filter);
       }
     });
+
+    // Categorical value-list interactions live below — boolean filters
+    // keep the legacy DOM-read path in the apply handler above.
+    if (dt && isStringType(dt)) {
+      const searchInput = this.container.querySelector<HTMLInputElement>("[data-action='value-search']");
+      const regexToggle = this.container.querySelector<HTMLButtonElement>("[data-action='toggle-regex']");
+
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          this.valueSearchQuery = searchInput.value;
+          this.scheduleValueSearch(_stats);
+        });
+      }
+      if (regexToggle) {
+        regexToggle.addEventListener("click", () => {
+          this.valueSearchUseRegex = !this.valueSearchUseRegex;
+          regexToggle.classList.toggle("column-stats__filter-regex-toggle--active", this.valueSearchUseRegex);
+          regexToggle.title = this.valueSearchUseRegex
+            ? "Regex match (case-insensitive). Click to switch."
+            : "Substring match (case-insensitive). Click to switch.";
+          if (searchInput) {
+            searchInput.placeholder = this.valueSearchUseRegex ? "Regex…" : "Search values…";
+          }
+          this.scheduleValueSearch(_stats);
+        });
+      }
+
+      // Checkbox toggles update the running exclusion set. Delegated
+      // because the value list re-renders on search and direct per-row
+      // handlers would dangle. Reading dataset.value on the parent
+      // label keeps the wiring simple even when the user clicks the
+      // text instead of the box.
+      const filterContainer = this.container.querySelector<HTMLElement>(".column-stats__filter");
+      filterContainer?.addEventListener("change", (e) => {
+        const target = e.target as HTMLInputElement;
+        if (!target.matches(".column-stats__filter-item input[type='checkbox']")) return;
+        const value = target.value;
+        if (target.checked) this.excludedValues.delete(value);
+        else this.excludedValues.add(value);
+      });
+
+      // If the user came back to this panel mid-search (e.g. apply
+      // refetched stats and re-rendered), kick off the search again so
+      // the list reflects the current query.
+      if (this.valueSearchQuery) {
+        this.scheduleValueSearch(_stats, /*immediate*/ true);
+      }
+    }
+  }
+
+  /**
+   * Run a server-side `searchColumnValues` for the current query, then
+   * swap the categorical filter's list contents with the matches. A
+   * monotonic sequence number ensures stale responses (typed past) are
+   * dropped on arrival. Invalid regex (in regex mode) is caught in the
+   * provider and surfaced here as an empty result — we silently fall
+   * back to substring so the field stays usable while the user types.
+   */
+  private scheduleValueSearch(unfilteredStats: ColumnStats, immediate: boolean = false): void {
+    if (this.valueSearchDebounceTimer !== null) {
+      window.clearTimeout(this.valueSearchDebounceTimer);
+      this.valueSearchDebounceTimer = null;
+    }
+
+    const query = this.valueSearchQuery;
+    if (!query) {
+      // Clearing the query restores the static top-N from
+      // `valueCounts` — drop in-flight searches and re-render.
+      this.valueSearchSeq++;
+      this.valueSearchResults = null;
+      this.repaintCategoricalList(unfilteredStats);
+      return;
+    }
+
+    const run = async () => {
+      const seq = ++this.valueSearchSeq;
+      const provider = this.spreadsheetVisualizer?.getDataProvider();
+      const column = this.currentColumn;
+      if (!provider || !column) return;
+      let mode: "substring" | "regex" = this.valueSearchUseRegex ? "regex" : "substring";
+      // Pre-validate regex client-side so we don't fire a query that
+      // DuckDB will reject — fall back to substring while the user is
+      // mid-typing a regex (e.g. just `[` without a close).
+      if (mode === "regex") {
+        try { new RegExp(query, "i"); }
+        catch { mode = "substring"; }
+      }
+      try {
+        const results = await provider.searchColumnValues(column, {
+          query,
+          mode,
+          limit: ColumnStatsVisualizer.VALUE_SEARCH_LIMIT,
+        });
+        if (seq !== this.valueSearchSeq) return;
+        this.valueSearchResults = results;
+      } catch (err) {
+        if (seq !== this.valueSearchSeq) return;
+        console.error("searchColumnValues failed:", err);
+        this.valueSearchResults = [];
+      }
+      this.repaintCategoricalList(unfilteredStats);
+    };
+
+    if (immediate) {
+      run();
+    } else {
+      // 180ms — short enough to feel live, long enough to coalesce
+      // bursts of keystrokes into one DB query.
+      this.valueSearchDebounceTimer = window.setTimeout(run, 180);
+    }
+  }
+
+  /**
+   * Re-render only the categorical filter's value list (and its
+   * summary line) without touching the rest of the panel. Preserves
+   * focus on the search input across keystrokes.
+   */
+  private repaintCategoricalList(unfilteredStats: ColumnStats): void {
+    const list = this.container.querySelector<HTMLElement>(".column-stats__filter-list");
+    if (!list) return;
+
+    let items: Array<{ value: string; count: number }>;
+    if (this.valueSearchResults !== null) {
+      items = this.valueSearchResults;
+    } else {
+      items = Array.from(unfilteredStats.valueCounts.entries()).map(([value, count]) => ({
+        value,
+        count,
+      }));
+    }
+    list.innerHTML = this.buildCategoricalListItems(items);
+
+    const summary = this.container.querySelector<HTMLElement>(".column-stats__filter-search-summary");
+    if (!summary) return;
+    if (this.valueSearchResults !== null) {
+      const n = items.length;
+      const capped = n >= ColumnStatsVisualizer.VALUE_SEARCH_LIMIT;
+      summary.textContent = capped
+        ? `${n} matches (capped at ${ColumnStatsVisualizer.VALUE_SEARCH_LIMIT}; narrow the query for more)`
+        : `${n} match${n === 1 ? "" : "es"}`;
+    } else {
+      summary.textContent = "";
+    }
   }
 
   private formatNum(n: number): string {
@@ -548,6 +848,31 @@ export class ColumnStatsVisualizer {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Best-effort copy + brief visual flash on the originating element.
+   * The flash is the user-visible confirmation that the click did
+   * something (no toast, no popover — the panel is already
+   * information-dense and a transient inline state is cheaper to read).
+   * The clipboard write is wrapped because some browsers / contexts
+   * (insecure HTTP, permission denied) reject `navigator.clipboard`.
+   */
+  private copyToClipboard(text: string, sourceElement: HTMLElement): void {
+    if (!text) return;
+    const writer = navigator.clipboard?.writeText?.(text);
+    if (writer) {
+      writer.then(() => this.flashCopied(sourceElement)).catch((err) => {
+        console.warn("ColumnStatsVisualizer: clipboard write failed", err);
+      });
+    } else {
+      console.warn("ColumnStatsVisualizer: clipboard API unavailable");
+    }
+  }
+
+  private flashCopied(element: HTMLElement): void {
+    element.classList.add("column-stats__copied");
+    window.setTimeout(() => element.classList.remove("column-stats__copied"), 700);
   }
 }
 

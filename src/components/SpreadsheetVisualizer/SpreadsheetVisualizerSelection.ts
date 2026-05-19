@@ -1,4 +1,4 @@
-import { CellInspectInfo, ICellSelection, SpreadsheetOptions } from "./types";
+import { CellInspectInfo, HideColumnRequest, ICellSelection, ReorderColumnRequest, SpreadsheetOptions } from "./types";
 import { DataProvider, Column } from "../../data/types";
 import { ColumnStatsVisualizer } from "../ColumnStatsVisualizer/ColumnStatsVisualizer";
 import { formatForExport, getFormattedValueAndStyle } from "./utils/formatting";
@@ -50,9 +50,34 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
   }
 
   protected async updateLayout() {
-    // Always use container dimensions for responsive behavior, but respect min/max constraints
-    let width = Math.floor(minMax(this.container.clientWidth, this.options.minWidth, this.options.maxWidth));
-    let height = Math.floor(minMax(this.container.clientHeight, this.options.minHeight, this.options.maxHeight));
+    // Use the scroll container's content-box dimensions, not the outer
+    // container's — `scrollContainer.clientWidth/Height` is the visible
+    // area *excluding* the native scrollbars. The outer container's
+    // `clientWidth/Height` includes whatever space the scrollbars
+    // currently occupy, which used to leave the bottom row half-covered
+    // by the horizontal scrollbar (and the rightmost column shifted
+    // under the vertical scrollbar).
+    const rawClientWidth = this.scrollContainer.clientWidth;
+    const rawClientHeight = this.scrollContainer.clientHeight;
+    this.lastObservedClientWidth = rawClientWidth;
+    this.lastObservedClientHeight = rawClientHeight;
+    let width = Math.floor(minMax(rawClientWidth, this.options.minWidth, this.options.maxWidth));
+    let height = Math.floor(minMax(rawClientHeight, this.options.minHeight, this.options.maxHeight));
+
+    // Snap the height down to `header + N × rowHeight` so the visible
+    // canvas always holds an integer number of full rows. Without this,
+    // a pixel mismatch (e.g. viewport 250 px, row 24 px → 9 full rows
+    // fit but one extra row is drawn half-clipped at the bottom) leaves
+    // the bottom row half-visible. The leftover pixels — at most
+    // `cellHeight - 1` — sit below the canvas, inside the scrollContainer
+    // and above any horizontal scrollbar; they show through to
+    // `#spreadsheet-container`'s background, which matches the cell
+    // background in both themes, so the gap is visually seamless.
+    const ch = this.options.cellHeight;
+    if (height > ch) {
+      const dataRowsThatFit = Math.floor((height - ch) / ch);
+      height = ch + dataRowsThatFit * ch;
+    }
 
     // Fallback to options dimensions if container has no size (e.g., during initialization)
     if (width <= 0 && this.options.width !== undefined) {
@@ -818,6 +843,42 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
   protected notifyCellInspectRequested(info: CellInspectInfo): void {
     this.onCellInspectRequested.forEach((cb) => cb(info));
+  }
+
+  // Hide-column-requested fires from the right-click context menu's
+  // "Hide column" entry. The data layer (setHiddenColumns + persist)
+  // is owned by BedevereApp, so the visualizer just emits intent.
+  private onHideColumnRequested: ((req: HideColumnRequest) => void)[] = [];
+
+  public addOnHideColumnRequestedSubscription(callback: (req: HideColumnRequest) => void): void {
+    this.onHideColumnRequested.push(callback);
+  }
+
+  public removeOnHideColumnRequestedSubscription(callback: (req: HideColumnRequest) => void): void {
+    this.onHideColumnRequested = this.onHideColumnRequested.filter((cb) => cb !== callback);
+  }
+
+  protected notifyHideColumnRequested(req: HideColumnRequest): void {
+    this.onHideColumnRequested.forEach((cb) => cb(req));
+  }
+
+  // Reorder-column-requested fires from the drag-to-reorder
+  // interaction on the column header. Like hide, the data layer
+  // (moveColumn + persist) is owned by BedevereApp; the visualizer
+  // emits the drop intent and waits for the filter-manager change
+  // event to redraw with the new projection.
+  private onReorderColumnRequested: ((req: ReorderColumnRequest) => void)[] = [];
+
+  public addOnReorderColumnRequestedSubscription(callback: (req: ReorderColumnRequest) => void): void {
+    this.onReorderColumnRequested.push(callback);
+  }
+
+  public removeOnReorderColumnRequestedSubscription(callback: (req: ReorderColumnRequest) => void): void {
+    this.onReorderColumnRequested = this.onReorderColumnRequested.filter((cb) => cb !== callback);
+  }
+
+  protected notifyReorderColumnRequested(req: ReorderColumnRequest): void {
+    this.onReorderColumnRequested.forEach((cb) => cb(req));
   }
 
   public getSelectedColumns(): Column[] {

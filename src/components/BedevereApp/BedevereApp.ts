@@ -25,8 +25,13 @@ import { FileImportService } from "@/data/FileImportService";
 import { DuckDBExtensionLoader } from "@/data/DuckDBExtensionLoader";
 import { ExcelFormatHandler } from "@/data/formats/ExcelFormatHandler";
 import { StatFormatHandler } from "@/data/formats/StatFormatHandler";
+import { HtmlFormatHandler } from "@/data/formats/HtmlFormatHandler";
+import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
+import { fetchAsFile } from "@/data/UrlImport";
 import { AliasManager } from "@/data/AliasManager";
 import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
+import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
+import { HideColumnsDialog } from "../HideColumnsDialog";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -177,6 +182,8 @@ export class BedevereApp implements EventHandler {
     // Register extension-based handlers (they self-check if extension loaded)
     this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
     this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
+    // HTML import is pure DOM parsing in the main thread — no extension required.
+    this.fileImportService.register(new HtmlFormatHandler());
 
     // Restore app settings
     const settings = this.persistenceService.loadAppSettings();
@@ -405,6 +412,63 @@ export class BedevereApp implements EventHandler {
     // click-to-expand for long content.
     this.tabManager.setOnShellMessageCallback((text, details) => {
       this.showMessage(text, "info", { details, duration: 0 });
+    });
+
+    // Restore persisted per-dataset hide state + column order before
+    // the dataset's visualizer is constructed. Setting on the filter
+    // manager here fires `onChange`, but `handleFilterChange` no-ops
+    // because the tab isn't registered yet — `addDataset` then sees
+    // `hasAnyState` and constructs the filtered provider directly, so
+    // the first render is already projected.
+    this.tabManager.setOnBeforeAddDatasetCallback((metadata) => {
+      const settings = this.persistenceService.loadAppSettings();
+      const live = new Set(metadata.columns.map((c) => c.name));
+      const fm = this.tabManager.getFilterManager();
+
+      const persistedHidden = settings.hiddenColumns?.[metadata.name];
+      if (persistedHidden && persistedHidden.length > 0) {
+        // Filter to columns that still exist in the current metadata —
+        // stale entries (renamed / dropped columns) are harmless to drop.
+        const surviving = persistedHidden.filter((c) => live.has(c));
+        if (surviving.length > 0) fm.setHiddenColumns(metadata.name, surviving);
+      }
+
+      const persistedOrder = settings.columnOrder?.[metadata.name];
+      if (persistedOrder && persistedOrder.length > 0) {
+        const surviving = persistedOrder.filter((c) => live.has(c));
+        if (surviving.length > 0) fm.setColumnOrder(metadata.name, surviving);
+      }
+    });
+
+    // Context menu's "Hide column" entry routes here so the column-
+    // dialog path and the menu path share the same setHiddenColumns +
+    // persist sequence. The menu emits an "add this one" intent; we
+    // union with the current hidden set before applying.
+    this.tabManager.setOnHideColumnCallback((req) => {
+      const fm = this.tabManager.getFilterManager();
+      const next = new Set(fm.getHiddenColumns(req.datasetName));
+      next.add(req.columnName);
+      fm.setHiddenColumns(req.datasetName, next);
+      this.persistHiddenColumns(req.datasetName, next);
+    });
+
+    // Drag-to-reorder column header emits a drop intent here.
+    // Resolution: look up the dataset's current visible column order
+    // (which may already be customised), apply the move via the
+    // filter manager, then persist the resulting order.
+    this.tabManager.setOnReorderColumnCallback((req) => {
+      const fm = this.tabManager.getFilterManager();
+      const tab = this.tabManager.getDatasetTabByName(req.datasetName);
+      if (!tab) return;
+      const sourceNames = tab.metadata.columns.map((c) => c.name);
+      fm.moveColumn(
+        req.datasetName,
+        sourceNames,
+        req.sourceColumnName,
+        req.targetColumnName,
+        req.position,
+      );
+      this.persistColumnOrder(req.datasetName, fm.getColumnOrder(req.datasetName));
     });
 
     // Dataset panel
@@ -813,6 +877,44 @@ export class BedevereApp implements EventHandler {
     });
 
     commandRegistry.register({
+      id: "shell.hide",
+      shellName: "hide",
+      title: "Hide / Show Columns",
+      description:
+        "Open a dialog to toggle column visibility on the active dataset. Filter and sort still apply to hidden columns; the state persists per dataset name across reloads.",
+      category: "Dataset",
+      when: () => this.tabManager.getActiveDatasetTab() !== null,
+      execute: async () => {
+        const tab = this.tabManager.getActiveDatasetTab();
+        if (!tab) throw new Error(".hide needs an active dataset tab");
+        if (!this.duckDBService) throw new Error("Database not initialized");
+
+        // Source-table resolution matches handleFilterChange: a filtered
+        // provider knows its source; an unfiltered one is its own source.
+        const sourceTableName =
+          tab.dataProvider instanceof FilteredDuckDBDataProvider
+            ? tab.dataProvider.getSourceTableName()
+            : tab.metadata.name;
+
+        const tableInfo = await this.duckDBService.getTableInfo(sourceTableName);
+        const allCols = tableInfo.map((c: any) => c.column_name as string);
+
+        const filterManager = this.tabManager.getFilterManager();
+        const currentHidden = new Set(filterManager.getHiddenColumns(tab.metadata.name));
+
+        HideColumnsDialog.show({
+          title: `Hide / show columns — ${tab.metadata.name}`,
+          allColumns: allCols,
+          hidden: currentHidden,
+          onApply: (next) => {
+            filterManager.setHiddenColumns(tab.metadata.name, next);
+            this.persistHiddenColumns(tab.metadata.name, next);
+          },
+        });
+      },
+    });
+
+    commandRegistry.register({
       id: "shell.import",
       shellName: "import",
       title: "Import File / Folder",
@@ -834,6 +936,49 @@ export class BedevereApp implements EventHandler {
           }
         });
         picker.click();
+      },
+    });
+
+    commandRegistry.register({
+      id: "shell.paste",
+      shellName: "paste",
+      title: "Paste HTML table",
+      description: "Open a dialog to paste an HTML table (e.g. copied from a web page) and import it as a dataset.",
+      category: "Dataset",
+      execute: async () => {
+        // The dialog handles parsing + multi-table selection itself; we
+        // just need to deliver the chosen table to FileImportService as
+        // a synthetic .csv File so the standard pipeline takes it from
+        // there.
+        HtmlPasteDialog.show({
+          defaultName: "pasted_table",
+          onImport: async (csvText, name) => {
+            const file = new File([csvText], `${name}.csv`, { type: "text/csv" });
+            await this.leftPanel?.addFilesFromDrop([file], true);
+          },
+        });
+      },
+    });
+
+    commandRegistry.register({
+      id: "shell.fetch",
+      shellName: "fetch",
+      title: "Fetch and import a remote file",
+      description: "Pass a URL to a CSV / JSON / Parquet / HTML resource (CORS permitting).",
+      category: "Dataset",
+      parameters: [
+        {
+          name: "url",
+          type: "string",
+          required: true,
+          description: "URL to fetch (http:// or https://)",
+        },
+      ],
+      execute: async (params) => {
+        const url = (params?.url as string | undefined)?.trim();
+        if (!url) throw new Error(".fetch needs a URL.");
+        const file = await fetchAsFile(url);
+        await this.leftPanel?.addFilesFromDrop([file], true);
       },
     });
 
@@ -1270,6 +1415,39 @@ export class BedevereApp implements EventHandler {
     this.tabManager.setOnCellInspectCallback((info) => {
       this.statusBar.openCellPopover(info);
     });
+  }
+
+  /**
+   * Write the per-dataset hidden-column set back to AppSettings. Empty
+   * sets prune the key so we don't accumulate dead entries for datasets
+   * the user has fully un-hidden.
+   */
+  private persistHiddenColumns(datasetName: string, hidden: Set<string>): void {
+    const settings = this.persistenceService.loadAppSettings();
+    const next = { ...(settings.hiddenColumns ?? {}) };
+    if (hidden.size === 0) {
+      delete next[datasetName];
+    } else {
+      next[datasetName] = Array.from(hidden);
+    }
+    settings.hiddenColumns = next;
+    this.persistenceService.saveAppSettings(settings);
+  }
+
+  /**
+   * Write the per-dataset column-order array back to AppSettings.
+   * Empty arrays prune the key.
+   */
+  private persistColumnOrder(datasetName: string, order: string[]): void {
+    const settings = this.persistenceService.loadAppSettings();
+    const next = { ...(settings.columnOrder ?? {}) };
+    if (order.length === 0) {
+      delete next[datasetName];
+    } else {
+      next[datasetName] = order;
+    }
+    settings.columnOrder = next;
+    this.persistenceService.saveAppSettings(settings);
   }
 
   /**

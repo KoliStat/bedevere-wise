@@ -3,15 +3,27 @@ import { EditorState, Prec } from "@codemirror/state";
 import { sql } from "@codemirror/lang-sql";
 import { autocompletion } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, insertTab, indentLess } from "@codemirror/commands";
+import { searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { FocusableComponent } from "../BedevereApp/types";
 import { DuckDBService } from "../../data/DuckDBService";
 import { keymapService } from "../../data/KeymapService";
 import { commandRegistry } from "../../data/CommandRegistry";
+import { persistenceService } from "../../data/PersistenceService";
 import { SqlAutoComplete } from "./SqlAutoComplete";
 import { BedevereSqlDialect } from "./sqlDialect";
 import { listenForThemeChanges } from "../SpreadsheetVisualizer/utils/theme";
+import { SaveQueryDialog } from "../SaveQueryDialog/SaveQueryDialog";
+
+/**
+ * Idle delay between the user's last keystroke and the autosave write.
+ * Short enough that a browser crash / refresh loses essentially nothing
+ * (sub-second of pure typing), long enough that we're not pummelling
+ * localStorage on every character. localStorage writes are sync but
+ * cheap at this size — query texts are typically a few KB.
+ */
+const AUTOSAVE_DEBOUNCE_MS = 750;
 
 // Syntax highlighting that matches the tokyonight palette via CSS variables,
 // so the editor follows light/dark theme switches without a rebuild. Token
@@ -42,6 +54,11 @@ export class SqlEditor implements FocusableComponent {
   private _isFocused: boolean = false;
   private _isExpanded: boolean = false;
   private themeCleanup: (() => void) | null = null;
+  private autoSaveTimer: number | null = null;
+  // The last text we wrote to the autosave slot. Lets us skip a flush
+  // when nothing actually changed (e.g. selection-only updates from
+  // CodeMirror still fire updateListener).
+  private lastAutoSavedText: string = "";
 
   private onExecuteCallback?: (query: string) => void;
   private onToggleCallback?: (isExpanded: boolean) => void;
@@ -85,6 +102,22 @@ export class SqlEditor implements FocusableComponent {
     // Initialize CodeMirror
     this.initializeEditor();
 
+    // Restore the in-flight draft from the previous session, if any.
+    // Done after initializeEditor so the EditorView exists and silently
+    // so the user sees their text reappear without an "imported X" toast.
+    // Also expand the editor so the restored text is visible immediately
+    // — a draft that lives behind a collapsed panel is functionally
+    // invisible. The expand is deferred so the parent's
+    // `setOnToggleCallback` (TabManager wires it right after construction)
+    // has a chance to land first; otherwise the CommandBar's SQL-toggle
+    // chip wouldn't sync with the editor's actual state.
+    const draft = persistenceService.loadEditorAutoSaveDraft();
+    if (draft) {
+      this.setQuery(draft);
+      this.lastAutoSavedText = draft;
+      setTimeout(() => this.expand(), 0);
+    }
+
     // Refresh schema for autocompletion
     this.autoComplete.refreshSchema();
 
@@ -111,6 +144,33 @@ export class SqlEditor implements FocusableComponent {
       scope: "sqlEditor",
       execute: () => this.collapse(),
     });
+    commandRegistry.register({
+      id: "sqlEditor.saveQuery",
+      title: "Save query as…",
+      description: "Save the editor's current query as a named bookmark",
+      category: "SQL",
+      scope: "sqlEditor",
+      execute: () => this.openSaveDialog(),
+    });
+  }
+
+  /**
+   * Open the "Save query as…" dialog for the editor's current text.
+   * Wired to Ctrl+S via the keymap (`sqlEditor.saveQuery`) and reused
+   * by any caller that wants the same UX (e.g. a future Save button).
+   * No-op if the editor is empty.
+   */
+  private openSaveDialog(): void {
+    const query = this.getQuery().trim();
+    if (!query) return;
+    const existing = persistenceService.loadQueryBookmarks().map((q) => q.name);
+    SaveQueryDialog.show({
+      title: "Save query as…",
+      existingNames: existing,
+      onSave: (name) => {
+        persistenceService.saveQueryBookmark(name, query);
+      },
+    });
   }
 
   // FocusableComponent interface
@@ -129,10 +189,14 @@ export class SqlEditor implements FocusableComponent {
   }
 
   public async handleKeyDown(event: KeyboardEvent): Promise<boolean> {
-    // Mod-Enter (execute) is wired through the CodeMirror keymap so the editor
-    // owns its primary chord and we don't double-fire when the event also
-    // bubbles up to this document-level handler. Only sqlEditor.collapse
-    // (Escape when no autocomplete dropdown is open) needs routing here.
+    // Mod-Enter (execute) and Mod-s (save) are wired through the
+    // CodeMirror keymap directly so the editor owns those chords and
+    // they fire even when the SqlEditor isn't the FocusManager's
+    // tracked focused component (which it never actually is — nothing
+    // calls setFocus("sql-editor")). Escape is routed here as a
+    // belt-and-braces fallback in case the focused-component path ever
+    // gets wired in the future; today it's effectively dead code, but
+    // harmless.
     const action = keymapService.matchEvent(event, "sqlEditor");
     if (action !== "sqlEditor.collapse") return false;
     event.preventDefault();
@@ -214,6 +278,14 @@ export class SqlEditor implements FocusableComponent {
   }
 
   public destroy(): void {
+    // Flush any pending autosave so a teardown mid-typing doesn't lose
+    // the last few characters. Cheap (localStorage write) and matches
+    // the debounce semantics — pending becomes "now".
+    this.flushAutoSave();
+    if (this.autoSaveTimer !== null) {
+      window.clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
     if (this.themeCleanup) {
       this.themeCleanup();
       this.themeCleanup = null;
@@ -221,6 +293,29 @@ export class SqlEditor implements FocusableComponent {
     this.editorView?.destroy();
     this.editorView = null;
     this.container.remove();
+  }
+
+  // ---- Autosave ---------------------------------------------------------
+
+  private scheduleAutoSave(): void {
+    if (this.autoSaveTimer !== null) window.clearTimeout(this.autoSaveTimer);
+    this.autoSaveTimer = window.setTimeout(() => {
+      this.autoSaveTimer = null;
+      this.flushAutoSave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+  }
+
+  private flushAutoSave(): void {
+    const current = this.getQuery();
+    if (current === this.lastAutoSavedText) return;
+    try {
+      persistenceService.saveEditorAutoSaveDraft(current);
+      this.lastAutoSavedText = current;
+    } catch (err) {
+      // Storage quota or private-mode rejection — log and back off so
+      // the next change re-attempts. Persistence is best-effort here.
+      console.warn("SqlEditor: autosave write failed", err);
+    }
   }
 
   private initializeEditor(): void {
@@ -232,13 +327,29 @@ export class SqlEditor implements FocusableComponent {
       autocompletion({
         override: [this.autoComplete.getCompletionSource()],
       }),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
+      // Standard CodeMirror keymaps. `searchKeymap` adds Ctrl+F
+      // (open find), F3 / Shift+F3 (next / previous match), and the
+      // panel close-with-Escape behaviour. See the `Mod-s` block
+      // below for the multi-cursor situation.
+      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       placeholder("Enter SQL query... (Ctrl+Enter to execute)"),
       EditorView.lineWrapping,
-      // Tab needs an explicit binding because defaultKeymap omits it — without
-      // this, Tab falls through to the browser and moves focus out of the
-      // editor. Mod-Enter must beat defaultKeymap's `Mod-Enter -> insertBlankLine`,
-      // hence Prec.high on the whole block.
+      // Listen for any doc change and schedule an autosave flush.
+      // Selection-only updates also fire here; the flush itself
+      // bails on no-op (lastAutoSavedText comparison) so this is
+      // safe.
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) this.scheduleAutoSave();
+      }),
+      // The Prec.high block owns chords that would otherwise lose to
+      // either the browser default (Ctrl+S → "Save Page As") or a
+      // lower-precedence CodeMirror keymap (defaultKeymap's
+      // `Mod-Enter -> insertBlankLine`). Routing through CM's keymap
+      // here matters because the SqlEditor isn't tracked by the
+      // FocusManager — the document-level `handleKeyDown` path is
+      // effectively dead code; CM's own keydown handler runs
+      // synchronously with `preventDefault: true` and stops the
+      // browser shortcut cold.
       Prec.high(
         keymap.of([
           { key: "Tab", run: insertTab, shift: indentLess },
@@ -246,6 +357,20 @@ export class SqlEditor implements FocusableComponent {
             key: "Mod-Enter",
             run: () => {
               this.execute();
+              return true;
+            },
+          },
+          // Ctrl+S → open the "Save query as…" dialog. preventDefault
+          // suppresses the browser's "Save Page As" dialog.
+          // Note: multi-cursor bindings (`Mod-d`, `Alt-ArrowUp/Down`,
+          // `Mod-Alt-ArrowUp/Down`) were tried at both `Prec.high` and
+          // `Prec.highest` during 0.11 and refused to fire — they're
+          // intentionally absent rather than dead-code-pretending-to-work.
+          {
+            key: "Mod-s",
+            preventDefault: true,
+            run: () => {
+              this.openSaveDialog();
               return true;
             },
           },

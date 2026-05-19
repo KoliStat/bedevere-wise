@@ -19,23 +19,68 @@ export class ExcelFormatHandler implements FormatHandler {
     await duckDBService.registerFileBuffer(file.name, buffer);
 
     const sheet = options?.sheetName ? `, sheet = '${options.sheetName.replace(/'/g, "''")}'` : "";
+    const fname = file.name.replace(/'/g, "''");
 
-    // Try read_xlsx first (DuckDB >= 1.2), fall back to st_read
-    const queries = [
-      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${file.name}'${sheet})`,
-      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM st_read('${file.name}'${sheet})`,
+    // Try several read paths, widening tolerance each time. The order
+    // matters: each step preserves more correctness than the next.
+    //
+    //   1. Default read_xlsx — clean files; rich types inferred.
+    //   2. read_xlsx with ignore_errors=true — keep the inferred types
+    //      but turn un-convertible cells (e.g. a stray "]" in a mostly
+    //      numeric column) into NULL rather than aborting the import.
+    //      Best fallback because downstream filters / stats / sliders
+    //      still work normally.
+    //   3. read_xlsx with all_varchar=true — give up on type inference
+    //      entirely; every column comes in as VARCHAR. The user can
+    //      still read the data but loses numeric/temporal column stats
+    //      until they cast.
+    //   4. st_read — the spatial extension's reader, last-ditch for
+    //      older DuckDB builds where read_xlsx isn't registered.
+    const attempts: Array<{ label: string; sql: string }> = [
+      {
+        label: "read_xlsx",
+        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${fname}'${sheet})`,
+      },
+      {
+        label: "read_xlsx ignore_errors",
+        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${fname}', ignore_errors=true${sheet})`,
+      },
+      {
+        label: "read_xlsx all_varchar",
+        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${fname}', all_varchar=true${sheet})`,
+      },
+      {
+        label: "st_read",
+        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM st_read('${fname}'${sheet})`,
+      },
     ];
 
-    for (const query of queries) {
+    const failures: Array<{ label: string; message: string }> = [];
+    for (const attempt of attempts) {
       try {
-        await duckDBService.executeQuery(query);
+        await duckDBService.executeQuery(attempt.sql);
+        if (failures.length > 0) {
+          console.warn(
+            `Excel import for ${file.name} succeeded via ${attempt.label}; earlier attempts failed:`,
+            failures,
+          );
+        }
         return;
-      } catch {
-        // Try next approach
+      } catch (err) {
+        failures.push({
+          label: attempt.label,
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
-    throw new Error("Failed to read Excel file — no compatible read function available");
+    // Surface the underlying DuckDB error messages so the user (and we)
+    // can see *why* every attempt failed. The previous "no compatible
+    // read function available" message was opaque to the point of being
+    // misleading — usually the extension itself loaded fine; the file
+    // just didn't parse.
+    const detail = failures.map((f) => `[${f.label}] ${f.message}`).join("\n");
+    throw new Error(`Failed to import Excel file ${file.name}.\n${detail}`);
   }
 
   async getSheetNames(file: File, duckDBService: DuckDBService): Promise<string[]> {

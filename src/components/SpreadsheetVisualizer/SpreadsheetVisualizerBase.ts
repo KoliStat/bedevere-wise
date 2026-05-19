@@ -100,9 +100,15 @@ export class SpreadsheetVisualizerBase {
 
   // Viewport size in CSS pixels. Distinct from `canvas.width`/`canvas.height`
   // which now hold the dpr-scaled backing-store dimensions. All layout math
-  // (scroll, hit-testing, scrollIntoView) reads these instead.
+  // (scroll, hit-testing, scrollIntoView) reads these instead. `viewportHeight`
+  // is snapped down to `header + N × rowHeight` so the canvas never shows
+  // a partial row at the bottom (see updateLayout); `lastObservedClientHeight`
+  // tracks the unsnapped scrollContainer height so the resize-observer's
+  // "did anything change" check doesn't loop on the snap delta.
   protected viewportWidth = 0;
   protected viewportHeight = 0;
+  protected lastObservedClientWidth = 0;
+  protected lastObservedClientHeight = 0;
   protected dpr = 1;
 
   // Filter/sort state for header indicators
@@ -316,14 +322,28 @@ export class SpreadsheetVisualizerBase {
       this.resizeObserver = new ResizeObserver(() => {
         // Defensive: only react if dimensions actually changed. ResizeObserver
         // fires on layout passes that may produce identical sizes.
+        //
+        // We compare against the scroll container's content-box dims (not
+        // the outer container's), matching what `updateLayout` measures
+        // from. Observing the scrollContainer additionally catches
+        // scrollbar-toggle events — when the spacer grows enough for the
+        // horizontal scrollbar to appear, the scrollContainer's
+        // clientHeight shrinks even though the outer container's stays
+        // put, and we re-layout the canvas to fit the new content box.
+        //
+        // The check tracks the *unsnapped* clientWidth/Height; the
+        // snapped `viewportHeight` differs from clientHeight by up to
+        // `cellHeight - 1`, so comparing to viewportHeight directly
+        // would trigger a perpetual relayout loop after the first snap.
         if (
-          this.container.clientWidth !== this.viewportWidth ||
-          this.container.clientHeight !== this.viewportHeight
+          this.scrollContainer.clientWidth !== this.lastObservedClientWidth ||
+          this.scrollContainer.clientHeight !== this.lastObservedClientHeight
         ) {
           this.requestRelayout();
         }
       });
       this.resizeObserver.observe(this.container);
+      this.resizeObserver.observe(this.scrollContainer);
     }
 
     this.armDprListener();
@@ -636,8 +656,14 @@ export class SpreadsheetVisualizerBase {
     this.totalHeight = (this.totalRows + 1) * this.options.cellHeight;
     this.totalScrollY = Math.max(0, this.totalHeight - this.viewportHeight);
 
-    // Update spacer height for native scrollbar
-    this.scrollSpacer.style.height = `${Math.max(this.totalHeight, this.viewportHeight)}px`;
+    // The native scrollbar's max scrollTop is `spacer.height − clientHeight`,
+    // but `clientHeight` is the *unsnapped* scrollContainer height while
+    // our draw code uses the *snapped* `viewportHeight`. Extending the
+    // spacer by the snap delta keeps the two aligned — without this the
+    // user could never scroll far enough for the last data row to enter
+    // the snapped viewport, and the bottom row would stay hidden.
+    const snapDelta = Math.max(0, this.lastObservedClientHeight - this.viewportHeight);
+    this.scrollSpacer.style.height = `${Math.max(this.totalHeight + snapDelta, this.viewportHeight)}px`;
   }
 
   protected async preloadDataForScroll(scrollY: number): Promise<void> {

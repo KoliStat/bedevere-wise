@@ -209,6 +209,51 @@ export class DuckDBDataProvider implements DataProvider {
     };
   }
 
+  public async searchColumnValues(
+    column: string | Column,
+    options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>> {
+    const columnName = typeof column === "string" ? column : column.name;
+    const col = `"${columnName}"`;
+    // CAST to VARCHAR so this works on enum / numeric / temporal columns
+    // too — the categorical filter is string-typed today but searching
+    // by display string is the sensible behaviour across types.
+    const colExpr = `CAST(${col} AS VARCHAR)`;
+
+    let whereClause: string;
+    if (options.mode === "regex") {
+      // `regexp_full_match` — the whole value must match the pattern.
+      // The categorical filter's regex semantics are anchored because
+      // each row in the value list is a discrete category, not free
+      // text: a query like `week [24]` means "exactly Week 2 or Week 4",
+      // not "any value containing those substrings". Users who want
+      // substring matching can write `.*foo.*` or use the substring
+      // mode toggle.
+      const safe = options.query.replace(/'/g, "''");
+      whereClause = `regexp_full_match(${colExpr}, '${safe}', 'i')`;
+    } else {
+      // ILIKE is DuckDB's case-insensitive LIKE. Escape `%` and `_`
+      // so users typing them search for literal characters; use `\`
+      // as the escape (DuckDB default).
+      const safe = options.query.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[%_]/g, "\\$&");
+      whereClause = `${colExpr} ILIKE '%${safe}%' ESCAPE '\\'`;
+    }
+
+    const query = `
+      SELECT ${col} as val, COUNT(*) as cnt
+      FROM ${quoteIdent(this.name)}
+      WHERE ${col} IS NOT NULL AND ${whereClause}
+      GROUP BY ${col}
+      ORDER BY cnt DESC
+      LIMIT ${options.limit}
+    `;
+    const rows = await this.duckDBService.executeQuery(query);
+    return rows.map((row: any) => ({
+      value: String(row.val),
+      count: Number(row.cnt),
+    }));
+  }
+
   /**
    * Boolean stats: just TRUE/FALSE counts (and nulls).
    */
@@ -289,6 +334,16 @@ export class DuckDBDataProvider implements DataProvider {
     const histogram = new Map<string, number>();
     const histogramEdges: number[] = [];
 
+    // "Discrete-category" integer path: one bin per distinct value.
+    // Only when BOTH the number of distinct values AND the integer
+    // range are small (a 1–5 rating, day-of-week 0–6, etc.) — Eurovision
+    // Total-score columns like [11, 534] satisfy the first condition but
+    // not the second, so they fall through to continuous binning and
+    // render as a real distribution instead of N bars of height 1.
+    const integerRange = isIntegerType(dataType) ? Math.floor(max - min) + 1 : Infinity;
+    const isDiscreteIntegerCategory =
+      isIntegerType(dataType) && distinctCount > 0 && distinctCount <= 20 && integerRange <= 50;
+
     if (min === max || nonNullCount === 0) {
       // Degenerate case — single-value histogram
       if (nonNullCount > 0) {
@@ -296,8 +351,9 @@ export class DuckDBDataProvider implements DataProvider {
         histogram.set(label, nonNullCount);
         histogramEdges.push(min, max);
       }
-    } else if (isIntegerType(dataType) && distinctCount > 0 && distinctCount <= 50) {
-      // Small-cardinality integer column: one bin per distinct value
+    } else if (isDiscreteIntegerCategory) {
+      // Small-cardinality, small-range integer column: one bin per
+      // distinct value (rating scales, day-of-week, etc.).
       const query = `
         SELECT "${columnName}" as val, COUNT(*) as cnt
         FROM ${quoteIdent(this.name)}

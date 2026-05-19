@@ -1,0 +1,184 @@
+// Modal dialog for Phase C item 5 (hide / show columns). Anchored to
+// the viewport via the same backdrop pattern as help-panel-overlay so
+// it floats above the rest of the app chrome without competing with
+// the spreadsheet's focus styling.
+
+.hide-columns-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.hide-columns {
+  background: var(--bg-float);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-top: 3px solid var(--yellow);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  width: min(420px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--font-sans);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  &__title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    font-family: var(--font-mono);
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 2px 8px;
+    line-height: 1;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--fg);
+    }
+  }
+
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  &__filter {
+    flex: 1;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+  }
+
+  &__bulk {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--bg-highlight);
+      border-color: var(--border-strong);
+    }
+  }
+
+  &__list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  &__empty {
+    padding: 16px;
+    color: var(--fg-muted);
+    font-size: 13px;
+    text-align: center;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 16px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 13px;
+
+    &:hover {
+      background: var(--bg-highlight);
+    }
+  }
+
+  &__checkbox {
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--blue);
+  }
+
+  &__name {
+    color: var(--fg);
+    user-select: none;
+  }
+
+  &__footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  &__summary {
+    flex: 1;
+    color: var(--fg-muted);
+    font-size: 12px;
+
+    &--warn {
+      color: var(--red);
+    }
+  }
+
+  &__btn {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--bg-highlight);
+      border-color: var(--border-strong);
+    }
+
+    &--primary {
+      background: var(--blue);
+      color: var(--bg);
+      border-color: var(--blue);
+
+      &:hover {
+        // Slight darkening on hover; reuse fg-dark which is the muted
+        // text color and reads as a deeper blue against the bg swap.
+        background: var(--fg);
+        border-color: var(--fg);
+      }
+    }
+  }
+}

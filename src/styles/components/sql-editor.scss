@@ -104,6 +104,84 @@
   }
 }
 
+// CodeMirror find/replace panel — opened by Ctrl+F. Default CM styling
+// clashes with the Tokyonight palette (white inputs, gray buttons,
+// black text). Repaint inputs, buttons, and labels using the same
+// tokens as the rest of the chrome so the panel looks at home in
+// either light or dark mode.
+.cm-panel.cm-search {
+  background: var(--bg-dark);
+  color: var(--fg);
+  border-top: 1px solid var(--border);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+
+  // The two search inputs (search-for, replace-with) and the count
+  // chip share `.cm-textfield`. Override the white-with-gray-border
+  // default.
+  input.cm-textfield {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    padding: 3px 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    &::placeholder { color: var(--fg-muted); }
+  }
+
+  // Buttons: next, previous, all, replace, replace-all, close (×).
+  button {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    padding: 3px 8px;
+    margin: 0 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--bg-highlight);
+      border-color: var(--border-strong);
+    }
+
+    &[name="close"] {
+      background: transparent;
+      border-color: transparent;
+      color: var(--fg-muted);
+      font-size: 14px;
+      padding: 0 6px;
+
+      &:hover { color: var(--red); }
+    }
+  }
+
+  // The label-style checkboxes (case-sensitive, regexp, whole word,
+  // by-word) and their text live inside `<label>` elements.
+  label {
+    color: var(--fg-muted);
+    font-size: 11px;
+    margin-right: 6px;
+    cursor: pointer;
+    user-select: none;
+
+    input[type="checkbox"] {
+      accent-color: var(--blue);
+      margin: 0 4px 0 0;
+      cursor: pointer;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sql-editor { transition: none; }
 }

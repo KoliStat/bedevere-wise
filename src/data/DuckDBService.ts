@@ -2,13 +2,6 @@ import * as duckdb from "@duckdb/duckdb-wasm";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
 
-export interface ImportOptions {
-  fileType: "csv" | "json" | "parquet";
-  hasHeader?: boolean;
-  delimiter?: string;
-  schema?: string;
-}
-
 /**
  * Best-effort lift of a DECIMAL scale from an Apache Arrow schema field's
  * type. Different builds of duckdb-wasm / apache-arrow expose the scale
@@ -114,58 +107,6 @@ export class DuckDBService {
         }
       }
       return { rows: table.toArray(), decimalScales };
-    } finally {
-      await connection.close();
-    }
-  }
-
-  public async importFile(file: File, tableName: string, importOptions: ImportOptions): Promise<DuckDBDataProvider> {
-    const text = await file.text();
-
-    switch (importOptions.fileType) {
-      case "csv":
-        await this.loadCSVFromText(text, file.name, tableName, importOptions.hasHeader, importOptions.delimiter);
-        break;
-      // case "json":
-      //   await this.loadJSONFromText(text, file.name, tableName, importOptions.schema);
-      //   break;
-
-      default:
-        throw new Error(`Unsupported file type: ${importOptions.fileType}`);
-    }
-
-    return new DuckDBDataProvider(this, tableName, file.name);
-  }
-
-  public getSupportedFileTypes(): string[] {
-    return ["text/csv", "text/tab-separated-values", "text/plain", "application/csv", ".csv", ".tsv", ".txt"];
-  }
-
-  public isSupportedFileType(file: File): boolean {
-    const supportedTypes = this.getSupportedFileTypes();
-    const fileType = file.type.toLowerCase();
-    const fileName = file.name.toLowerCase();
-
-    return supportedTypes.some((type) => fileType.includes(type.replace(".", "")) || fileName.endsWith(type));
-  }
-
-  private async loadCSVFromText(
-    csvContent: string,
-    fileName: string,
-    tableName: string,
-    hasHeader: boolean = true,
-    delimiter: string = ","
-  ): Promise<void> {
-    const connection = await this.getConnection();
-    try {
-      await this.db!.registerFileText(`${fileName}`, csvContent);
-      await connection.insertCSVFromPath(`${fileName}`, {
-        schema: "main",
-        name: tableName,
-        detect: true,
-        header: hasHeader,
-        delimiter: delimiter,
-      });
     } finally {
       await connection.close();
     }

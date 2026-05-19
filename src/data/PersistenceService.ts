@@ -36,6 +36,32 @@ export interface AppSettings {
    * handles.
    */
   recentFolders?: RecentFolderEntry[];
+  /**
+   * Per-dataset list of column names hidden from the spreadsheet view.
+   * Filtering / sorting still operates on the underlying column even
+   * when hidden (the SQL clause references it by name regardless of
+   * whether the projection includes it); unhiding restores the column
+   * with whatever filter / sort state was active.
+   */
+  hiddenColumns?: Record<string, string[]>;
+  /**
+   * Per-dataset column display order. When set, the spreadsheet
+   * projects columns in this order instead of the source order.
+   * Names absent from the array (e.g. a column added to the source
+   * after the source was saved) are appended at the end in their
+   * source order; names present but missing from the source are
+   * skipped on apply.
+   */
+  columnOrder?: Record<string, string[]>;
+  /**
+   * Working-copy of the SQL editor's current text, persisted on a
+   * short debounce while the user types. Restored into the editor
+   * on app load so a refresh / crash doesn't lose in-progress
+   * queries. This is distinct from the named-bookmark store
+   * (`saveQueryBookmark`) — autosave overwrites itself, named
+   * saves don't.
+   */
+  editorAutoSaveDraft?: string;
 }
 
 export interface RecentFolderEntry {
@@ -101,6 +127,27 @@ export class PersistenceService {
     } catch {
       return {};
     }
+  }
+
+  // --- Editor autosave draft -------------------------------------------
+
+  /**
+   * Persist the editor's current text as an autosave draft. Stored
+   * inside AppSettings so a single localStorage write covers it and
+   * any other settings the caller might have already loaded.
+   *
+   * Empty strings are saved as empty (not deleted) so the editor
+   * deliberately cleared by the user stays cleared after a reload,
+   * rather than re-resurrecting whatever draft was there before.
+   */
+  public saveEditorAutoSaveDraft(text: string): void {
+    const settings = this.loadAppSettings();
+    settings.editorAutoSaveDraft = text;
+    this.saveAppSettings(settings);
+  }
+
+  public loadEditorAutoSaveDraft(): string {
+    return this.loadAppSettings().editorAutoSaveDraft ?? "";
   }
 
   // --- Table Snapshots (IndexedDB) ---

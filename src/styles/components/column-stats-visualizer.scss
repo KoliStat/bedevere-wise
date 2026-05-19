@@ -23,7 +23,17 @@
       font-weight: 600;
       word-break: break-word;
       font-family: var(--font-mono);
+      cursor: pointer;
+
+      &:hover { color: var(--cyan); }
     }
+  }
+
+  // Click-to-copy flash: brief background-tint pulse on the clicked
+  // element so the user sees the click did something. Applied via JS
+  // to the header h3 or a categorical-histogram label.
+  &__copied {
+    animation: column-stats-copied-flash 0.6s ease-out;
   }
 
   &__header-left {
@@ -161,12 +171,81 @@
     }
   }
 
+  &__filter-search {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0.3rem;
+  }
+
+  &__filter-search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    &::placeholder { color: var(--fg-muted); }
+  }
+
+  &__filter-regex-toggle {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    background: transparent;
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--fg);
+    }
+
+    &--active {
+      background: var(--blue);
+      color: var(--bg-dark);
+      border-color: var(--blue);
+    }
+  }
+
+  &__filter-search-summary {
+    min-height: 12px;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+
   &__filter-list {
     max-height: 150px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 1px;
+  }
+
+  &__filter-empty {
+    padding: 6px 4px;
+    color: var(--fg-muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+
+  &__filter-count {
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    margin-left: auto;
   }
 
   &__filter-item {
@@ -275,23 +354,30 @@
     font-style: italic;
   }
 
-  // Categorical horizontal bars
+  // Categorical horizontal bars. CSS Grid (not flex) so the label
+  // column sizes to the widest row's content — every bar then starts
+  // and ends at the same x-coordinate, like a proper bar chart. The
+  // first column uses `minmax(0, max-content)` so labels grow to fit
+  // text on wide panels but can shrink (with ellipsis) when the
+  // panel is narrow. The bar column takes remaining space.
   &__chart {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+    display: grid;
+    grid-template-columns: minmax(0, max-content) minmax(40px, 1fr) auto;
+    column-gap: 6px;
+    row-gap: 3px;
+    align-items: center;
   }
 
+  // `display: contents` makes each row's children participate
+  // directly in the parent grid, so the three columns line up across
+  // every row without giving up the per-row wrapper element (kept
+  // for the DOM hooks the visualizer attaches to).
   &__row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 18px;
+    display: contents;
   }
 
   &__label {
-    width: 70px;
-    flex-shrink: 0;
+    min-width: 0;
     font-size: 0.7rem;
     color: var(--fg-muted);
     text-align: right;
@@ -299,10 +385,17 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
+
+    // Click-to-copy affordance for the categorical-histogram rows.
+    // The numerical / temporal chart uses `histogram__numerical-bar`,
+    // not `histogram__label`, so these rules only affect categorical
+    // labels — exactly where the JS click handler is wired.
+    cursor: pointer;
+
+    &:hover { color: var(--fg); }
   }
 
   &__bar-track {
-    flex: 1;
     height: 14px;
     background: var(--bg);
     border-radius: 0;
@@ -333,8 +426,11 @@
     font-size: 0.65rem;
   }
 
-  // Numerical vertical histogram
+  // Numerical vertical histogram. Override the categorical chart's
+  // grid layout — numerical buckets are a flat sequence of bars
+  // (one per bucket) and need a flex row, not a 3-column grid.
   &__chart--numerical {
+    display: flex;
     flex-direction: row;
     align-items: flex-end;
     gap: 1px;
@@ -380,4 +476,13 @@
   &.visible {
     display: block;
   }
+}
+
+// Click-to-copy flash applied by `column-stats__copied` (set by JS for
+// ~0.6s after a successful clipboard write). Kept at the top level so
+// the same animation works on both the header text and the histogram
+// row labels.
+@keyframes column-stats-copied-flash {
+  0%   { background-color: var(--cyan); color: var(--bg-dark); }
+  100% { background-color: transparent; }
 }

@@ -14,10 +14,23 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   private filterManager: ColumnFilterManager;
   private sourceTableName: string;
   private parsedColumnTypes: Array<TypeNode | undefined> | null = null;
+  // Cached source-table schema. `getTableInfo` runs a real DuckDB
+  // `DESCRIBE` round-trip; the spreadsheet calls `fetchData` once per
+  // viewport chunk, so leaving this uncached was a measurable scroll
+  // regression on wide tables (we'd hit DESCRIBE twice per fetch).
+  // The schema is stable for the provider's lifetime so a single cache
+  // is sufficient.
+  private sourceColumnsCache: Array<any> | null = null;
+
+  private async ensureSourceColumns(): Promise<Array<any>> {
+    if (this.sourceColumnsCache) return this.sourceColumnsCache;
+    this.sourceColumnsCache = await this.duckDBService.getTableInfo(this.sourceTableName);
+    return this.sourceColumnsCache;
+  }
 
   private async ensureColumnTypes(): Promise<Array<TypeNode | undefined>> {
     if (this.parsedColumnTypes) return this.parsedColumnTypes;
-    const info = await this.duckDBService.getTableInfo(this.sourceTableName);
+    const info = await this.ensureSourceColumns();
     this.parsedColumnTypes = info.map((c: any) => parseDuckDBType(c.column_type));
     return this.parsedColumnTypes;
   }
@@ -48,6 +61,33 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     this.label = label;
   }
 
+  /**
+   * Returns the source columns minus any hidden by `filterManager`,
+   * reordered according to the user's saved column order. Filter and
+   * sort clauses can still reference hidden columns — SQL allows
+   * WHERE / ORDER BY to mention columns absent from the SELECT.
+   * `getMetadata` / `fetchData` / `fetchDataColumnRange` all project
+   * through this so the spreadsheet only sees columns it should render,
+   * in the order the user expects to see them.
+   */
+  private async getVisibleColumns(): Promise<Array<any>> {
+    const columns = await this.ensureSourceColumns();
+    const hidden = new Set(this.filterManager.getHiddenColumns(this.name));
+    const visible = columns.filter((c: any) => !hidden.has(c.column_name));
+
+    if (!this.filterManager.hasColumnOrder(this.name)) return visible;
+
+    // Reorder via filter manager's `applyColumnOrder`. Map back to
+    // the source column objects so downstream code (getMetadata,
+    // fetchData) keeps the type / nulls / extra fields intact.
+    const byName = new Map(visible.map((c: any) => [c.column_name, c]));
+    const ordered = this.filterManager.applyColumnOrder(
+      this.name,
+      visible.map((c: any) => c.column_name),
+    );
+    return ordered.map((n) => byName.get(n)).filter((c) => c !== undefined) as Array<any>;
+  }
+
   private buildBaseQuery(): string {
     return this.filterManager.buildFilteredQuery(this.sourceTableName, this.name);
   }
@@ -57,7 +97,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     const countQuery = `SELECT COUNT(*) FROM (${baseQuery}) AS _filtered`;
     const totalRows = (await this.duckDBService.executeQuery(countQuery))[0].toArray()[0] as bigint;
 
-    const columns = await this.duckDBService.getTableInfo(this.sourceTableName);
+    const columns = await this.getVisibleColumns();
 
     return {
       name: this.name,
@@ -79,12 +119,28 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   }
 
   public async fetchData(startRow: number, endRow: number): Promise<any[][]> {
-    const baseQuery = this.buildBaseQuery();
-    const query = `SELECT * FROM (${baseQuery}) AS _filtered LIMIT ${endRow - startRow} OFFSET ${startRow}`;
-    const [rows, types] = await Promise.all([
+    const visible = await this.getVisibleColumns();
+    const projection = visible.length > 0
+      ? visible.map((c: any) => `"${c.column_name}"`).join(", ")
+      : "*";
+
+    const where = this.filterManager.buildWhereClause(this.name);
+    const orderBy = this.filterManager.buildOrderByClause(this.name);
+
+    const query =
+      `SELECT ${projection} FROM "${this.sourceTableName}" ${where} ${orderBy} ` +
+      `LIMIT ${endRow - startRow} OFFSET ${startRow}`;
+    const [rows, allTypes, sourceColumns] = await Promise.all([
       this.duckDBService.executeQuery(query),
       this.ensureColumnTypes(),
+      this.ensureSourceColumns(),
     ]);
+    // `allTypes` is keyed by the source table's column order; filter to
+    // the visible-projection order so unwrapArrowValue lines up.
+    const visibleSet = new Set(visible.map((c: any) => c.column_name));
+    const types = sourceColumns
+      .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
+      .filter((t): t is TypeNode | undefined => t !== null);
     return rows.map((row: any) =>
       (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, types[i])),
     );
@@ -96,19 +152,24 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     startCol: number,
     endCol: number
   ): Promise<any[][]> {
-    const columns = await this.duckDBService.getTableInfo(this.sourceTableName);
-    const columnNames = columns.map((column: any) => `"${column.column_name}"`).slice(startCol, endCol);
+    const visible = await this.getVisibleColumns();
+    const columnNames = visible.map((c: any) => `"${c.column_name}"`).slice(startCol, endCol);
     const columnNamesString = columnNames.join(", ");
 
     const where = this.filterManager.buildWhereClause(this.name);
     const orderBy = this.filterManager.buildOrderByClause(this.name);
 
     const query = `SELECT ${columnNamesString} FROM "${this.sourceTableName}" ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
-    const [rows, types] = await Promise.all([
+    const [rows, allTypes, sourceColumns] = await Promise.all([
       this.duckDBService.executeQuery(query),
       this.ensureColumnTypes(),
+      this.ensureSourceColumns(),
     ]);
-    const sliceTypes = types.slice(startCol, endCol);
+    const visibleSet = new Set(visible.map((c: any) => c.column_name));
+    const visibleTypes = sourceColumns
+      .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
+      .filter((t): t is TypeNode | undefined => t !== null);
+    const sliceTypes = visibleTypes.slice(startCol, endCol);
     return rows.map((row: any) =>
       (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, sliceTypes[i])),
     );
@@ -125,6 +186,18 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
     const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
     return sourceProvider.getColumnStats(column);
+  }
+
+  public async searchColumnValues(
+    column: string | Column,
+    options: { query: string; mode: "substring" | "regex"; limit: number },
+  ): Promise<Array<{ value: string; count: number }>> {
+    // Search runs against the unfiltered source — same rationale as
+    // getColumnStats above: the filter UI needs to be able to find
+    // values the current filter is hiding.
+    const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
+    const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
+    return sourceProvider.searchColumnValues(column, options);
   }
 
   /**
