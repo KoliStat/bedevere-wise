@@ -2,15 +2,7 @@ import { EditorView, keymap, placeholder, lineNumbers } from "@codemirror/view";
 import { EditorState, Prec } from "@codemirror/state";
 import { sql } from "@codemirror/lang-sql";
 import { autocompletion } from "@codemirror/autocomplete";
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  insertTab,
-  indentLess,
-  addCursorAbove,
-  addCursorBelow,
-} from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, insertTab, indentLess } from "@codemirror/commands";
 import { searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
@@ -377,14 +369,14 @@ export class SqlEditor implements FocusableComponent {
               return true;
             },
           },
-          // Multi-cursor: drop a cursor above / below the current line.
-          // CodeMirror's defaults for these commands are
-          // Ctrl+Alt+ArrowUp/Down; the user asked for plain Alt+arrow
-          // (matches VS Code's convention).
-          { key: "Alt-ArrowUp", run: addCursorAbove },
-          { key: "Alt-ArrowDown", run: addCursorBelow },
           // Ctrl+S → open the "Save query as…" dialog. preventDefault
           // suppresses the browser's "Save Page As" dialog.
+          // (Multi-cursor bindings — Alt-ArrowUp/Down → addCursorAbove
+          // /Below, plus Ctrl+D → selectNextOccurrence — were tried at
+          // both `Prec.high` and `Prec.highest` and refused to fire in
+          // this build. Likely shadowed by something we couldn't pin
+          // down. They're left out rather than left as dead code
+          // pretending to work.)
           {
             key: "Mod-s",
             preventDefault: true,
