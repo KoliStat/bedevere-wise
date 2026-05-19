@@ -1,4 +1,4 @@
-export type SupportedFileType = "csv" | "tsv" | "json" | "parquet" | "xlsx" | "xls" | "sas7bdat" | "xpt" | "sav" | "dta";
+export type SupportedFileType = "csv" | "tsv" | "json" | "parquet" | "xlsx" | "xls" | "sas7bdat" | "xpt" | "sav" | "dta" | "html";
 
 export type FileNodeKind = "folder" | "file" | "sheet";
 
@@ -34,11 +34,13 @@ export function detectFileType(fileName: string): SupportedFileType | null {
     case "xpt": return "xpt";
     case "sav": return "sav";
     case "dta": return "dta";
+    case "html": return "html";
+    case "htm": return "html";
     default: return null;
   }
 }
 
 /** All extensions the app can potentially handle */
 export function getAllSupportedExtensions(): string[] {
-  return [".csv", ".tsv", ".txt", ".json", ".parquet", ".xlsx", ".xls", ".sas7bdat", ".xpt", ".sav", ".dta"];
+  return [".csv", ".tsv", ".txt", ".json", ".parquet", ".xlsx", ".xls", ".sas7bdat", ".xpt", ".sav", ".dta", ".html", ".htm"];
 }
