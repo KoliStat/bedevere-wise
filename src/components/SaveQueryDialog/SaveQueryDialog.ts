@@ -1,3 +1,5 @@
+import { Dialog } from "../Dialog/Dialog";
+
 export interface SaveQueryDialogArgs {
   /** Dialog header text. */
   title?: string;
@@ -12,59 +14,49 @@ export interface SaveQueryDialogArgs {
 }
 
 /**
- * Single-field modal: "Save query as…". Mirrors `HideColumnsDialog`'s
- * overlay pattern — mounts under `document.body`, dismisses on Escape /
- * backdrop click / Cancel, applies on Enter or the Save button.
- * Single-use: `show()` instantiates and the dismissal destroys.
+ * Single-field modal: "Save query as…". Inherits the overlay /
+ * backdrop-dismiss / Escape lifecycle from `Dialog`; this class only
+ * owns the body (one text input + warning row) and the success path.
  *
  * The dialog only collects the name; the caller wires the save itself
  * (so we don't have to import PersistenceService here and bloat the
  * dialog's surface).
  */
-export class SaveQueryDialog {
-  private overlay: HTMLDivElement;
-  private dialog: HTMLDivElement;
+export class SaveQueryDialog extends Dialog {
   private input!: HTMLInputElement;
   private warn!: HTMLDivElement;
   private existing: Set<string>;
   private onSaveCallback: SaveQueryDialogArgs["onSave"];
-  private readonly onKeyDown: (e: KeyboardEvent) => void;
 
   public static show(args: SaveQueryDialogArgs): SaveQueryDialog {
     return new SaveQueryDialog(args);
   }
 
   private constructor(args: SaveQueryDialogArgs) {
+    super({ title: args.title ?? "Save query as…", classPrefix: "save-query" });
     this.existing = new Set(args.existingNames ?? []);
     this.onSaveCallback = args.onSave;
 
-    this.overlay = document.createElement("div");
-    this.overlay.className = "save-query-overlay";
-    this.overlay.addEventListener("mousedown", (e) => {
-      if (e.target === this.overlay) this.dismiss();
-    });
+    this.buildBody(args.defaultName ?? "");
+    this.buildFooter();
 
-    this.dialog = document.createElement("div");
-    this.dialog.className = "save-query";
-    this.dialog.setAttribute("role", "dialog");
-    this.dialog.setAttribute("aria-modal", "true");
-    this.overlay.appendChild(this.dialog);
+    this.mount();
+    this.updateWarning();
+    setTimeout(() => {
+      this.input.focus();
+      this.input.select();
+    }, 0);
+  }
 
-    const header = document.createElement("div");
-    header.className = "save-query__header";
-    const titleEl = document.createElement("h2");
-    titleEl.className = "save-query__title";
-    titleEl.textContent = args.title ?? "Save query as…";
-    header.appendChild(titleEl);
-    const close = document.createElement("button");
-    close.className = "save-query__close";
-    close.setAttribute("aria-label", "Close");
-    close.title = "Close (Esc)";
-    close.textContent = "✕";
-    close.addEventListener("click", () => this.dismiss());
-    header.appendChild(close);
-    this.dialog.appendChild(header);
+  protected handleKeyDown(e: KeyboardEvent): void {
+    super.handleKeyDown(e);
+    if (e.key === "Enter" && document.activeElement === this.input) {
+      e.preventDefault();
+      this.trySave();
+    }
+  }
 
+  private buildBody(defaultName: string): void {
     const body = document.createElement("div");
     body.className = "save-query__body";
 
@@ -75,7 +67,7 @@ export class SaveQueryDialog {
     this.input = document.createElement("input");
     this.input.type = "text";
     this.input.className = "save-query__input";
-    this.input.value = args.defaultName ?? "";
+    this.input.value = defaultName;
     this.input.placeholder = "e.g. penguins_summary";
     this.input.spellcheck = false;
     this.input.addEventListener("input", () => this.updateWarning());
@@ -85,8 +77,10 @@ export class SaveQueryDialog {
     this.warn = document.createElement("div");
     this.warn.className = "save-query__warn";
     body.appendChild(this.warn);
-    this.dialog.appendChild(body);
+    this.panel.appendChild(body);
+  }
 
+  private buildFooter(): void {
     const footer = document.createElement("div");
     footer.className = "save-query__footer";
 
@@ -102,25 +96,7 @@ export class SaveQueryDialog {
     save.addEventListener("click", () => this.trySave());
     footer.appendChild(save);
 
-    this.dialog.appendChild(footer);
-
-    this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        this.dismiss();
-      } else if (e.key === "Enter" && document.activeElement === this.input) {
-        e.preventDefault();
-        this.trySave();
-      }
-    };
-    document.addEventListener("keydown", this.onKeyDown, true);
-
-    document.body.appendChild(this.overlay);
-    this.updateWarning();
-    setTimeout(() => {
-      this.input.focus();
-      this.input.select();
-    }, 0);
+    this.panel.appendChild(footer);
   }
 
   private updateWarning(): void {
@@ -144,16 +120,12 @@ export class SaveQueryDialog {
     }
     try {
       await this.onSaveCallback(name);
+      this.markConfirmed();
       this.dismiss();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.warn.textContent = `Save failed: ${msg}`;
       this.warn.classList.add("save-query__warn--shown");
     }
-  }
-
-  private dismiss(): void {
-    document.removeEventListener("keydown", this.onKeyDown, true);
-    this.overlay.remove();
   }
 }
