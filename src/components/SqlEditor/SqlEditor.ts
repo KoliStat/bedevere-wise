@@ -201,6 +201,9 @@ export class SqlEditor implements FocusableComponent {
     if (action !== "sqlEditor.collapse") return false;
     event.preventDefault();
     if (commandRegistry.has(action)) {
+      // Swallow command failures: the keystroke is consumed regardless
+      // (preventDefault above), and a failed collapse is non-critical —
+      // surfacing a toast for it would be noisier than the bug.
       try { await commandRegistry.run(action); }
       catch (err) { console.error(`command ${action} failed:`, err); }
     }

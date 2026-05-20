@@ -3,7 +3,6 @@ import { FileTreeNode } from "../../data/FileTreeTypes";
 export interface FileTreeCallbacks {
   onNodeClick: (node: FileTreeNode) => void;
   onNodeExpand: (node: FileTreeNode) => void;
-  onNodeContextMenu: (node: FileTreeNode, e: MouseEvent) => void;
   onAliasChange: (node: FileTreeNode, alias: string) => void;
 }
 
@@ -264,12 +263,6 @@ export class FileTreeRenderer {
     if (!node.isUnavailable) {
       row.addEventListener("click", () => this.callbacks.onNodeClick(node));
     }
-
-    // Context menu
-    row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      this.callbacks.onNodeContextMenu(node, e);
-    });
 
     // Double-click to rename
     name.addEventListener("dblclick", (e) => {

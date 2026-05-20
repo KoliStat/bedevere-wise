@@ -1,7 +1,7 @@
-import { TabManager } from "../TabManager";
-import { ControlPanel } from "../ControlPanel";
-import { StatusBar } from "../StatusBar";
-import { HelpPanel, HelpPanelTab } from "../HelpPanel";
+import { TabManager } from "../TabManager/TabManager";
+import { ControlPanel } from "../ControlPanel/ControlPanel";
+import { StatusBar } from "../StatusBar/StatusBar";
+import { HelpPanel, HelpPanelTab } from "../HelpPanel/HelpPanel";
 import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_DATETIME_FORMAT,
@@ -31,7 +31,7 @@ import { fetchAsFile } from "@/data/UrlImport";
 import { AliasManager } from "@/data/AliasManager";
 import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
-import { HideColumnsDialog } from "../HideColumnsDialog";
+import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -278,6 +278,10 @@ export class BedevereApp implements EventHandler {
     if (!action) return false;
     e.preventDefault();
     if (commandRegistry.has(action)) {
+      // Fire-and-forget: the keystroke is consumed regardless, and
+      // user-facing command failures already surface their own
+      // toasts via showMessage. Catching here keeps a stray rejection
+      // from polluting the console as an unhandled promise.
       commandRegistry.run(action).catch((err) => console.error(`command ${action} failed:`, err));
     }
     return true;

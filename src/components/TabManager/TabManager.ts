@@ -1,9 +1,9 @@
 import { SpreadsheetVisualizer } from "../SpreadsheetVisualizer/SpreadsheetVisualizer";
 import { SpreadsheetOptions } from "../SpreadsheetVisualizer/types";
 import { ColumnStatsVisualizerFocusable } from "../ColumnStatsVisualizer/ColumnStatsVisualizerFocusable";
-import { CommandBar } from "../CommandBar";
-import { SqlEditor } from "../SqlEditor";
-import type { ChartVisualizer } from "../ChartVisualizer";
+import { CommandBar } from "../CommandBar/CommandBar";
+import { SqlEditor } from "../SqlEditor/SqlEditor";
+import type { ChartVisualizer } from "../ChartVisualizer/ChartVisualizer";
 import { DataProvider, DatasetMetadata } from "../../data/types";
 import { DuckDBService } from "../../data/DuckDBService";
 import { ColumnFilterManager } from "../../data/ColumnFilterManager";
@@ -906,7 +906,7 @@ export class TabManager {
 
     // Dynamic import keeps the ~800 KB vega-embed bundle out of the initial
     // page-load chunk for users who never run a VISUALIZE query.
-    const { ChartVisualizer } = await import("../ChartVisualizer");
+    const { ChartVisualizer } = await import("../ChartVisualizer/ChartVisualizer");
     const chartVisualizer = new ChartVisualizer(chartContainer);
 
     const tab: ChartTab = {

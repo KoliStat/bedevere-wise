@@ -7,7 +7,7 @@ import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
-import { TabManager } from "../TabManager";
+import { TabManager } from "../TabManager/TabManager";
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
 import type { MessageOptions } from "../StatusBar/StatusBar";
 
@@ -569,7 +569,6 @@ export class ControlPanel {
       const callbacks: FileTreeCallbacks = {
         onNodeClick: (node) => this.handleTreeNodeClick(node),
         onNodeExpand: (node) => this.handleTreeNodeExpand(node),
-        onNodeContextMenu: (_node, _e) => { /* TODO: context menu */ },
         onAliasChange: (node, alias) => this.onAliasChangeCallback?.(node.alias || node.name, alias),
       };
       this.treeRenderer = new FileTreeRenderer(this.datasetListElement, callbacks);
@@ -698,6 +697,11 @@ export class ControlPanel {
       this.onSelectCallback?.(provider);
       return { ok: true };
     } catch (error) {
+      // Log + return structured error: the batch caller
+      // (`addFilesFromDrop`) aggregates these into a single user-facing
+      // summary toast, so we don't surface here. Console log is for
+      // debug/dev visibility into the underlying DuckDB / fetch / I-O
+      // failure.
       console.error(`Failed to import ${node.name}:`, error);
       return { ok: false, error: formatError(error) };
     }
@@ -739,6 +743,11 @@ export class ControlPanel {
         const depth = row ? Math.floor(parseInt(row.style.paddingLeft) / 16) : 0;
         this.treeRenderer?.appendChildren(node.id, node.children, depth);
       } catch (error) {
+        // Two-channel surfacing: console.error for debug visibility of
+        // the underlying read failure, plus a user-facing toast so the
+        // user knows the expand action didn't silently succeed. Caught
+        // here (not propagated) because expand is a UI affordance —
+        // there's no caller waiting on a Promise that needs to know.
         console.error(`Failed to enumerate sheets for ${node.name}:`, error);
         const { message, details } = formatError(error);
         this.onShowMessageCallback?.(

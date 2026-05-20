@@ -1,4 +1,4 @@
-import { ICellSelection } from "../SpreadsheetVisualizer";
+import { ICellSelection } from "../SpreadsheetVisualizer/types";
 
 function downloadFile(content: string, filename: string, mime: string): void {
   const blob = new Blob([content], { type: mime });

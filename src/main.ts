@@ -1,5 +1,5 @@
 import "./styles/main.scss";
-import { BedevereApp } from "./components/BedevereApp";
+import { BedevereApp } from "./components/BedevereApp/BedevereApp";
 import { duckDBService } from "./data/DuckDBService.ts";
 import { persistenceService } from "./data/PersistenceService.ts";
 import {
