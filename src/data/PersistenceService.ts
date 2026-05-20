@@ -1,4 +1,5 @@
 import type { KeyBinding } from "./KeymapService";
+import type { EnvironmentsFile } from "./environments/types";
 
 export interface QueryBookmark {
   name: string;
@@ -64,6 +65,27 @@ export interface AppSettings {
    * saves don't.
    */
   editorAutoSaveDraft?: string;
+  /**
+   * The environment id the user was on when they last left the app.
+   * Restored on load via `EnvironmentService`; falls back to the
+   * default env if the id no longer resolves (env was deleted).
+   */
+  activeEnvironmentId?: string;
+  /**
+   * Files at or below this size (bytes) auto-import silently into
+   * DuckDB on drop / folder-scan — no spreadsheet tab opens, but the
+   * table becomes available to SQL queries. Above this, the file
+   * tree shows a warning glyph and the user clicks-to-open. Default
+   * 100 KB; `0` disables auto-import entirely.
+   */
+  autoImportSizeThreshold?: number;
+  /**
+   * One-shot flag flipped by `EnvironmentService` the first time it
+   * folds the legacy `bedevere_queries` localStorage store into the
+   * default environment. Once set, the migration never runs again,
+   * even if the user empties their environments file.
+   */
+  queriesMigratedToEnv?: boolean;
 }
 
 export interface RecentFolderEntry {
@@ -77,6 +99,7 @@ const STORAGE_KEYS = {
   settings: "bedevere_settings",
   aliases: "bedevere_aliases",
   keymap: "bedevere_keymap",
+  environments: "bedevere_environments",
 } as const;
 
 const DB_NAME = "bedevere_db";
@@ -197,6 +220,26 @@ export class PersistenceService {
     } else {
       localStorage.setItem(STORAGE_KEYS.keymap, JSON.stringify(overrides));
     }
+  }
+
+  // --- Environments (localStorage) --------------------------------------
+  //
+  // Single envelope `{ schemaVersion, environments }` so future shape
+  // changes have a version number to migrate against. `EnvironmentService`
+  // owns the in-memory list + mutations; this is just the storage hop.
+
+  public loadEnvironmentsFile(): EnvironmentsFile | null {
+    const raw = localStorage.getItem(STORAGE_KEYS.environments);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as EnvironmentsFile;
+    } catch {
+      return null;
+    }
+  }
+
+  public saveEnvironmentsFile(file: EnvironmentsFile): void {
+    localStorage.setItem(STORAGE_KEYS.environments, JSON.stringify(file));
   }
 
   // --- Table Snapshots (IndexedDB) ---
