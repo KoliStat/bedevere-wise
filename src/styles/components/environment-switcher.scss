@@ -1,0 +1,194 @@
+// Compact env picker mounted at the top of the ControlPanel. The
+// trigger renders as a row inside the panel chrome; the popover floats
+// above the accordion via `position: absolute` so it doesn't reflow
+// the surrounding layout when it opens.
+
+.env-switcher {
+  position: relative;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-dark);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+
+  &__trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 4px 8px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    text-align: left;
+
+    &:hover { background: var(--bg-highlight); }
+    &:focus { outline: none; border-color: var(--blue); }
+    &[aria-expanded="true"] {
+      border-color: var(--blue);
+      background: var(--bg-highlight);
+    }
+  }
+
+  &__icon {
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  &__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg);
+  }
+
+  &__chevron {
+    flex-shrink: 0;
+    color: var(--fg-muted);
+    font-size: 10px;
+  }
+
+  // Popover lives inside the switcher so it positions relative to the
+  // trigger. `z-index` lifts it over the accordion + file tree.
+  &__popover {
+    position: absolute;
+    top: calc(100% - 1px);
+    left: 10px;
+    right: 10px;
+    z-index: 100;
+    max-height: 60vh;
+    overflow-y: auto;
+    background: var(--bg-float);
+    border: 1px solid var(--border-strong);
+    border-top: 2px solid var(--blue);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    padding: 4px 0;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--fg);
+    cursor: default;
+
+    &:hover {
+      background: var(--bg-highlight);
+
+      .env-switcher__actions {
+        opacity: 1;
+      }
+    }
+
+    &--active {
+      background: var(--bg-highlight);
+    }
+  }
+
+  &__active-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    background: var(--blue);
+    border-radius: 50%;
+    vertical-align: middle;
+  }
+
+  &__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    color: var(--fg);
+  }
+
+  &__actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    flex-shrink: 0;
+  }
+
+  &__row--active &__actions {
+    opacity: 1;
+  }
+
+  &__action {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--fg-muted);
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+
+    &:hover {
+      background: var(--bg);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+
+    &--delete:hover {
+      color: var(--red);
+      border-color: var(--red);
+    }
+  }
+
+  &__rename-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--blue);
+    padding: 2px 6px;
+    font-family: inherit;
+    font-size: 12px;
+
+    &:focus { outline: none; }
+  }
+
+  &__footer {
+    border-top: 1px solid var(--border);
+    padding: 4px 6px;
+    margin-top: 4px;
+  }
+
+  &__new {
+    width: 100%;
+    padding: 4px 8px;
+    background: transparent;
+    color: var(--blue);
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    text-align: left;
+
+    &:hover {
+      background: var(--bg-highlight);
+      border-color: var(--border);
+    }
+  }
+}

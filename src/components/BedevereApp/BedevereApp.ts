@@ -20,6 +20,7 @@ import { DuckDBService } from "@/data/DuckDBService";
 import { PersistenceService, persistenceService } from "@/data/PersistenceService";
 import { keymapService } from "@/data/KeymapService";
 import { commandRegistry } from "@/data/CommandRegistry";
+import { environmentService } from "@/data/environments/EnvironmentService";
 import { formatCommandHelp } from "@/data/Shell";
 import { FileImportService } from "@/data/FileImportService";
 import { DuckDBExtensionLoader } from "@/data/DuckDBExtensionLoader";
@@ -1105,6 +1106,79 @@ export class BedevereApp implements EventHandler {
         if (!query) throw new Error("SQL editor is empty — open it with .sql and type a query first");
         this.persistenceService.saveQueryBookmark(name, query);
         this.showMessage(`Query "${name}" bookmarked`, "success");
+      },
+    });
+
+    // ---- .env [list | new | rename | delete | switch] ------------------
+    commandRegistry.register({
+      id: "shell.env",
+      shellName: "env",
+      title: "Manage environments",
+      description:
+        "`.env list` lists envs · `.env new <name>` creates · `.env rename <new>` renames the active env · " +
+        "`.env switch <name>` activates · `.env delete <name>` removes (cannot delete the default env)",
+      category: "Environment",
+      parameters: [
+        { name: "action", type: "string", required: true, options: () => ["list", "new", "rename", "switch", "delete"] },
+        {
+          name: "name",
+          type: "string",
+          required: false,
+          // Suggest existing env names for `switch` / `delete`; for
+          // `new` / `rename` the user types a fresh name. The option
+          // list is harmless for those — they can ignore it.
+          options: () => environmentService.list().map((e) => e.name),
+        },
+      ],
+      execute: (params) => {
+        const action = String(params?.action ?? "").trim();
+        const name = String(params?.name ?? "").trim();
+        const findByName = (n: string) => environmentService.list().find((e) => e.name === n);
+        switch (action) {
+          case "list": {
+            const envs = environmentService.list();
+            const activeId = environmentService.getActiveId();
+            const lines = envs.map((e) => `${e.id === activeId ? "* " : "  "}${e.name}` + (e.kind === "default" ? " (default)" : ""));
+            this.showMessage(`Environments:\n${lines.join("\n")}`, "info", { duration: 8000 });
+            return;
+          }
+          case "new": {
+            if (!name) throw new Error(".env new requires a name");
+            if (findByName(name)) throw new Error(`An environment called "${name}" already exists`);
+            const env = environmentService.create({ name, kind: "folder" });
+            environmentService.setActive(env.id);
+            this.showMessage(`Environment "${name}" created`, "success");
+            return;
+          }
+          case "rename": {
+            if (!name) throw new Error(".env rename requires a new name");
+            const active = environmentService.getActive();
+            if (!active) throw new Error("No active environment");
+            if (findByName(name)) throw new Error(`An environment called "${name}" already exists`);
+            environmentService.rename(active.id, name);
+            this.showMessage(`Renamed environment to "${name}"`, "success");
+            return;
+          }
+          case "switch": {
+            if (!name) throw new Error(".env switch requires the name of an existing environment");
+            const target = findByName(name);
+            if (!target) throw new Error(`No environment called "${name}"`);
+            environmentService.setActive(target.id);
+            this.showMessage(`Switched to "${name}"`, "info");
+            return;
+          }
+          case "delete": {
+            if (!name) throw new Error(".env delete requires the name of an existing environment");
+            const target = findByName(name);
+            if (!target) throw new Error(`No environment called "${name}"`);
+            if (target.kind === "default") throw new Error("Cannot delete the default environment");
+            environmentService.delete(target.id);
+            this.showMessage(`Deleted environment "${name}"`, "success");
+            return;
+          }
+          default:
+            throw new Error(`.env: unknown action "${action}". Try list / new / rename / switch / delete.`);
+        }
       },
     });
 

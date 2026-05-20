@@ -5,9 +5,11 @@ import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
+import { environmentService } from "../../data/environments/EnvironmentService";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
 import { TabManager } from "../TabManager/TabManager";
+import { EnvironmentSwitcher } from "../EnvironmentSwitcher/EnvironmentSwitcher";
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
 import type { MessageOptions } from "../StatusBar/StatusBar";
 
@@ -65,6 +67,9 @@ export class ControlPanel {
   private folderScanService?: FolderScanService;
   private treeRenderer?: FileTreeRenderer;
   private fileTree: FileTreeNode[] = [];
+
+  // Environment switcher (top of the panel, above the accordion)
+  private envSwitcher: EnvironmentSwitcher | null = null;
 
   // Accordion
   private accordionSections: Map<string, AccordionSection> = new Map();
@@ -124,8 +129,13 @@ export class ControlPanel {
     this.resizeHandle.className = "control-panel__resize-handle";
     this.resizeHandle.addEventListener("mousedown", (e) => this.handleResizeStart(e));
 
-    // Assemble the panel
+    // Assemble the panel. The env switcher sits between the header
+    // chrome and the accordion content so it reads as a workspace-
+    // wide context selector for everything below it.
     this.panelElement.appendChild(this.headerElement);
+    this.envSwitcher = new EnvironmentSwitcher(this.panelElement, {
+      onSwitch: (envId) => this.handleEnvSwitch(envId),
+    });
     this.panelElement.appendChild(this.contentElement);
     this.panelElement.appendChild(this.resizeHandle);
     this.container.appendChild(this.panelElement);
@@ -348,17 +358,24 @@ export class ControlPanel {
     if (!this.folderScanService) return;
 
     let tree: FileTreeNode | null = null;
+    let folderHandleId: string | undefined;
 
     if (this.folderScanService.supportsDirectoryPicker()) {
       const picked = await this.folderScanService.scanWithDirectoryPicker();
       if (picked) {
         tree = picked.tree;
-        // Persist the handle for the recent-folders list. Best-effort —
-        // a quota-exceeded or structured-clone failure shouldn't block
-        // the import flow.
-        persistenceService.pushRecentFolder(picked.handle).catch((e) => {
+        // Persist the handle for the recent-folders list AND so the
+        // env-binding hook below has a stable id to look up by. Best-
+        // effort — a quota-exceeded or structured-clone failure
+        // shouldn't block the import flow; the env still gets created,
+        // just without a handle binding (and so won't auto-reopen on
+        // a fresh session).
+        try {
+          const entry = await persistenceService.pushRecentFolder(picked.handle);
+          if (entry) folderHandleId = entry.id;
+        } catch (e) {
           console.warn("Recent folders: persist failed", e);
-        });
+        }
       }
     } else {
       // Fallback: webkitdirectory input
@@ -378,7 +395,7 @@ export class ControlPanel {
       });
     }
 
-    this.attachFolderTree(tree);
+    this.attachFolderTree(tree, folderHandleId);
   }
 
   /** Re-open a folder picked earlier (recent-folders shortcut). */
@@ -418,7 +435,7 @@ export class ControlPanel {
       }
       // Touch the entry so it bumps to the top of the MRU.
       await persistenceService.pushRecentFolder(handle);
-      this.attachFolderTree(tree);
+      this.attachFolderTree(tree, id);
     } catch (err) {
       console.error("openRecentFolder failed:", err);
       this.onShowMessageCallback?.(
@@ -429,8 +446,11 @@ export class ControlPanel {
   }
 
   /** Common path for both fresh picks and recent re-opens: dedupe on
-   *  matching id, otherwise push to the file tree. */
-  private attachFolderTree(tree: FileTreeNode | null): void {
+   *  matching id, otherwise push to the file tree. The optional
+   *  `folderHandleId` (only set on the FSA-API branch) binds the
+   *  folder to an environment so re-opening the same folder picks up
+   *  where the user left off. */
+  private attachFolderTree(tree: FileTreeNode | null, folderHandleId?: string): void {
     if (!tree) return;
     const existingIdx = this.fileTree.findIndex((n) => n.id === tree.id);
     if (existingIdx >= 0) {
@@ -443,11 +463,100 @@ export class ControlPanel {
         `Refreshed folder "${tree.name}"`,
         "info",
       );
-      return;
+    } else {
+      this.fileTree.push(tree);
+      this.renderTree();
+      this.expandSection("datasets");
     }
-    this.fileTree.push(tree);
+    this.bindFolderToEnvironment(tree, folderHandleId);
+  }
+
+  /**
+   * Find or create the environment for a folder and make it active.
+   * Match priority: by `folderHandleId` first (so re-opening the same
+   * folder reuses the same env even if it was renamed); then by name
+   * (covers webkitdirectory where there's no persistent handle id).
+   * Falls through to `create` if nothing matched.
+   */
+  private bindFolderToEnvironment(tree: FileTreeNode, folderHandleId?: string): void {
+    let env = folderHandleId ? environmentService.findByFolderHandleId(folderHandleId) : null;
+    if (!env) {
+      env = environmentService.list().find(
+        (e) => e.kind === "folder" && !e.folderHandleId && e.name === tree.name,
+      ) ?? null;
+    }
+    if (!env) {
+      env = environmentService.create({
+        name: tree.name,
+        kind: "folder",
+        folderHandleId,
+      });
+    } else if (folderHandleId && !env.folderHandleId) {
+      // Upgrade an existing name-matched env (webkitdirectory) to a
+      // handle-bound env when the FSA API becomes available. No
+      // dedicated service method for this — the binding is just a
+      // field on the env, and `create()` would lose the queries the
+      // user has already saved.
+      env.folderHandleId = folderHandleId;
+    }
+    if (environmentService.getActiveId() !== env.id) {
+      environmentService.setActive(env.id);
+    }
+    this.collectLeavesIntoEnv(env.id, tree, "");
+  }
+
+  /**
+   * Walk a freshly-attached tree and add every file leaf to the env's
+   * dataset list. Idempotent — `addDataset` deduplicates by nodeId so
+   * re-scans of the same folder don't multiply entries.
+   */
+  private collectLeavesIntoEnv(envId: string, node: FileTreeNode, pathPrefix: string): void {
+    if (node.kind === "file" && node.fileType) {
+      const relativePath = pathPrefix ? `${pathPrefix}/${node.name}` : node.name;
+      environmentService.addDataset(envId, {
+        nodeId: node.id,
+        name: node.name,
+        relativePath,
+      });
+    }
+    if (node.children) {
+      const nextPrefix = pathPrefix
+        ? `${pathPrefix}/${node.name}`
+        : (node.kind === "folder" ? node.name : "");
+      for (const child of node.children) {
+        this.collectLeavesIntoEnv(envId, child, nextPrefix);
+      }
+    }
+  }
+
+  /**
+   * Fired by the env switcher when the user picks a different env.
+   * Closes every open dataset tab, clears the in-memory file tree,
+   * and — for folder envs — re-acquires permission and re-scans the
+   * folder so the tree reflects the freshly-active env. Default envs
+   * land on an empty tree until the user drops files into the session.
+   */
+  private async handleEnvSwitch(envId: string): Promise<void> {
+    // Close every open dataset tab. The TabManager API works by name;
+    // snapshot first so we don't mutate while iterating.
+    const openIds = this.tabManager.getDatasetIds();
+    for (const id of openIds) {
+      this.tabManager.closeDataset(id);
+    }
+
+    // Reset the panel's in-memory state.
+    this.fileTree = [];
+    this.datasets = [];
     this.renderTree();
-    this.expandSection("datasets");
+    this.renderSavedQueries();
+
+    const env = environmentService.get(envId);
+    if (!env) return;
+    if (env.kind === "folder" && env.folderHandleId) {
+      // Re-scan via the recent-folder pathway: it already handles
+      // permission prompts and stale-handle cleanup.
+      await this.openRecentFolder(env.folderHandleId);
+    }
   }
 
   /**
@@ -504,6 +613,23 @@ export class ControlPanel {
       };
       this.fileTree.push(node);
       newNodes.push(node);
+    }
+
+    // Record the dropped files in whichever environment is currently
+    // active (default for fresh sessions, the folder env if the user
+    // dropped onto an open folder workspace). The env stores name +
+    // relative path so a future "reopen workspace" can show what was
+    // loaded — even though dropped File objects can't be re-acquired
+    // after a reload (no FSA handle).
+    const activeEnvId = environmentService.getActiveId();
+    if (activeEnvId) {
+      for (const node of newNodes) {
+        environmentService.addDataset(activeEnvId, {
+          nodeId: node.id,
+          name: node.name,
+          relativePath: node.name,
+        });
+      }
     }
 
     this.renderTree();
@@ -875,6 +1001,8 @@ export class ControlPanel {
   public destroy(): void {
     document.removeEventListener("mousemove", this.onResizeMove);
     document.removeEventListener("mouseup", this.onResizeEnd);
+    this.envSwitcher?.destroy();
+    this.envSwitcher = null;
     this.container.remove();
   }
 
