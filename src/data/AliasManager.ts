@@ -1,6 +1,5 @@
 import { DuckDBService } from "./DuckDBService";
-
-const STORAGE_KEY = "bedevere_aliases";
+import { persistenceService } from "./PersistenceService";
 
 export class AliasManager {
   private aliases: Map<string, string> = new Map(); // tableName → alias
@@ -56,18 +55,10 @@ export class AliasManager {
   }
 
   private load(): void {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    try {
-      const obj = JSON.parse(raw) as Record<string, string>;
-      this.aliases = new Map(Object.entries(obj));
-    } catch {
-      // Ignore corrupt storage
-    }
+    this.aliases = new Map(Object.entries(persistenceService.loadAliases()));
   }
 
   private save(): void {
-    const obj = Object.fromEntries(this.aliases);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+    persistenceService.saveAliases(Object.fromEntries(this.aliases));
   }
 }

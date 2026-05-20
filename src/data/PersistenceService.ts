@@ -1,3 +1,5 @@
+import type { KeyBinding } from "./KeymapService";
+
 export interface QueryBookmark {
   name: string;
   sql: string;
@@ -73,6 +75,8 @@ export interface RecentFolderEntry {
 const STORAGE_KEYS = {
   queries: "bedevere_queries",
   settings: "bedevere_settings",
+  aliases: "bedevere_aliases",
+  keymap: "bedevere_keymap",
 } as const;
 
 const DB_NAME = "bedevere_db";
@@ -148,6 +152,51 @@ export class PersistenceService {
 
   public loadEditorAutoSaveDraft(): string {
     return this.loadAppSettings().editorAutoSaveDraft ?? "";
+  }
+
+  // --- Aliases (localStorage) -------------------------------------------
+  //
+  // Persisted as a flat `Record<tableName, alias>`. `AliasManager` owns
+  // the in-memory `Map` and the renaming logic; this only owns the
+  // storage boundary.
+
+  public loadAliases(): Record<string, string> {
+    const raw = localStorage.getItem(STORAGE_KEYS.aliases);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
+  public saveAliases(aliases: Record<string, string>): void {
+    localStorage.setItem(STORAGE_KEYS.aliases, JSON.stringify(aliases));
+  }
+
+  // --- Keymap overrides (localStorage) ----------------------------------
+  //
+  // Only entries that diverge from the DEFAULT_KEYMAP are stored, keyed
+  // by action id. `KeymapService` reconstructs the full table at load by
+  // merging defaults with these overrides. Empty overrides delete the
+  // key entirely so a clean state never carries a stray empty object.
+
+  public loadKeymapOverrides(): Record<string, KeyBinding> {
+    const raw = localStorage.getItem(STORAGE_KEYS.keymap);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as Record<string, KeyBinding>;
+    } catch {
+      return {};
+    }
+  }
+
+  public saveKeymapOverrides(overrides: Record<string, KeyBinding>): void {
+    if (Object.keys(overrides).length === 0) {
+      localStorage.removeItem(STORAGE_KEYS.keymap);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.keymap, JSON.stringify(overrides));
+    }
   }
 
   // --- Table Snapshots (IndexedDB) ---
