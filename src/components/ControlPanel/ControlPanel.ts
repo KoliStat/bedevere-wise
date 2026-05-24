@@ -30,6 +30,43 @@ function stripExt(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, "");
 }
 
+/** Extensions we'll happily treat as text without sniffing — covers
+ *  the formats the import pipeline understands plus a few obvious
+ *  text-y siblings the user might drop accidentally. */
+const TEXT_EXTENSIONS = new Set([
+  "txt", "csv", "tsv", "json", "html", "htm", "md", "log", "sql",
+  "yml", "yaml", "xml", "ini", "conf",
+]);
+
+/** Reasonable heuristic for "is this a file we should show in a
+ *  text view". A known text extension is a yes. Otherwise sniff a
+ *  sample: a single NULL byte means binary; otherwise look at the
+ *  density of non-printable chars (anything below 0x20 except tab /
+ *  LF / CR). Mirrors the plan from v0.12 spec. */
+function isLikelyText(file: File, sample: string): boolean {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext && TEXT_EXTENSIONS.has(ext)) return true;
+  if (sample.length === 0) return false;
+  let nonPrintable = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample.charCodeAt(i);
+    if (c === 0) return false;
+    if (c < 9 || (c > 13 && c < 32)) nonPrintable++;
+  }
+  return nonPrintable / sample.length < 0.05;
+}
+
+/** Read the first `maxBytes` of a file as UTF-8 for the binary-sniff.
+ *  Returns null if the slice can't be decoded. */
+async function readTextSample(file: File, maxBytes: number): Promise<string | null> {
+  try {
+    const slice = file.slice(0, Math.min(maxBytes, file.size));
+    return await slice.text();
+  } catch {
+    return null;
+  }
+}
+
 export interface DatasetInfo {
   metadata: DatasetMetadata;
   dataset: DataProvider;
@@ -948,7 +985,33 @@ export class ControlPanel {
       // debug/dev visibility into the underlying DuckDB / fetch / I-O
       // failure.
       console.error(`Failed to import ${node.name}:`, error);
-      return { ok: false, error: formatError(error) };
+      const formatted = formatError(error);
+
+      // Failed-import → text-tab fallback. Only for non-silent imports
+      // (silent imports must stay silent — opening a tab from a folder
+      // scan would be jarring). The file is opened read-only with the
+      // import error as a banner so the user can see what tripped the
+      // parser. Binary files fall through to the existing error toast.
+      if (!options.silent && node.fileHandle) {
+        try {
+          const file =
+            node.fileHandle instanceof File
+              ? node.fileHandle
+              : await (node.fileHandle as FileSystemFileHandle).getFile();
+          const sample = await readTextSample(file, 4096);
+          if (sample !== null && isLikelyText(file, sample)) {
+            const full = await file.text();
+            this.tabManager.addTextTab(node.name, full, formatted.message);
+            // User has a visible result; the batch summary doesn't
+            // need to count this as an error.
+            return { ok: true };
+          }
+        } catch (fallbackErr) {
+          console.warn(`Text-tab fallback failed for ${node.name}:`, fallbackErr);
+        }
+      }
+
+      return { ok: false, error: formatted };
     }
   }
 
