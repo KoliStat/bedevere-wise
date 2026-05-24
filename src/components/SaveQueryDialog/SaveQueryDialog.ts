@@ -5,9 +5,10 @@ export interface SaveQueryDialogArgs {
   title?: string;
   /** Default value pre-filled in the name input. */
   defaultName?: string;
-  /** Existing bookmark names — used to flag the warning row when typing
-   *  a name that's already taken (the save still proceeds and overwrites,
-   *  but the user knows). */
+  /** Existing query names — used to flag the warning row when typing
+   *  a name that's already taken. The caller decides what "save" does
+   *  on collision (overwrite, fork, or reject) by throwing from
+   *  `onSave`; the dialog surfaces the thrown message. */
   existingNames?: string[];
   /** Fired when the user confirms. The save itself is the caller's job. */
   onSave: (name: string) => void | Promise<void>;
@@ -102,7 +103,7 @@ export class SaveQueryDialog extends Dialog {
   private updateWarning(): void {
     const name = this.input.value.trim();
     if (name && this.existing.has(name)) {
-      this.warn.textContent = `"${name}" already exists — saving overwrites it.`;
+      this.warn.textContent = `"${name}" is already in use.`;
       this.warn.classList.add("save-query__warn--shown");
     } else {
       this.warn.textContent = "";

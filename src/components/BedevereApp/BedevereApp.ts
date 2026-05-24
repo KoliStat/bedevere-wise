@@ -517,12 +517,10 @@ export class BedevereApp implements EventHandler {
       this.leftPanel.setOnShowMessageCallback((msg, type, options) =>
         this.showMessage(msg, type, options),
       );
-      this.leftPanel.setOnOpenQueryCallback((sql) => {
+      this.leftPanel.setOnOpenQueryCallback((queryId) => {
         const editor = this.tabManager.getSqlEditor();
-        if (editor) {
-          editor.setQuery(sql);
-          editor.expand();
-        }
+        // openSavedQuery already calls expand() + focus.
+        editor?.openSavedQuery(queryId);
       });
 
       // Handle panel toggle
@@ -1094,27 +1092,78 @@ export class BedevereApp implements EventHandler {
       },
     });
 
-    // ---- .query save <name> ---------------------------------------------
+    // ---- .query [list | save | open | delete] ---------------------------
     commandRegistry.register({
       id: "shell.query",
       shellName: "query",
-      title: "Manage Query Bookmarks",
-      description: "`.query save <name>` bookmarks the editor's current query.",
+      title: "Manage saved queries",
+      description:
+        "`.query list` lists the active env's queries · " +
+        "`.query save <name>` renames the active editor tab · " +
+        "`.query open <name>` opens that query as a tab · " +
+        "`.query delete <name>` removes it from the active env",
       category: "Query",
       parameters: [
-        { name: "action", type: "string", required: true, options: () => ["save"] },
-        { name: "name", type: "string", required: true },
+        { name: "action", type: "string", required: true, options: () => ["list", "save", "open", "delete"] },
+        {
+          name: "name",
+          type: "string",
+          required: false,
+          options: () => environmentService.getActive()?.queries.map((q) => q.name) ?? [],
+        },
       ],
       execute: (params) => {
         const action = String(params?.action ?? "").trim();
         const name = String(params?.name ?? "").trim();
-        if (action !== "save") throw new Error(".query currently supports only 'save'");
-        if (!name) throw new Error(".query save requires a name");
+        const env = environmentService.getActive();
+        if (!env) throw new Error("No active environment");
         const editor = this.tabManager.getSqlEditor();
-        const query = editor?.getQuery().trim();
-        if (!query) throw new Error("SQL editor is empty — open it with .sql and type a query first");
-        this.persistenceService.saveQueryBookmark(name, query);
-        this.showMessage(`Query "${name}" bookmarked`, "success");
+        const findByName = (n: string) =>
+          env.queries.find((q) => q.name.toLowerCase() === n.toLowerCase());
+
+        switch (action) {
+          case "list": {
+            if (env.queries.length === 0) {
+              this.showMessage(`No saved queries in "${env.name}"`, "info");
+              return;
+            }
+            const lines = env.queries.map((q) => `  ${q.name}`);
+            this.showMessage(
+              `Queries in "${env.name}":\n${lines.join("\n")}`,
+              "info",
+              { duration: 8000 },
+            );
+            return;
+          }
+          case "save": {
+            if (!name) throw new Error(".query save requires a name");
+            if (!editor) throw new Error("SQL editor is not available");
+            const activeId = editor.getActiveQueryId();
+            if (!activeId) throw new Error("No active editor tab to save");
+            if (findByName(name)) throw new Error(`A query called "${name}" already exists`);
+            environmentService.updateQuery(env.id, activeId, { name });
+            this.showMessage(`Renamed active tab to "${name}"`, "success");
+            return;
+          }
+          case "open": {
+            if (!name) throw new Error(".query open requires the name of a saved query");
+            const target = findByName(name);
+            if (!target) throw new Error(`No query called "${name}" in "${env.name}"`);
+            if (!editor) throw new Error("SQL editor is not available");
+            editor.openSavedQuery(target.id);
+            return;
+          }
+          case "delete": {
+            if (!name) throw new Error(".query delete requires the name of a saved query");
+            const target = findByName(name);
+            if (!target) throw new Error(`No query called "${name}" in "${env.name}"`);
+            environmentService.deleteQuery(env.id, target.id);
+            this.showMessage(`Deleted query "${name}"`, "success");
+            return;
+          }
+          default:
+            throw new Error(`.query: unknown action "${action}". Try list / save / open / delete.`);
+        }
       },
     });
 

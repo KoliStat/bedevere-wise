@@ -58,7 +58,10 @@ export class ControlPanel {
   private onToggleCallback?: (isMinimized: boolean) => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
   private persistenceService?: PersistenceService;
-  private onOpenQueryCallback?: (sql: string) => void;
+  private onOpenQueryCallback?: (queryId: string) => void;
+  /** Tab-state for the inline-rename UI in Saved Queries. Single id at
+   *  most — clicking on another row commits and switches focus. */
+  private renamingQueryId: string | null = null;
   private onAliasChangeCallback?: (tableName: string, alias: string) => void;
   private onShowMessageCallback?: ShowMessageFn;
 
@@ -163,6 +166,10 @@ export class ControlPanel {
     this.lastActiveEnvId = environmentService.getActiveId();
     this.envUnsubscribe = environmentService.onChange(() => {
       const nextId = environmentService.getActiveId();
+      // Saved Queries lists the active env's queries — re-render on
+      // every emit so add/delete/rename are reflected without waiting
+      // for a switch.
+      this.renderSavedQueries();
       if (nextId === this.lastActiveEnvId) return;
       this.lastActiveEnvId = nextId;
       if (nextId) {
@@ -997,12 +1004,8 @@ export class ControlPanel {
     }
   }
 
-  public setOnOpenQueryCallback(callback: (sql: string) => void): void {
+  public setOnOpenQueryCallback(callback: (queryId: string) => void): void {
     this.onOpenQueryCallback = callback;
-  }
-
-  public refreshSavedQueries(): void {
-    this.renderSavedQueries();
   }
 
   // --- Resize ---
@@ -1060,39 +1063,113 @@ export class ControlPanel {
   // --- Renderers ---
 
   private renderSavedQueries(): void {
-    if (!this.persistenceService) return;
-
-    const queries = this.persistenceService.loadQueryBookmarks();
+    const env = environmentService.getActive();
     this.queriesListElement.innerHTML = "";
+    if (!env) return;
+
+    // Sort: most recently updated first, falls back to created.
+    const queries = env.queries.slice().sort(
+      (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
+    );
 
     for (const query of queries) {
-      const item = document.createElement("div");
-      item.className = "control-panel__section-item";
-
-      const name = document.createElement("span");
-      name.className = "control-panel__section-item-name";
-      name.textContent = query.name;
-      name.title = query.sql;
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "control-panel__section-item-delete";
-      deleteBtn.textContent = "×";
-      deleteBtn.title = "Delete query";
-      deleteBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.persistenceService!.deleteQueryBookmark(query.name);
-        this.renderSavedQueries();
-      });
-
-      item.appendChild(name);
-      item.appendChild(deleteBtn);
-
-      item.addEventListener("click", () => {
-        this.onOpenQueryCallback?.(query.sql);
-      });
-
-      this.queriesListElement.appendChild(item);
+      this.queriesListElement.appendChild(this.buildSavedQueryRow(env.id, query));
     }
+  }
+
+  private buildSavedQueryRow(
+    envId: string,
+    query: { id: string; name: string; sql: string },
+  ): HTMLElement {
+    const item = document.createElement("div");
+    item.className = "control-panel__section-item";
+    item.dataset.queryId = query.id;
+
+    if (this.renamingQueryId === query.id) {
+      this.fillRenamingRow(item, envId, query);
+    } else {
+      this.fillNormalRow(item, envId, query);
+    }
+    return item;
+  }
+
+  private fillNormalRow(
+    item: HTMLElement,
+    envId: string,
+    query: { id: string; name: string; sql: string },
+  ): void {
+    const name = document.createElement("span");
+    name.className = "control-panel__section-item-name";
+    name.textContent = query.name;
+    name.title = query.sql || query.name;
+    // Double-click on the name → inline rename. Click stops propagation
+    // so the row's click handler (open in editor) doesn't fire too.
+    name.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this.renamingQueryId = query.id;
+      this.renderSavedQueries();
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "control-panel__section-item-delete";
+    deleteBtn.textContent = "×";
+    deleteBtn.title = "Delete query";
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      environmentService.deleteQuery(envId, query.id);
+      // Service emit re-renders us via the onChange subscription.
+    });
+
+    item.appendChild(name);
+    item.appendChild(deleteBtn);
+
+    item.addEventListener("click", () => {
+      this.onOpenQueryCallback?.(query.id);
+    });
+  }
+
+  private fillRenamingRow(
+    item: HTMLElement,
+    envId: string,
+    query: { id: string; name: string },
+  ): void {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "control-panel__section-item-rename";
+    input.value = query.name;
+    input.spellcheck = false;
+
+    const commit = (apply: boolean): void => {
+      if (this.renamingQueryId !== query.id) return;
+      const next = input.value.trim();
+      this.renamingQueryId = null;
+      if (apply && next && next !== query.name) {
+        environmentService.updateQuery(envId, query.id, { name: next });
+        // Service emit triggers re-render.
+      } else {
+        this.renderSavedQueries();
+      }
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        commit(false);
+      }
+      e.stopPropagation();
+    });
+    input.addEventListener("blur", () => commit(true));
+    input.addEventListener("click", (e) => e.stopPropagation());
+
+    item.appendChild(input);
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
   }
 
 }

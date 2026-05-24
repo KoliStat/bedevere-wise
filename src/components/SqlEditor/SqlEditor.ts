@@ -242,11 +242,49 @@ export class SqlEditor implements FocusableComponent {
     return this.editorView?.state.doc.toString() ?? "";
   }
 
+  /** Id of the currently focused tab's `EnvironmentQuery`, or null if
+   *  no tab is active. Used by `.query save` to know which env query
+   *  to rename. */
+  public getActiveQueryId(): string | null {
+    return this.activeQueryId;
+  }
+
   /**
-   * Replace the active tab's text. Used by callers that don't know
-   * about tabs (saved-queries click, programmatic injections). For a
-   * "open this saved query as a NEW tab" UX, use `openQueryAsTab`
-   * once Phase D wires it.
+   * Open a saved query (one of the active env's `EnvironmentQuery`
+   * records) in the tab strip. If it's already open as a tab, focus
+   * that tab; otherwise build a fresh tab and activate it. Expands
+   * the editor if it's currently collapsed.
+   *
+   * Used by Saved Queries clicks and the `.query open` shell command.
+   * Returns `true` if the query was found and opened.
+   */
+  public openSavedQuery(queryId: string): boolean {
+    const env = environmentService.getActive();
+    if (!env) return false;
+    const query = env.queries.find((q) => q.id === queryId);
+    if (!query) return false;
+
+    // Flush so the outgoing tab's autosave-pending text is written
+    // back to its env.queries entry before we switch away.
+    this.flushAutoSave();
+
+    const existing = this.tabs.find((t) => t.queryId === queryId);
+    if (!existing) {
+      this.tabs.push({ queryId, state: this.buildEditorState(query.sql) });
+    }
+    this.activateInternal(queryId);
+    this.persistWorkspace(env.id);
+    this.renderTabBar();
+    this.expand();
+    this.editorView?.focus();
+    return true;
+  }
+
+  /**
+   * Replace the active tab's text. Used by callers that want to
+   * inject text into the editor without opening a new tab (e.g.
+   * programmatic injections). Saved-query clicks now use
+   * {@link openSavedQuery} so the query keeps its identity as a tab.
    */
   public setQuery(query: string): void {
     if (!this.editorView) return;
@@ -638,15 +676,37 @@ export class SqlEditor implements FocusableComponent {
 
   // ---- Save dialog --------------------------------------------------
 
+  /**
+   * Ctrl+S → rename the active editor tab. With env queries replacing
+   * the old bookmark store, every tab IS a saved query — Ctrl+S just
+   * gives it a proper name instead of `untitled-N.sql`. To fork a
+   * snapshot, open a new tab and paste; intentional duplication so
+   * "save" doesn't silently clone state.
+   */
   private openSaveDialog(): void {
-    const query = this.getQuery().trim();
-    if (!query) return;
-    const existing = persistenceService.loadQueryBookmarks().map((q) => q.name);
+    const env = environmentService.getActive();
+    if (!env || !this.activeQueryId) return;
+    const activeId = this.activeQueryId;
+    const active = env.queries.find((q) => q.id === activeId);
+    if (!active) return;
+
+    // Other queries' names — used to flag the warning row when typing
+    // a name already in use. The active tab's own name is excluded so
+    // "no actual change" passes through silently.
+    const existing = env.queries
+      .filter((q) => q.id !== activeId)
+      .map((q) => q.name);
     SaveQueryDialog.show({
-      title: "Save query as…",
+      title: "Rename query",
+      defaultName: active.name,
       existingNames: existing,
       onSave: (name) => {
-        persistenceService.saveQueryBookmark(name, query);
+        // Reject duplicate inside the save callback; the dialog
+        // surfaces the thrown message via its warning row.
+        if (existing.some((n) => n.toLowerCase() === name.toLowerCase())) {
+          throw new Error(`A query called "${name}" already exists in this environment`);
+        }
+        environmentService.updateQuery(env.id, activeId, { name });
       },
     });
   }
