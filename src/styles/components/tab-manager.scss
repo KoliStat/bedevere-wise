@@ -53,12 +53,13 @@
       color: var(--fg-dark);
     }
 
-    // Active tab: solid bg with accent underline, like vim's selected
-    // tabline segment.
+    // Active tab: solid bg with blue accent on the TOP edge, matching
+    // the SQL editor tab strip so both tab rows feel like a single
+    // visual language.
     &--active {
       background-color: var(--bg);
       color: var(--fg);
-      box-shadow: inset 0 -2px 0 var(--blue);
+      box-shadow: inset 0 2px 0 0 var(--blue);
 
       &:hover { background-color: var(--bg); }
     }

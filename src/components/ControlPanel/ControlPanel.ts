@@ -311,7 +311,9 @@ export class ControlPanel {
 
     // If no tree node represents this dataset yet (e.g. programmatic add via
     // command palette or view materialization), synthesize one so the user
-    // sees it in the panel.
+    // sees it in the panel. These are always added via a path that
+    // opens a tab, so flag both `isImported` (DuckDB has the table)
+    // AND `isOpenAsTab` (the spreadsheet view is up).
     const alreadyTracked = this.findTreeNodeByTableName(metadata.name);
     if (!alreadyTracked) {
       this.fileTree.push({
@@ -320,6 +322,7 @@ export class ControlPanel {
         kind: "file",
         fileType: undefined,
         isImported: true,
+        isOpenAsTab: true,
         tableName: metadata.name,
         isExpanded: false,
       });
@@ -334,8 +337,8 @@ export class ControlPanel {
     }
     const node = this.findTreeNodeByTableName(name);
     if (node) {
-      node.isImported = true;
-      this.treeRenderer?.updateNode(node.id, { isImported: true });
+      node.isOpenAsTab = true;
+      this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
     }
   }
 
@@ -344,12 +347,14 @@ export class ControlPanel {
     if (dataset) {
       dataset.isLoaded = false;
     }
-    // Reflect tab-closed state on the tree node too, so the panel no longer
-    // shows the file as "open".
+    // Reflect tab-closed state on the tree node too, so the panel no
+    // longer flags the file as "open as tab". `isImported` stays true
+    // — the DuckDB table is still there; clicking the row again will
+    // re-open the spreadsheet tab without re-importing.
     const node = this.findTreeNodeByTableName(name);
     if (node) {
-      node.isImported = false;
-      this.treeRenderer?.updateNode(node.id, { isImported: false });
+      node.isOpenAsTab = false;
+      this.treeRenderer?.updateNode(node.id, { isOpenAsTab: false });
     }
   }
 
@@ -772,7 +777,7 @@ export class ControlPanel {
    * threshold"); defaults to 100 KB.
    */
   private async autoImportBatch(nodes: FileTreeNode[]): Promise<void> {
-    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 102_400;
+    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 1_048_576;
     const importable = nodes.filter((n) => {
       if (n.fileType === "xlsx" || n.fileType === "xls") return false;
       if (threshold === 0) return false;
@@ -848,7 +853,7 @@ export class ControlPanel {
     // Re-apply the threshold on every render — cheap, and ensures
     // a Settings-tab change shows up next time the tree refreshes
     // without needing a dedicated listener.
-    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 102_400;
+    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 1_048_576;
     this.treeRenderer.setAutoImportThreshold(threshold);
     this.treeRenderer.render(this.fileTree);
   }
@@ -883,8 +888,8 @@ export class ControlPanel {
           await this.tabManager.addDataset(existing.metadata, existing.dataset);
         }
         await this.tabManager.switchToDataset(existing.metadata.name);
-        node.isImported = true;
-        this.treeRenderer?.updateNode(node.id, { isImported: true });
+        node.isOpenAsTab = true;
+        this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
         this.onSelectCallback?.(existing.dataset);
         return;
       }
@@ -968,7 +973,14 @@ export class ControlPanel {
 
       node.isImported = true;
       node.tableName = metadata.name;
-      this.treeRenderer?.updateNode(node.id, { isImported: true });
+      // `isOpenAsTab` only flips when we actually open a spreadsheet
+      // tab. Silent imports stay visually neutral in the tree (the
+      // user-visible "this row is loaded" highlight is reserved for
+      // rows whose tab is currently open).
+      if (!options.silent) {
+        node.isOpenAsTab = true;
+      }
+      this.treeRenderer?.updateNode(node.id, { isOpenAsTab: node.isOpenAsTab });
 
       this.datasets.push({ metadata, dataset: provider, isLoaded: true });
 

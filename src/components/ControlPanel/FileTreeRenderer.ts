@@ -37,7 +37,7 @@ export class FileTreeRenderer {
    *  yet imported show a warning glyph. `0` means auto-import is
    *  disabled, which we treat as "every file is over-threshold" for
    *  warning purposes — the user always has to click. */
-  private autoImportThreshold: number = 102_400;
+  private autoImportThreshold: number = 1_048_576;
 
   constructor(container: HTMLElement, callbacks: FileTreeCallbacks) {
     this.container = container;
@@ -167,8 +167,8 @@ export class FileTreeRenderer {
     const el = this.treeContainer.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`) as HTMLElement;
     if (!el) return;
 
-    if (updates.isImported !== undefined) {
-      el.classList.toggle("file-tree__node--imported", updates.isImported);
+    if (updates.isOpenAsTab !== undefined) {
+      el.classList.toggle("file-tree__node--imported", updates.isOpenAsTab);
     }
     if (updates.isExpanded !== undefined) {
       el.classList.toggle("file-tree__node--expanded", updates.isExpanded);
@@ -221,7 +221,10 @@ export class FileTreeRenderer {
     el.className = "file-tree__node";
     el.dataset.nodeId = node.id;
 
-    if (node.isImported) el.classList.add("file-tree__node--imported");
+    // `--imported` styles "this dataset is currently open in a
+    // spreadsheet tab". Silent-imported files (DuckDB has the table
+    // but no tab is open) stay visually neutral.
+    if (node.isOpenAsTab) el.classList.add("file-tree__node--imported");
     if (node.isUnavailable) el.classList.add("file-tree__node--unavailable");
     if (expanded) el.classList.add("file-tree__node--expanded");
 

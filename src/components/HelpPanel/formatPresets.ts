@@ -39,9 +39,9 @@ export const MIN_CELL_WIDTH_PRESETS: number[] = [50, 75, 100, 150, 200];
 export const MAX_STRING_LENGTH_PRESETS: number[] = [50, 100, 200, 500, 0];
 
 /** Auto-import threshold presets in bytes. 0 disables auto-import
- *  (every file requires a click). The default is 102400 (100 KB). */
-export const AUTO_IMPORT_THRESHOLD_PRESETS: number[] = [10_240, 102_400, 1_048_576, 0];
-export const DEFAULT_AUTO_IMPORT_THRESHOLD = 102_400;
+ *  (every file requires a click). The default is 1_048_576 (1 MB). */
+export const AUTO_IMPORT_THRESHOLD_PRESETS: number[] = [10_240, 102_400, 1_048_576, 10_485_760, 0];
+export const DEFAULT_AUTO_IMPORT_THRESHOLD = 1_048_576;
 
 /** Friendly label for the threshold dropdown. */
 export function formatThresholdLabel(bytes: number): string {
