@@ -14,10 +14,12 @@ import {
 import { Command, commandRegistry } from "@/data/CommandRegistry";
 import { renderAboutBody } from "./aboutHtml";
 import {
+  AUTO_IMPORT_THRESHOLD_PRESETS,
   DATE_FORMAT_PRESETS,
   DATETIME_FORMAT_PRESETS,
   DECIMAL_PRESETS,
   FormatPrefs,
+  formatThresholdLabel,
   MAX_STRING_LENGTH_PRESETS,
   MIN_CELL_WIDTH_PRESETS,
 } from "./formatPresets";
@@ -1153,6 +1155,27 @@ export class HelpPanel {
       ));
       section.appendChild(this.buildLabeledRow("Max chars per cell",
         this.buildSegmented(MAX_STRING_LENGTH_PRESETS, initialMaxLen, (n) => (n === 0 ? "None" : String(n)), (n) => updateFormat("maxStringLength", n)),
+      ));
+    }));
+
+    // --- Import ---
+    body.appendChild(this.buildSettingsSection("Import", (section) => {
+      const hint = document.createElement("p");
+      hint.className = "help-panel__hint";
+      hint.textContent =
+        "Files at or below this size are auto-imported on drop. Larger files show a warning glyph in the tree and stay un-imported until clicked.";
+      section.appendChild(hint);
+
+      const initialThreshold = this.options.getFormatOptions?.().autoImportSizeThreshold
+        ?? AUTO_IMPORT_THRESHOLD_PRESETS[1];
+      section.appendChild(this.buildLabeledRow(
+        "Auto-import threshold",
+        this.buildSegmented(
+          AUTO_IMPORT_THRESHOLD_PRESETS,
+          initialThreshold,
+          formatThresholdLabel,
+          (n) => updateFormat("autoImportSizeThreshold", n),
+        ),
       ));
     }));
 

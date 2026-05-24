@@ -2,6 +2,7 @@ import { TabManager } from "../TabManager/TabManager";
 import { ControlPanel } from "../ControlPanel/ControlPanel";
 import { StatusBar } from "../StatusBar/StatusBar";
 import { HelpPanel, HelpPanelTab } from "../HelpPanel/HelpPanel";
+import { DEFAULT_AUTO_IMPORT_THRESHOLD } from "../HelpPanel/formatPresets";
 import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_DATETIME_FORMAT,
@@ -381,6 +382,7 @@ export class BedevereApp implements EventHandler {
           numberUseGrouping: s.numberUseGrouping ?? true,
           minCellWidth: s.minCellWidth ?? DEFAULT_MIN_CELL_WIDTH,
           maxStringLength: s.maxStringLength ?? DEFAULT_MAX_STRING_LENGTH,
+          autoImportSizeThreshold: s.autoImportSizeThreshold ?? DEFAULT_AUTO_IMPORT_THRESHOLD,
         };
       },
       setFormatOptions: (opts) => {
@@ -392,8 +394,12 @@ export class BedevereApp implements EventHandler {
         s.numberUseGrouping = opts.numberUseGrouping;
         s.minCellWidth = opts.minCellWidth;
         s.maxStringLength = opts.maxStringLength;
+        s.autoImportSizeThreshold = opts.autoImportSizeThreshold;
         this.persistenceService.saveAppSettings(s);
         this.applyFormatSettings(opts);
+        // Refresh the tree so warning glyphs / size labels update if
+        // the threshold changed. Cheap — no DuckDB re-imports.
+        this.leftPanel.refreshTree();
       },
     });
     this.statusBar?.setOnHelpClickCallback(() => this.helpPanel.show("howto"));

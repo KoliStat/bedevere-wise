@@ -17,6 +17,10 @@ export interface FileTreeNode {
   tableName?: string;
   /** True if the format handler reports this type as unavailable (extension not loaded) */
   isUnavailable?: boolean;
+  /** File size in bytes (only set for file/sheet nodes). Drives the
+   *  auto-import policy (small ↦ silent, large ↦ user-click) and the
+   *  size label shown next to each row. */
+  size?: number;
 }
 
 /** Map file extensions to SupportedFileType */

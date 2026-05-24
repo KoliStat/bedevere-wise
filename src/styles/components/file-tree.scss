@@ -123,6 +123,28 @@
   }
 }
 
+// Warning glyph for files over the auto-import threshold. Muted yellow
+// so it reads as advisory, not an error. Sits between the name and
+// size label on the right side of the row.
+.file-tree__warn {
+  flex-shrink: 0;
+  color: var(--yellow, #d4a64a);
+  font-size: 12px;
+  margin-left: 4px;
+  cursor: help;
+}
+
+// Size label right-aligned per row, muted and monospace so it forms
+// a quiet column without distracting from filenames.
+.file-tree__size {
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .file-tree__children {
   // Indentation handled by paddingLeft on rows.
 }

@@ -504,6 +504,28 @@ export class ControlPanel {
       this.expandSection("datasets");
     }
     this.bindFolderToEnvironment(tree, folderHandleId);
+
+    // Auto-import small files in the folder. Fire-and-forget — the
+    // tree is already visible, so a slow import doesn't block the
+    // user. Already-imported leaves (carried over by
+    // `preserveImportedState`) are filtered out so a folder re-scan
+    // doesn't redo work.
+    const leaves = this.collectFileLeaves(tree).filter((n) => !n.isImported);
+    if (leaves.length > 0) {
+      this.autoImportBatch(leaves).catch((err) => {
+        console.error("Folder auto-import failed:", err);
+      });
+    }
+  }
+
+  private collectFileLeaves(node: FileTreeNode): FileTreeNode[] {
+    const out: FileTreeNode[] = [];
+    const walk = (n: FileTreeNode): void => {
+      if (n.kind === "file" && n.fileType) out.push(n);
+      if (n.children) for (const c of n.children) walk(c);
+    };
+    walk(node);
+    return out;
   }
 
   /**
@@ -666,6 +688,7 @@ export class ControlPanel {
         fileType,
         isImported: false,
         isExpanded: false,
+        size: file.size,
       };
       this.fileTree.push(node);
       newNodes.push(node);
@@ -692,10 +715,37 @@ export class ControlPanel {
     this.expandSection("datasets");
 
     if (!autoImport) return;
+    await this.autoImportBatch(newNodes);
+  }
 
-    // Auto-import non-Excel files so dropping a CSV/Parquet still opens it
-    // straight away. Excel files stay collapsed until the user picks a sheet.
-    const importable = newNodes.filter((n) => n.fileType !== "xlsx" && n.fileType !== "xls");
+  /**
+   * Size-aware silent-import for a batch of file nodes (drop or
+   * folder scan). Behaviour per node:
+   *
+   * - Excel (`xlsx` / `xls`): always user-driven (needs the sheet
+   *   picker). Skipped entirely.
+   * - `size` known and over `autoImportSizeThreshold` (or unknown
+   *   size, treated as over): skipped. The tree shows a warning glyph
+   *   and the user clicks-to-open via the existing import path.
+   * - Else: silent import \u2014 DuckDB table registered, dataset added to
+   *   the in-memory list, but no spreadsheet tab is opened.
+   *
+   * Threshold of `0` disables auto-import entirely. The threshold
+   * comes from AppSettings (Settings tab \u2192 Import \u2192 "Auto-import
+   * threshold"); defaults to 100 KB.
+   */
+  private async autoImportBatch(nodes: FileTreeNode[]): Promise<void> {
+    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 102_400;
+    const importable = nodes.filter((n) => {
+      if (n.fileType === "xlsx" || n.fileType === "xls") return false;
+      if (threshold === 0) return false;
+      // Files with no known size (unusual \u2014 only happens for
+      // drag-and-drop where `file.size` was 0 or for synthetic nodes)
+      // are conservatively skipped so they go through the explicit
+      // user-click path.
+      if (n.size === undefined) return false;
+      return n.size <= threshold;
+    });
     if (importable.length === 0) return;
 
     const errors: Array<{ name: string; message: string; details?: string }> = [];
@@ -707,10 +757,12 @@ export class ControlPanel {
       // Persistent progress line; each call replaces the previous one in the
       // status bar's single transient-message slot.
       this.onShowMessageCallback?.(label, "info", { duration: 0 });
-      const result = await this.importNode(node);
+      const result = await this.importNode(node, { silent: true });
       if (!result.ok) errors.push({ name: node.name, ...result.error });
     }
 
+    // Re-render so the now-imported nodes show the imported-tick state.
+    this.renderTree();
     this.emitBatchSummary(importable, errors);
   }
 
@@ -756,6 +808,11 @@ export class ControlPanel {
       this.treeRenderer = new FileTreeRenderer(this.datasetListElement, callbacks);
     }
 
+    // Re-apply the threshold on every render — cheap, and ensures
+    // a Settings-tab change shows up next time the tree refreshes
+    // without needing a dedicated listener.
+    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 102_400;
+    this.treeRenderer.setAutoImportThreshold(threshold);
     this.treeRenderer.render(this.fileTree);
   }
 
@@ -820,7 +877,10 @@ export class ControlPanel {
    * short-circuiting folders / excel files / unavailable nodes / already-
    * imported nodes before calling this.
    */
-  private async importNode(node: FileTreeNode): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
+  private async importNode(
+    node: FileTreeNode,
+    options: { silent?: boolean } = {},
+  ): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
     if (!this.fileImportService) return { ok: false, error: { message: "File import service unavailable" } };
 
     try {
@@ -838,11 +898,11 @@ export class ControlPanel {
           ? `${node.alias || stripExt((node.fileHandle as any)?.name || node.name)}__${node.sheetName}`
           : node.alias || stripExt(node.name);
       const tableName = baseName;
-      const options = node.kind === "sheet" && node.sheetName ? { sheetName: node.sheetName } : undefined;
+      const importOpts = node.kind === "sheet" && node.sheetName ? { sheetName: node.sheetName } : undefined;
 
       let provider;
       try {
-        provider = await this.fileImportService.importFile(file, tableName, options);
+        provider = await this.fileImportService.importFile(file, tableName, importOpts);
       } catch (importErr) {
         if (importErr instanceof MultipleHtmlTablesError) {
           // Multi-table HTML — defer to the picker so the user chooses
@@ -850,7 +910,8 @@ export class ControlPanel {
           // which we route back through the import pipeline as a
           // synthetic .csv file so the rest of the flow (provider
           // construction, TabManager wiring, persistence) stays
-          // unchanged.
+          // unchanged. The picker is interactive, so even silent
+          // imports surface it — there's no sensible silent fallback.
           const picked = await HtmlPasteDialog.showAsync({
             title: `Pick a table — ${importErr.sourceName}`,
             initialTables: importErr.tables,
@@ -874,9 +935,11 @@ export class ControlPanel {
 
       this.datasets.push({ metadata, dataset: provider, isLoaded: true });
 
-      await this.tabManager.addDataset(metadata, provider);
-      await this.tabManager.switchToDataset(metadata.name);
-      this.onSelectCallback?.(provider);
+      if (!options.silent) {
+        await this.tabManager.addDataset(metadata, provider);
+        await this.tabManager.switchToDataset(metadata.name);
+        this.onSelectCallback?.(provider);
+      }
       return { ok: true };
     } catch (error) {
       // Log + return structured error: the batch caller
@@ -1006,6 +1069,13 @@ export class ControlPanel {
 
   public setOnOpenQueryCallback(callback: (queryId: string) => void): void {
     this.onOpenQueryCallback = callback;
+  }
+
+  /** Re-render the file tree. Called by BedevereApp after the Settings
+   *  tab changes the auto-import threshold so warning glyphs update
+   *  immediately. */
+  public refreshTree(): void {
+    this.renderTree();
   }
 
   // --- Resize ---

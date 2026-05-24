@@ -12,6 +12,10 @@ export interface FormatPrefs {
   numberUseGrouping: boolean;
   minCellWidth: number;
   maxStringLength: number;
+  /** Bytes. Files at or below this size auto-import silently on drop /
+   *  folder scan; above, the user clicks-to-open. `0` disables auto-
+   *  import — every file is user-driven. */
+  autoImportSizeThreshold: number;
 }
 
 export const DATE_FORMAT_PRESETS: string[] = [
@@ -33,3 +37,16 @@ export const MIN_CELL_WIDTH_PRESETS: number[] = [50, 75, 100, 150, 200];
 
 /** 0 means "no cap" — the dropdown labels it as "None". */
 export const MAX_STRING_LENGTH_PRESETS: number[] = [50, 100, 200, 500, 0];
+
+/** Auto-import threshold presets in bytes. 0 disables auto-import
+ *  (every file requires a click). The default is 102400 (100 KB). */
+export const AUTO_IMPORT_THRESHOLD_PRESETS: number[] = [10_240, 102_400, 1_048_576, 0];
+export const DEFAULT_AUTO_IMPORT_THRESHOLD = 102_400;
+
+/** Friendly label for the threshold dropdown. */
+export function formatThresholdLabel(bytes: number): string {
+  if (bytes === 0) return "Off";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
