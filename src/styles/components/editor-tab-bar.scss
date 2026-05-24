@@ -1,0 +1,124 @@
+// Tab strip rendered above the CodeMirror view in `.sql-editor`. One
+// row of tabs (horizontal scroll on overflow), each with name + close;
+// "+" button at the right end opens a new untitled query.
+
+.editor-tab-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--bg-dark);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 28px;
+  font-family: var(--font-mono);
+
+  &__tabs {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    // Hide the scrollbar visually; horizontal overflow is rare and the
+    // active-tab `scrollIntoView` keeps the relevant tab in view.
+    scrollbar-width: thin;
+
+    &::-webkit-scrollbar { height: 4px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-thumb { background: var(--gutter); }
+  }
+
+  &__tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    background: var(--bg-dark);
+    border-right: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 12px;
+    cursor: default;
+    min-width: 0;
+    max-width: 220px;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--fg);
+
+      .editor-tab-bar__close { opacity: 1; }
+    }
+
+    &--active {
+      background: var(--bg);
+      color: var(--fg);
+      // Blue accent on the top edge to match the dialog convention.
+      box-shadow: inset 0 2px 0 0 var(--blue);
+
+      .editor-tab-bar__close { opacity: 1; }
+    }
+  }
+
+  &__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+  }
+
+  &__close {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--fg-muted);
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.08s ease;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--red);
+    }
+  }
+
+  &__rename-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--blue);
+    padding: 1px 4px;
+    font-family: inherit;
+    font-size: 12px;
+    margin: 2px 0;
+
+    &:focus { outline: none; }
+  }
+
+  &__new {
+    flex-shrink: 0;
+    width: 28px;
+    background: var(--bg-dark);
+    color: var(--fg-muted);
+    border: none;
+    border-left: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--blue);
+    }
+  }
+}

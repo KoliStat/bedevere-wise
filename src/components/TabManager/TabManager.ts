@@ -655,6 +655,15 @@ export class TabManager {
     // duckDBService; dot-only commands (.help etc.) would work earlier but
     // this keeps the wiring in one place.
     this.commandBar?.setOnSubmitCallback((input) => this.dispatchInput(input));
+
+    // Restore the active environment's tabs now that the toggle callback
+    // is wired — `restoreActiveEnvironment` may auto-expand the editor
+    // if the env had an active query last session, and that expand
+    // fires `onToggleCallback` to sync the CommandBar chip. Doing this
+    // before the callback was set would skip that sync.
+    this.sqlEditor.restoreActiveEnvironment().catch((err) => {
+      console.error("SqlEditor: restoreActiveEnvironment failed", err);
+    });
   }
 
   public toggleSqlEditor(): void {
