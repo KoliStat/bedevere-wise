@@ -70,6 +70,13 @@ export class ControlPanel {
 
   // Environment switcher (top of the panel, above the accordion)
   private envSwitcher: EnvironmentSwitcher | null = null;
+  // Watches the EnvironmentService for active-id changes so every
+  // mutation source — switcher click, `.env switch` shell command,
+  // initial page-reload restore — converges through a single
+  // `applyActiveEnvironment` call. Without this, only the switcher
+  // path applied the tab-close / folder-rescan side-effects.
+  private envUnsubscribe?: () => void;
+  private lastActiveEnvId: string | null = null;
 
   // Accordion
   private accordionSections: Map<string, AccordionSection> = new Map();
@@ -131,11 +138,15 @@ export class ControlPanel {
 
     // Assemble the panel. The env switcher sits between the header
     // chrome and the accordion content so it reads as a workspace-
-    // wide context selector for everything below it.
+    // wide context selector for everything below it. The switcher
+    // only mutates the active id via `environmentService.setActive`;
+    // the actual "close tabs + re-scan folder" side-effects are
+    // handled by the onChange subscription below, so the shell
+    // `.env switch` command and the startup-restore path get the
+    // same behaviour as the GUI without each having to remember to
+    // fire it themselves.
     this.panelElement.appendChild(this.headerElement);
-    this.envSwitcher = new EnvironmentSwitcher(this.panelElement, {
-      onSwitch: (envId) => this.handleEnvSwitch(envId),
-    });
+    this.envSwitcher = new EnvironmentSwitcher(this.panelElement);
     this.panelElement.appendChild(this.contentElement);
     this.panelElement.appendChild(this.resizeHandle);
     this.container.appendChild(this.panelElement);
@@ -143,6 +154,23 @@ export class ControlPanel {
     parent.appendChild(this.container);
 
     this.toggleButton.addEventListener("click", () => this.toggleMinimize());
+
+    // Watch for active-env changes from any source (switcher click,
+    // `.env switch`, programmatic `setActive`, env-creation flows that
+    // activate the new env). The listener fires on every mutation —
+    // we guard with `lastActiveEnvId` so unrelated changes (rename,
+    // addQuery, …) don't trigger a needless re-scan.
+    this.lastActiveEnvId = environmentService.getActiveId();
+    this.envUnsubscribe = environmentService.onChange(() => {
+      const nextId = environmentService.getActiveId();
+      if (nextId === this.lastActiveEnvId) return;
+      this.lastActiveEnvId = nextId;
+      if (nextId) {
+        this.applyActiveEnvironment(nextId).catch((err) => {
+          console.error("Apply active environment failed:", err);
+        });
+      }
+    });
   }
 
   private buildAccordion(): void {
@@ -530,13 +558,19 @@ export class ControlPanel {
   }
 
   /**
-   * Fired by the env switcher when the user picks a different env.
-   * Closes every open dataset tab, clears the in-memory file tree,
-   * and — for folder envs — re-acquires permission and re-scans the
-   * folder so the tree reflects the freshly-active env. Default envs
-   * land on an empty tree until the user drops files into the session.
+   * Apply the side-effects of "this env is now active" to the panel:
+   * close every open dataset tab, clear the in-memory file tree, and
+   * — for folder envs — re-acquire permission and re-scan the bound
+   * directory so the tree reflects the env's contents. Default envs
+   * land on an empty tree (their drops can't be re-acquired after a
+   * reload; the env list still describes what was loaded).
+   *
+   * Invoked from a single subscriber to `environmentService.onChange`
+   * (above) and from `restoreActiveEnvironment` on app boot. The
+   * switcher / shell command / programmatic `setActive` paths all
+   * converge here through the service emit.
    */
-  private async handleEnvSwitch(envId: string): Promise<void> {
+  private async applyActiveEnvironment(envId: string): Promise<void> {
     // Close every open dataset tab. The TabManager API works by name;
     // snapshot first so we don't mutate while iterating.
     const openIds = this.tabManager.getDatasetIds();
@@ -557,6 +591,21 @@ export class ControlPanel {
       // permission prompts and stale-handle cleanup.
       await this.openRecentFolder(env.folderHandleId);
     }
+  }
+
+  /**
+   * Apply the currently-active env to the panel. Called by BedevereApp
+   * once during boot (after all the panel callbacks have been wired)
+   * so a folder env restored from the previous session actually has
+   * its directory re-scanned — without this, the switcher label would
+   * show the right env name but the dataset tree would stay empty.
+   * After boot, the onChange subscription keeps things in sync.
+   */
+  public async restoreActiveEnvironment(): Promise<void> {
+    const activeId = environmentService.getActiveId();
+    if (!activeId) return;
+    this.lastActiveEnvId = activeId;
+    await this.applyActiveEnvironment(activeId);
   }
 
   /**
@@ -1001,6 +1050,8 @@ export class ControlPanel {
   public destroy(): void {
     document.removeEventListener("mousemove", this.onResizeMove);
     document.removeEventListener("mouseup", this.onResizeEnd);
+    this.envUnsubscribe?.();
+    this.envUnsubscribe = undefined;
     this.envSwitcher?.destroy();
     this.envSwitcher = null;
     this.container.remove();

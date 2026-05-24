@@ -195,6 +195,15 @@ export class BedevereApp implements EventHandler {
       this.leftPanel.toggleMinimize();
     }
 
+    // Re-acquire the active environment's folder and re-scan its tree
+    // so the previous session's dataset list comes back on page load.
+    // Best-effort: permission denied / handle stale shows a toast via
+    // the existing recent-folders pathway; default envs no-op (the
+    // method just returns).
+    if (this.leftPanel) {
+      await this.leftPanel.restoreActiveEnvironment();
+    }
+
     const path = window.location.pathname.replace(/\/$/, "");
     if (path === "/demo") {
       await this.runDemo();
