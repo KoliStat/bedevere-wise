@@ -211,28 +211,45 @@ export class EnvironmentService {
   }
 
   /**
-   * Remove all `untitled-N.sql` queries that are NOT in the current
-   * `openQueryIds`. Recovery helper for the v0.12 recursive-apply bug
-   * (see commit history for SqlEditor.applyEnvironment) which spawned
-   * hundreds of orphan untitleds. Safe to call on a healthy env —
-   * no-op when no orphans match.
+   * Recovery helper for the v0.12 recursive-apply bug (see commit
+   * history for SqlEditor.applyEnvironment) which spawned hundreds of
+   * orphan `untitled-N.sql` queries with unique ids. Removes every
+   * untitled-N query EXCEPT the currently active one (if any), from
+   * both `env.queries` AND `env.workspace.openQueryIds`.
    *
-   * Named queries (joins.sql, my-query.sql, …) and untitleds the user
-   * is actively editing are preserved.
+   * Named queries (joins.sql, my-query.sql, …) are preserved. Safe to
+   * call on a healthy env — no-op when no orphans match. After
+   * running, the env keeps any named queries plus at most one
+   * untitled (the active one).
    *
-   * Returns the count removed so the caller can report it.
+   * Returns the count removed.
    */
   public cleanupOrphanUntitled(envId: string): number {
     const env = this.get(envId);
     if (!env) return 0;
-    const openSet = new Set(env.workspace.openQueryIds);
-    const orphanRe = /^untitled-\d+\.sql$/;
+    const untitledRe = /^untitled-\d+\.sql$/;
+    const activeId = env.workspace.activeTab?.kind === "query"
+      ? env.workspace.activeTab.id
+      : null;
+
     const before = env.queries.length;
-    env.queries = env.queries.filter(
-      (q) => openSet.has(q.id) || !orphanRe.test(q.name),
-    );
+    env.queries = env.queries.filter((q) => {
+      if (!untitledRe.test(q.name)) return true;  // named queries kept
+      if (q.id === activeId) return true;          // currently focused untitled kept
+      return false;
+    });
     const removed = before - env.queries.length;
     if (removed === 0) return 0;
+
+    // Sync openQueryIds + activeTab — any pruned id that was sitting
+    // in the open list has to come out too, otherwise applyEnvironment
+    // re-creates a tab for it on next load.
+    const surviving = new Set(env.queries.map((q) => q.id));
+    env.workspace.openQueryIds = env.workspace.openQueryIds.filter((id) => surviving.has(id));
+    if (env.workspace.activeTab?.kind === "query" && !surviving.has(env.workspace.activeTab.id)) {
+      env.workspace.activeTab = undefined;
+    }
+
     this.persist();
     this.emit();
     return removed;
@@ -297,10 +314,46 @@ export class EnvironmentService {
     persistenceService.saveAppSettings(settings);
   }
 
+  /**
+   * One-shot safety net for the v0.12 recursive-apply bug. If any env
+   * carries the bug's fingerprint — many untitled queries with an
+   * overwhelmingly-untitled `openQueryIds` — auto-prune them at load
+   * time so the user doesn't open the app to hundreds of tab strips
+   * blocking the UI. The threshold is conservative: a real user
+   * accumulates a handful of untitleds across sessions, not 50+.
+   *
+   * Conservative: only fires when BOTH conditions hold:
+   *   - more than 50 untitled-N.sql queries exist in the env
+   *   - more than 90% of the open-tab list is untitled-N.sql
+   * Either alone could be a legitimate (if unusual) user state.
+   */
+  private recoverFromUntitledExplosion(): void {
+    const untitledRe = /^untitled-\d+\.sql$/;
+    for (const env of this.environments) {
+      const untitledCount = env.queries.filter((q) => untitledRe.test(q.name)).length;
+      if (untitledCount <= 50) continue;
+      const openUntitled = env.workspace.openQueryIds.filter((id) => {
+        const q = env.queries.find((qq) => qq.id === id);
+        return q ? untitledRe.test(q.name) : false;
+      }).length;
+      if (openUntitled / Math.max(env.workspace.openQueryIds.length, 1) < 0.9) continue;
+
+      // Bug fingerprint matched — prune via the same path the user-
+      // facing `.env cleanup` uses, then persist. No emit needed; this
+      // runs inside `load()` before any listener has subscribed.
+      this.cleanupOrphanUntitled(env.id);
+      console.warn(
+        `Auto-pruned ${untitledCount - 1} orphan untitled queries from "${env.name}". ` +
+        `(See SqlEditor.applyEnvironment recursion-fix commit for context.)`,
+      );
+    }
+  }
+
   private load(): void {
     const stored = persistenceService.loadEnvironmentsFile();
     if (stored && stored.environments.length > 0) {
       this.environments = stored.environments;
+      this.recoverFromUntitledExplosion();
     } else {
       // First load: bootstrap. Migration of legacy `bedevere_queries`
       // runs here too — only on the path where there are no envs yet.
