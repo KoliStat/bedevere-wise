@@ -89,8 +89,16 @@ export class SqlEditor implements FocusableComponent {
   /** The env whose tabs we last loaded. Compared against
    *  `environmentService.getActiveId()` in the onChange listener to
    *  decide between "rebuild tabs for new env" vs "same env, just
-   *  refresh labels for a rename/delete". */
+   *  refresh labels for a rename/delete". Set at the *top* of
+   *  `applyEnvironment` so any service emit fired by the rebuild
+   *  itself (addQuery / setWorkspace inside the migration path) sees
+   *  "same env" and skips the recursive re-entry. */
   private boundEnvId: string | null = null;
+  /** Re-entrancy guard. Belt-and-braces on top of the boundEnvId
+   *  check — if some future code path emits onChange in a way that
+   *  changes the active id mid-rebuild, this prevents an unbounded
+   *  recursive apply. */
+  private applying = false;
   private envUnsubscribe?: () => void;
 
   // Autosave
@@ -364,64 +372,100 @@ export class SqlEditor implements FocusableComponent {
    * `editorAutoSaveDraft` — on first run, if the active env has no open
    * query tabs and the draft is non-empty, the draft becomes an
    * `untitled-1.sql` query and the draft slot is cleared.
+   *
+   * Sets `boundEnvId` at the TOP (not the bottom) and gates with
+   * `applying` so any onChange emit fired by the rebuild's own
+   * mutations (addQuery during migration / fresh-untitled creation,
+   * setWorkspace, …) sees "we're already on this env" and skips
+   * recursive re-entry. The previous version would recurse through
+   * the migration `addQuery → emit → listener → applyEnvironment`
+   * chain until the call stack ran out, creating hundreds of orphan
+   * untitled queries along the way.
    */
   private async applyEnvironment(envId: string): Promise<void> {
-    // Flush whatever the user was just typing into the old env's query
-    // before we swap the editor's state out from under them.
-    this.flushAutoSave();
+    if (this.applying) return;
+    this.applying = true;
+    try {
+      // Flush whatever the user was just typing into the old env's query
+      // before we swap the editor's state out from under them.
+      this.flushAutoSave();
 
-    const env = environmentService.get(envId);
-    if (!env) {
-      this.tabs = [];
-      this.activeQueryId = null;
-      this.boundEnvId = null;
-      this.renderTabBar();
-      return;
-    }
-
-    this.maybeMigrateLegacyDraft(env);
-
-    // Re-read in case migration mutated env.
-    const fresh = environmentService.get(envId)!;
-    const queryById = new Map(fresh.queries.map((q) => [q.id, q]));
-
-    // Build tab records from workspace.openQueryIds, skipping any
-    // stale ids (deleted queries the workspace never cleaned up).
-    this.tabs = [];
-    for (const qid of fresh.workspace.openQueryIds) {
-      const q = queryById.get(qid);
-      if (!q) continue;
-      this.tabs.push({ queryId: q.id, state: this.buildEditorState(q.sql) });
-    }
-
-    // If the env had no open queries (fresh env, all closed last
-    // session, or the draft-migration above was a no-op), open a
-    // single untitled tab so the editor never sits empty-without-a-tab.
-    if (this.tabs.length === 0) {
-      const q = environmentService.addQuery(fresh.id, {
-        name: this.nextUntitledName(fresh),
-        sql: "",
-      });
-      if (q) {
-        this.tabs.push({ queryId: q.id, state: this.buildEditorState("") });
+      const env = environmentService.get(envId);
+      if (!env) {
+        this.tabs = [];
+        this.activeQueryId = null;
+        this.boundEnvId = null;
+        this.renderTabBar();
+        return;
       }
-    }
 
-    // Pick the active tab: workspace.activeTab (if it's a query),
-    // else the first tab in the list.
-    let targetId = this.tabs[0]?.queryId ?? null;
-    const wsActive = fresh.workspace.activeTab;
-    if (wsActive?.kind === "query") {
-      const found = this.tabs.find((t) => t.queryId === wsActive.id);
-      if (found) targetId = found.queryId;
-    }
+      // Set boundEnvId FIRST. handleEnvServiceChange uses it to detect
+      // active-id transitions; if the migration's addQuery fires onChange
+      // synchronously, the listener now sees "same env" and just calls
+      // renderTabBar instead of recursing.
+      this.boundEnvId = envId;
 
-    this.boundEnvId = envId;
-    if (targetId) {
-      this.activateInternal(targetId);
+      this.maybeMigrateLegacyDraft(env);
+
+      // Re-read in case migration mutated env.
+      const fresh = environmentService.get(envId)!;
+      const queryById = new Map(fresh.queries.map((q) => [q.id, q]));
+
+      // Build tab records from workspace.openQueryIds:
+      //   - drop ids that point at deleted queries (stale references)
+      //   - dedupe (defensive: clean up any state that earlier broken
+      //     rebuild paths might have left lying around)
+      this.tabs = [];
+      const seenIds = new Set<string>();
+      const cleanedIds: string[] = [];
+      for (const qid of fresh.workspace.openQueryIds) {
+        if (seenIds.has(qid)) continue;
+        const q = queryById.get(qid);
+        if (!q) continue;
+        seenIds.add(qid);
+        cleanedIds.push(qid);
+        this.tabs.push({ queryId: q.id, state: this.buildEditorState(q.sql) });
+      }
+      // If cleaning trimmed the list, persist immediately so a future
+      // reload doesn't re-bloat from the stale storage value.
+      if (cleanedIds.length !== fresh.workspace.openQueryIds.length) {
+        environmentService.setWorkspace(envId, {
+          openDataNodeIds: fresh.workspace.openDataNodeIds,
+          openQueryIds: cleanedIds,
+          activeTab: fresh.workspace.activeTab,
+        });
+      }
+
+      // If the env had no open queries (fresh env, all closed last
+      // session, or the draft-migration above was a no-op), open a
+      // single untitled tab so the editor never sits empty-without-a-tab.
+      if (this.tabs.length === 0) {
+        const q = environmentService.addQuery(fresh.id, {
+          name: this.nextUntitledName(fresh),
+          sql: "",
+        });
+        if (q) {
+          this.tabs.push({ queryId: q.id, state: this.buildEditorState("") });
+        }
+      }
+
+      // Pick the active tab: workspace.activeTab (if it's a query),
+      // else the first tab in the list.
+      let targetId = this.tabs[0]?.queryId ?? null;
+      const wsActive = fresh.workspace.activeTab;
+      if (wsActive?.kind === "query") {
+        const found = this.tabs.find((t) => t.queryId === wsActive.id);
+        if (found) targetId = found.queryId;
+      }
+
+      if (targetId) {
+        this.activateInternal(targetId);
+      }
+      this.persistWorkspace(envId);
+      this.renderTabBar();
+    } finally {
+      this.applying = false;
     }
-    this.persistWorkspace(envId);
-    this.renderTabBar();
   }
 
   /**

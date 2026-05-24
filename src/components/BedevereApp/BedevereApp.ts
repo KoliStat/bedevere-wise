@@ -1125,10 +1125,11 @@ export class BedevereApp implements EventHandler {
       title: "Manage environments",
       description:
         "`.env list` lists envs · `.env new <name>` creates · `.env rename <new>` renames the active env · " +
-        "`.env switch <name>` activates · `.env delete <name>` removes (cannot delete the default env)",
+        "`.env switch <name>` activates · `.env delete <name>` removes (cannot delete the default env) · " +
+        "`.env cleanup` prunes orphan untitled queries from the active env",
       category: "Environment",
       parameters: [
-        { name: "action", type: "string", required: true, options: () => ["list", "new", "rename", "switch", "delete"] },
+        { name: "action", type: "string", required: true, options: () => ["list", "new", "rename", "switch", "delete", "cleanup"] },
         {
           name: "name",
           type: "string",
@@ -1185,8 +1186,20 @@ export class BedevereApp implements EventHandler {
             this.showMessage(`Deleted environment "${name}"`, "success");
             return;
           }
+          case "cleanup": {
+            const active = environmentService.getActive();
+            if (!active) throw new Error("No active environment");
+            const removed = environmentService.cleanupOrphanUntitled(active.id);
+            this.showMessage(
+              removed === 0
+                ? `No orphan untitled queries in "${active.name}"`
+                : `Removed ${removed} orphan untitled queries from "${active.name}"`,
+              removed === 0 ? "info" : "success",
+            );
+            return;
+          }
           default:
-            throw new Error(`.env: unknown action "${action}". Try list / new / rename / switch / delete.`);
+            throw new Error(`.env: unknown action "${action}". Try list / new / rename / switch / delete / cleanup.`);
         }
       },
     });

@@ -210,6 +210,34 @@ export class EnvironmentService {
     this.emit();
   }
 
+  /**
+   * Remove all `untitled-N.sql` queries that are NOT in the current
+   * `openQueryIds`. Recovery helper for the v0.12 recursive-apply bug
+   * (see commit history for SqlEditor.applyEnvironment) which spawned
+   * hundreds of orphan untitleds. Safe to call on a healthy env —
+   * no-op when no orphans match.
+   *
+   * Named queries (joins.sql, my-query.sql, …) and untitleds the user
+   * is actively editing are preserved.
+   *
+   * Returns the count removed so the caller can report it.
+   */
+  public cleanupOrphanUntitled(envId: string): number {
+    const env = this.get(envId);
+    if (!env) return 0;
+    const openSet = new Set(env.workspace.openQueryIds);
+    const orphanRe = /^untitled-\d+\.sql$/;
+    const before = env.queries.length;
+    env.queries = env.queries.filter(
+      (q) => openSet.has(q.id) || !orphanRe.test(q.name),
+    );
+    const removed = before - env.queries.length;
+    if (removed === 0) return 0;
+    this.persist();
+    this.emit();
+    return removed;
+  }
+
   public deleteQuery(envId: string, queryId: string): void {
     const env = this.get(envId);
     if (!env) return;
