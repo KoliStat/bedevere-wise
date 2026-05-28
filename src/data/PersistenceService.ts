@@ -86,6 +86,24 @@ export interface AppSettings {
    * even if the user empties their environments file.
    */
   queriesMigratedToEnv?: boolean;
+  /**
+   * User-chosen height (px) for the SQL editor panel when expanded.
+   * Drag-resize handle below the editor writes this; on next expand
+   * the editor restores to this size. Undefined falls back to the
+   * SCSS-driven default (min 212 / max 400 px).
+   */
+  sqlEditorHeight?: number;
+  /**
+   * Indentation kind used by the SQL editor's Tab key: `"tab"` inserts
+   * a real tab character, `"space"` inserts `editorIndentSize` spaces.
+   * Defaults to `"tab"` when unset.
+   */
+  editorIndentKind?: "tab" | "space";
+  /**
+   * Width (in spaces) used when `editorIndentKind === "space"`.
+   * Defaults to 4 when unset.
+   */
+  editorIndentSize?: number;
 }
 
 export interface RecentFolderEntry {

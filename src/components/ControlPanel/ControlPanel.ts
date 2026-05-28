@@ -342,6 +342,52 @@ export class ControlPanel {
     }
   }
 
+  /**
+   * Drop one dataset's panel-side bookkeeping after `.drop <name>` has
+   * removed the underlying DuckDB object. Removes the cached
+   * DataProvider entry (`this.datasets`) and unmarks the tree node's
+   * import flags so clicking the row re-imports cleanly from disk.
+   */
+  public markDatasetAsDropped(name: string): void {
+    this.datasets = this.datasets.filter((d) => d.metadata.name !== name);
+    const node = this.findTreeNodeByTableName(name);
+    if (node) {
+      node.isImported = false;
+      node.isOpenAsTab = false;
+      node.tableName = undefined;
+    }
+    // Full re-render — `updateNode` only handles the `--imported`
+    // class toggle; the warning glyph (which keys off `isImported`)
+    // wants a full row rebuild.
+    this.renderTree();
+  }
+
+  /**
+   * Drop the in-memory dataset cache and reset every tree node's import
+   * markers. Called by `.drop --all` so that after the underlying DuckDB
+   * tables are gone, clicking a tree row re-imports the file from
+   * scratch instead of reusing a now-stale DataProvider that points at
+   * a table DuckDB no longer knows about.
+   *
+   * Keeps the tree structure itself (folders, file names, sizes) — only
+   * the "this is currently in DuckDB" state is cleared.
+   */
+  public markAllAsUnloaded(): void {
+    this.datasets = [];
+    const walk = (nodes: FileTreeNode[]) => {
+      for (const n of nodes) {
+        if (n.isImported || n.isOpenAsTab || n.tableName) {
+          n.isImported = false;
+          n.isOpenAsTab = false;
+          n.tableName = undefined;
+        }
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(this.fileTree);
+    this.renderTree();
+  }
+
   public markDatasetAsUnloaded(name: string): void {
     const dataset = this.datasets.find((d) => d.metadata.name === name);
     if (dataset) {
@@ -647,6 +693,21 @@ export class ControlPanel {
     const openIds = this.tabManager.getDatasetIds();
     for (const id of openIds) {
       this.tabManager.closeDataset(id);
+    }
+
+    // Wipe every user-created object in DuckDB's `main` schema. Without
+    // this, switching from env A to env B leaves env A's tables, views,
+    // macros and types visible in autocomplete + reachable by SQL —
+    // confusing because the panel says they aren't part of B, but the
+    // engine still knows them. The new env's datasets re-import below
+    // through `openRecentFolder` / silent-import.
+    const duck = this.tabManager.getDuckDBService();
+    if (duck) {
+      try {
+        await duck.wipeUserState();
+      } catch (err) {
+        console.warn("applyActiveEnvironment: wipeUserState failed", err);
+      }
     }
 
     // Reset the panel's in-memory state.

@@ -2,9 +2,9 @@ import { EditorView, keymap, placeholder, lineNumbers } from "@codemirror/view";
 import { EditorState, Extension, Prec } from "@codemirror/state";
 import { sql } from "@codemirror/lang-sql";
 import { autocompletion } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap, insertTab, indentLess } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
 import { searchKeymap } from "@codemirror/search";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { FocusableComponent } from "../BedevereApp/types";
 import { DuckDBService } from "../../data/DuckDBService";
@@ -25,6 +25,27 @@ import { EditorTabBar } from "./EditorTabBar";
  * long enough that we're not pummelling localStorage on every character.
  */
 const AUTOSAVE_DEBOUNCE_MS = 750;
+
+/** Minimum / maximum panel heights, in px. The min sits a hair below
+ *  the SCSS `min-height: 212px` for the expanded state so users can
+ *  collapse the editor down to a one-line strip; the max leaves room
+ *  for the command bar and a usable spreadsheet beneath. */
+const SQL_EDITOR_MIN_HEIGHT = 120;
+const SQL_EDITOR_MAX_HEIGHT_MARGIN = 180;
+
+/** Options shown in the indent selector. The first entry's `value` is
+ *  the default used when no preference is stored. */
+const INDENT_OPTIONS: Array<{ value: string; label: string; kind: "tab" | "space"; size: number }> = [
+  { value: "tab",    label: "Tab",       kind: "tab",   size: 4 },
+  { value: "space2", label: "2 spaces",  kind: "space", size: 2 },
+  { value: "space4", label: "4 spaces",  kind: "space", size: 4 },
+  { value: "space8", label: "8 spaces",  kind: "space", size: 8 },
+];
+
+function indentSettingsToValue(kind: "tab" | "space", size: number): string {
+  if (kind === "tab") return "tab";
+  return `space${size}`;
+}
 
 // Syntax highlighting that matches the tokyonight palette via CSS variables,
 // so the editor follows light/dark theme switches without a rebuild. Token
@@ -108,12 +129,44 @@ export class SqlEditor implements FocusableComponent {
   // still fire updateListener).
   private lastAutoSavedText: string = "";
 
+  // Resize-drag state
+  private resizeHandle!: HTMLElement;
+  private isResizing = false;
+  private resizeStartY = 0;
+  private resizeStartHeight = 0;
+  // User-set height (px). null means "no preference; fall back to SCSS".
+  private userHeight: number | null = null;
+  private readonly onResizeMove: (e: MouseEvent) => void;
+  private readonly onResizeEnd: (e: MouseEvent) => void;
+
+  // Indent selector
+  private indentSelect!: HTMLSelectElement;
+  /** Current indent settings — read live by the Tab key handler closure
+   *  so changing the dropdown takes effect without rebuilding the
+   *  editor. `indentUnit` (for auto-indent on Enter etc.) does need a
+   *  rebuild; that happens in `rebuildAllStates`. */
+  private indentKind: "tab" | "space" = "tab";
+  private indentSize: number = 4;
+
   private onExecuteCallback?: (query: string) => void;
   private onToggleCallback?: (isExpanded: boolean) => void;
+  private onResizeCallback?: (height: number) => void;
 
   constructor(parent: HTMLElement, duckDBService: DuckDBService, componentId?: string) {
     this.componentId = componentId ?? "sql-editor";
     this.autoComplete = new SqlAutoComplete(duckDBService);
+
+    // Bind resize-drag handlers once so add / removeEventListener pairs match.
+    this.onResizeMove = this.handleResizeMove.bind(this);
+    this.onResizeEnd = this.handleResizeEnd.bind(this);
+
+    // Pick up persisted indent + height preferences. Defaults are
+    // applied here so the rest of the file can treat the fields as
+    // always-set.
+    const settings = persistenceService.loadAppSettings();
+    this.indentKind = settings.editorIndentKind ?? "tab";
+    this.indentSize = settings.editorIndentSize ?? 4;
+    this.userHeight = typeof settings.sqlEditorHeight === "number" ? settings.sqlEditorHeight : null;
 
     this.container = document.createElement("div");
     this.container.className = "sql-editor";
@@ -137,8 +190,7 @@ export class SqlEditor implements FocusableComponent {
     this.editorContainer.className = "sql-editor__editor";
     this.container.appendChild(this.editorContainer);
 
-    // Toolbar (Run / Clear). Sits below the editor; layout unchanged
-    // from v0.11.
+    // Toolbar (Run / Clear on the left, indent selector on the right).
     const toolbar = document.createElement("div");
     toolbar.className = "sql-editor__toolbar";
 
@@ -156,7 +208,35 @@ export class SqlEditor implements FocusableComponent {
 
     toolbar.appendChild(runButton);
     toolbar.appendChild(clearButton);
+
+    // Indent selector. Pushed to the right edge of the toolbar via
+    // `margin-left: auto` in CSS, so the visual ordering is
+    // Run / Clear ............ Indent.
+    this.indentSelect = document.createElement("select");
+    this.indentSelect.className = "sql-editor__indent-select";
+    this.indentSelect.title = "Indentation used by the Tab key";
+    for (const opt of INDENT_OPTIONS) {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      this.indentSelect.appendChild(o);
+    }
+    this.indentSelect.value = indentSettingsToValue(this.indentKind, this.indentSize);
+    this.indentSelect.addEventListener("change", () => this.handleIndentChange());
+    toolbar.appendChild(this.indentSelect);
+
     this.container.appendChild(toolbar);
+
+    // Resize handle — the bottom edge of the SqlEditor. Mousedown starts
+    // the drag, document-level mousemove updates the inline height,
+    // mouseup persists. While the editor is collapsed (max-height: 0,
+    // overflow hidden) the handle is clipped and unhittable, so we
+    // don't gate the click handler.
+    this.resizeHandle = document.createElement("div");
+    this.resizeHandle.className = "sql-editor__resize-handle";
+    this.resizeHandle.title = "Drag to resize the editor";
+    this.resizeHandle.addEventListener("mousedown", (e) => this.handleResizeStart(e));
+    this.container.appendChild(this.resizeHandle);
 
     parent.appendChild(this.container);
 
@@ -320,6 +400,13 @@ export class SqlEditor implements FocusableComponent {
   public expand(): void {
     if (this._isExpanded) return;
     this._isExpanded = true;
+    // Apply inline height BEFORE adding the class so the transition
+    // animates directly 0 → userHeight. The reverse order would briefly
+    // target the SCSS default (400 px) before snapping to userHeight,
+    // visible as a quick overshoot on slower screens.
+    if (this.userHeight !== null) {
+      this.applyInlineHeight(this.userHeight);
+    }
     this.container.classList.add("sql-editor--expanded");
     requestAnimationFrame(() => this.editorView?.focus());
     this.onToggleCallback?.(true);
@@ -328,6 +415,11 @@ export class SqlEditor implements FocusableComponent {
   public collapse(): void {
     if (!this._isExpanded) return;
     this._isExpanded = false;
+    // Clear inline styles BEFORE removing the class so the transition
+    // from the (inline) user height to the SCSS `max-height: 0` runs.
+    // Leaving inline `max-height: <user>` would override the SCSS rule
+    // and the editor would stay open.
+    this.clearInlineHeight();
     this.container.classList.remove("sql-editor--expanded");
     this.onToggleCallback?.(false);
   }
@@ -342,6 +434,13 @@ export class SqlEditor implements FocusableComponent {
 
   public setOnToggleCallback(callback: (isExpanded: boolean) => void): void {
     this.onToggleCallback = callback;
+  }
+
+  /** Fired after the user finishes dragging the resize handle. The
+   *  consumer (TabManager) should trigger a spreadsheet re-layout so
+   *  the canvas picks up the new available space. */
+  public setOnResizeCallback(callback: (height: number) => void): void {
+    this.onResizeCallback = callback;
   }
 
   public refreshSchema(): void {
@@ -386,6 +485,10 @@ export class SqlEditor implements FocusableComponent {
       window.clearTimeout(this.autoSaveTimer);
       this.autoSaveTimer = null;
     }
+    // Always clean up resize listeners — they live on `document`, so
+    // a dangling subscription would survive teardown.
+    document.removeEventListener("mousemove", this.onResizeMove);
+    document.removeEventListener("mouseup", this.onResizeEnd);
     this.envUnsubscribe?.();
     this.envUnsubscribe = undefined;
     this.tabBar?.destroy();
@@ -397,6 +500,131 @@ export class SqlEditor implements FocusableComponent {
     this.editorView?.destroy();
     this.editorView = null;
     this.container.remove();
+  }
+
+  // ---- Resize -------------------------------------------------------
+
+  /** Clamp a candidate height to the configured min/max, with `max`
+   *  computed against the current viewport so the editor can never
+   *  monopolise the screen. */
+  private clampHeight(px: number): number {
+    const max = Math.max(SQL_EDITOR_MIN_HEIGHT, window.innerHeight - SQL_EDITOR_MAX_HEIGHT_MARGIN);
+    return Math.max(SQL_EDITOR_MIN_HEIGHT, Math.min(px, max));
+  }
+
+  private applyInlineHeight(px: number): void {
+    const h = this.clampHeight(px);
+    this.container.style.height = `${h}px`;
+    this.container.style.maxHeight = `${h}px`;
+    // The SCSS `min-height: 212px` on `--expanded` would otherwise
+    // prevent users from shrinking the editor below ~212 px.
+    this.container.style.minHeight = "0";
+  }
+
+  private clearInlineHeight(): void {
+    this.container.style.removeProperty("height");
+    this.container.style.removeProperty("max-height");
+    this.container.style.removeProperty("min-height");
+  }
+
+  private handleResizeStart(e: MouseEvent): void {
+    if (!this._isExpanded) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.isResizing = true;
+    this.resizeStartY = e.clientY;
+    this.resizeStartHeight = this.container.getBoundingClientRect().height;
+    // Drag should feel direct — turn off the open/close transition so
+    // each pointer move maps 1:1 to a height change. Restored on
+    // mouseup.
+    this.container.style.transition = "none";
+    document.addEventListener("mousemove", this.onResizeMove);
+    document.addEventListener("mouseup", this.onResizeEnd);
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    this.resizeHandle.classList.add("sql-editor__resize-handle--active");
+  }
+
+  private handleResizeMove(e: MouseEvent): void {
+    if (!this.isResizing) return;
+    const delta = e.clientY - this.resizeStartY;
+    const next = this.clampHeight(this.resizeStartHeight + delta);
+    this.applyInlineHeight(next);
+  }
+
+  private handleResizeEnd(_e: MouseEvent): void {
+    if (!this.isResizing) return;
+    this.isResizing = false;
+    document.removeEventListener("mousemove", this.onResizeMove);
+    document.removeEventListener("mouseup", this.onResizeEnd);
+    this.container.style.removeProperty("transition");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    this.resizeHandle.classList.remove("sql-editor__resize-handle--active");
+
+    // Final committed height comes back from the live layout — clamping
+    // a synthetic value would drift if the viewport changed mid-drag.
+    const finalHeight = Math.round(this.container.getBoundingClientRect().height);
+    this.userHeight = finalHeight;
+
+    const settings = persistenceService.loadAppSettings();
+    settings.sqlEditorHeight = finalHeight;
+    persistenceService.saveAppSettings(settings);
+
+    this.onResizeCallback?.(finalHeight);
+  }
+
+  // ---- Indentation --------------------------------------------------
+
+  /** Returns the literal string the Tab key inserts at the cursor
+   *  according to the current settings: `"\t"` or `" ".repeat(N)`. */
+  private currentIndentString(): string {
+    return this.indentKind === "tab" ? "\t" : " ".repeat(this.indentSize);
+  }
+
+  private handleIndentChange(): void {
+    const value = this.indentSelect.value;
+    const opt = INDENT_OPTIONS.find((o) => o.value === value);
+    if (!opt) return;
+    this.indentKind = opt.kind;
+    this.indentSize = opt.size;
+    const settings = persistenceService.loadAppSettings();
+    settings.editorIndentKind = opt.kind;
+    settings.editorIndentSize = opt.size;
+    persistenceService.saveAppSettings(settings);
+    // The Tab key handler reads `currentIndentString()` live, so
+    // single-key inserts pick up the change immediately. `indentUnit`
+    // (which drives newline auto-indent) is baked into each tab's
+    // EditorState, so we rebuild every state's extensions to apply
+    // it. Undo history is preserved per-tab via setState's history-
+    // tolerant re-snapshot.
+    this.rebuildAllStates();
+  }
+
+  /**
+   * Rebuild every tab's `EditorState` against fresh extensions.
+   * Used by indent-setting changes (the only thing today that wants
+   * the whole extension stack reconfigured per-state). Snapshots the
+   * active tab's live state first so unsaved edits aren't lost.
+   *
+   * Side effect: undo history is reset per tab. Indent changes are
+   * a rare deliberate action, so trading history for a clean
+   * reconfigure is acceptable.
+   */
+  private rebuildAllStates(): void {
+    if (!this.editorView) return;
+    if (this.activeQueryId) {
+      const idx = this.tabs.findIndex((t) => t.queryId === this.activeQueryId);
+      if (idx >= 0) this.tabs[idx].state = this.editorView.state;
+    }
+    for (const tab of this.tabs) {
+      const doc = tab.state.doc.toString();
+      tab.state = this.buildEditorState(doc);
+    }
+    const active = this.activeQueryId
+      ? this.tabs.find((t) => t.queryId === this.activeQueryId)
+      : null;
+    if (active) this.editorView.setState(active.state);
   }
 
   // ---- Environment ↔ tabs ------------------------------------------
@@ -746,6 +974,12 @@ export class SqlEditor implements FocusableComponent {
    * surprises.
    */
   private buildExtensions(): Extension[] {
+    // Captured at state-construction time so `indentUnit` reflects the
+    // setting in force when this state was built. The Tab key handler
+    // below reads the latest setting LIVE (via `currentIndentString`)
+    // so users see immediate changes for single-character inserts;
+    // `indentUnit` itself only refreshes when `rebuildAllStates` runs.
+    const initialIndent = this.currentIndentString();
     return [
       lineNumbers(),
       history(),
@@ -754,6 +988,7 @@ export class SqlEditor implements FocusableComponent {
       autocompletion({
         override: [this.autoComplete.getCompletionSource()],
       }),
+      indentUnit.of(initialIndent),
       // `searchKeymap` adds Ctrl+F find, F3 / Shift+F3 step. See the
       // Prec.high block below for save / execute and the note about
       // multi-cursor that didn't survive 0.11.
@@ -767,7 +1002,29 @@ export class SqlEditor implements FocusableComponent {
       }),
       Prec.high(
         keymap.of([
-          { key: "Tab", run: insertTab, shift: indentLess },
+          {
+            key: "Tab",
+            // Selection across multiple lines indents the block; an
+            // empty selection inserts the indent at the cursor. The
+            // closure reads `currentIndentString()` each press so
+            // setting changes apply without a rebuild.
+            run: (view) => {
+              const range = view.state.selection.main;
+              const startLine = view.state.doc.lineAt(range.from);
+              const endLine = view.state.doc.lineAt(range.to);
+              if (range.from !== range.to && startLine.number !== endLine.number) {
+                return indentMore(view);
+              }
+              const unit = this.currentIndentString();
+              view.dispatch(view.state.update({
+                changes: { from: range.from, to: range.to, insert: unit },
+                selection: { anchor: range.from + unit.length },
+                userEvent: "input.indent",
+              }));
+              return true;
+            },
+            shift: indentLess,
+          },
           {
             key: "Mod-Enter",
             run: () => { this.execute(); return true; },

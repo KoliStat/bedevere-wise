@@ -652,6 +652,14 @@ export class TabManager {
     return this.filterManager;
   }
 
+  /**
+   * Expose the DuckDB service so the panel can run the env-switch wipe
+   * through it. Returns null before `initSqlEditor` has been called.
+   */
+  public getDuckDBService(): DuckDBService | null {
+    return this.duckDBService;
+  }
+
   public initSqlEditor(duckDBService: DuckDBService): void {
     if (this.sqlEditor) return;
 
@@ -672,6 +680,15 @@ export class TabManager {
     this.sqlEditor.setOnToggleCallback((isExpanded) => {
       this.commandBar?.setSqlEditorExpanded(isExpanded);
       setTimeout(() => this.handleResize(), 260);
+    });
+
+    // Drag-resize on the SQL editor changes the height of the panel
+    // above; the spreadsheet below has to re-layout to fill what's
+    // left. The drag itself uses the flex layout to push the canvas
+    // container around in real time; this fires once on mouseup so
+    // the canvas redraws against the new dimensions.
+    this.sqlEditor.setOnResizeCallback(() => {
+      this.handleResize().catch(console.error);
     });
 
     // CommandBar shell submit is wired here because dispatch to SQL needs

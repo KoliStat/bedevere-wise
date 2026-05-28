@@ -1313,6 +1313,75 @@ export class BedevereApp implements EventHandler {
       execute: () => this.tabManager.getSqlEditor()?.clear(),
     });
 
+    // ---- .drop [name | --all] -----------------------------------------
+    commandRegistry.register({
+      id: "shell.drop",
+      shellName: "drop",
+      title: "Drop a table, view, macro, type or sequence",
+      description:
+        "`.drop <name>` drops a single user object (table/view/macro/type/sequence) by name. " +
+        "`.drop --all` wipes every user-created object in the `main` schema — used when you want " +
+        "a clean DuckDB without switching environments.",
+      category: "Dataset",
+      parameters: [
+        {
+          name: "name",
+          type: "string",
+          required: false,
+          description: "Object name (omit when using --all)",
+          options: () => this.tabManager.getDatasetIds(),
+        },
+      ],
+      execute: async (params) => {
+        if (!this.duckDBService) throw new Error("Database not initialized");
+        if (params?.all) {
+          // Close any open tabs first — leaving them visible after the
+          // backing table is gone would just produce errors on the next
+          // refresh. Snapshot ids to avoid mutating while iterating.
+          for (const id of [...this.tabManager.getDatasetIds()]) {
+            this.tabManager.closeDataset(id);
+          }
+          const summary = await this.duckDBService.wipeUserState();
+          // Without this, the panel still believes every imported file is
+          // backed by a live DuckDB table; clicking a tree row would try to
+          // reuse a stale DataProvider pointing at a relation that no
+          // longer exists.
+          this.leftPanel?.markAllAsUnloaded();
+          this.tabManager.getSqlEditor()?.refreshSchema?.();
+          const parts: string[] = [];
+          if (summary.tables) parts.push(`${summary.tables} table${summary.tables === 1 ? "" : "s"}`);
+          if (summary.views) parts.push(`${summary.views} view${summary.views === 1 ? "" : "s"}`);
+          if (summary.macros) parts.push(`${summary.macros} macro${summary.macros === 1 ? "" : "s"}`);
+          if (summary.types) parts.push(`${summary.types} type${summary.types === 1 ? "" : "s"}`);
+          if (summary.sequences) parts.push(`${summary.sequences} sequence${summary.sequences === 1 ? "" : "s"}`);
+          this.showMessage(
+            parts.length === 0 ? "Nothing to drop — DuckDB was already empty" : `Dropped ${parts.join(", ")}`,
+            parts.length === 0 ? "info" : "success",
+          );
+          return;
+        }
+        const name = (params?.name as string | undefined)?.trim();
+        if (!name) throw new Error(".drop needs a name, or pass --all to wipe everything");
+        // If the named object is currently shown as a dataset tab, close
+        // the tab so the user doesn't end up looking at a stale view of a
+        // deleted relation.
+        if (this.tabManager.getDatasetIds().includes(name)) {
+          this.tabManager.closeDataset(name);
+        }
+        const kind = await this.duckDBService.dropByName(name);
+        if (!kind) throw new Error(`No table, view, macro, type or sequence called "${name}" in main`);
+        // For tables / views, also clear the panel's cached DataProvider
+        // and tree-node import markers so a future click re-imports
+        // cleanly. Macros / types / sequences aren't tracked in the
+        // panel, so no follow-up needed.
+        if (kind === "table" || kind === "view") {
+          this.leftPanel?.markDatasetAsDropped(name);
+        }
+        this.tabManager.getSqlEditor()?.refreshSchema?.();
+        this.showMessage(`Dropped ${kind} "${name}"`, "success");
+      },
+    });
+
     // ---- .alias <dataset> <alias> -------------------------------------
     commandRegistry.register({
       id: "dataset.setAlias",
