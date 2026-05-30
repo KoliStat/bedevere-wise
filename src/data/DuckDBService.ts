@@ -1,4 +1,8 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
+import mvpWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
+import ehWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
+import coiWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?url";
+import coiPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
 
@@ -32,23 +36,29 @@ export class DuckDBService {
     }
 
     try {
-      // jsDelivr bundles instead of `?url` imports — the DuckDB-WASM
-      // artefacts are 35–41 MB each, which exceeds Cloudflare Workers'
-      // 25 MiB per-asset cap, so we can't ship them in our own bundle.
-      const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+      // jsDelivr for the .wasm modules — they're 35–41 MB each, which
+      // exceeds Cloudflare Workers' 25 MiB per-asset cap, so we can't
+      // ship them in our own bundle. The JS workers are <1 MB and
+      // self-hosting them keeps the app functional when jsDelivr is
+      // unreachable (DuckDB still pays a wasm fetch on first load,
+      // but the worker won't fail to bootstrap).
+      // getJsDelivrBundles() currently returns only `mvp` and `eh` — no
+      // `coi`. Guard each entry so the override survives an upstream
+      // change that adds COI, without breaking today's two-entry shape.
+      const bundles = duckdb.getJsDelivrBundles();
+      bundles.mvp.mainWorker = mvpWorkerUrl;
+      if (bundles.eh) bundles.eh.mainWorker = ehWorkerUrl;
+      if (bundles.coi) {
+        bundles.coi.mainWorker = coiWorkerUrl;
+        bundles.coi.pthreadWorker = coiPthreadWorkerUrl;
+      }
+      const bundle = await duckdb.selectBundle(bundles);
 
-      // Workers can't be loaded cross-origin directly; wrap the jsDelivr
-      // URL in a same-origin Blob shim that importScripts() the real code.
-      const workerUrl = URL.createObjectURL(
-        new Blob([`importScripts("${bundle.mainWorker!}");`], { type: "text/javascript" })
-      );
-
-      this.worker = new Worker(workerUrl);
+      this.worker = new Worker(bundle.mainWorker!);
       const logger = new duckdb.VoidLogger();
       this.db = new duckdb.AsyncDuckDB(logger, this.worker);
 
       await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-      URL.revokeObjectURL(workerUrl);
       await this.db.open({ allowUnsignedExtensions: true });
       this.isInitialized = true;
 
