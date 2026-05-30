@@ -1,0 +1,148 @@
+// /embed route — slim, iframable view. No top header, no left panel,
+// no help / status / command chrome. Editor on top, result panel below.
+//
+// Sizing: fills the iframe viewport, no fixed page width. The parent
+// page controls the iframe's outer size; the embed reports its
+// document-scroll height back via postMessage so the parent can grow
+// the iframe to fit.
+
+.embed-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  // The result panel is the flex-grower; the editor is content-sized
+  // with a sensible minimum so a one-line query doesn't collapse it.
+}
+
+.embed-root__editor {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+.embed-root__result {
+  flex: 1 1 auto;
+  min-height: 240px;
+  position: relative;
+  overflow: hidden;
+}
+
+// ----------------------------------------------------------------------
+// Editor
+// ----------------------------------------------------------------------
+
+.embed-editor {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+
+  .cm-editor {
+    flex: 1 1 auto;
+    height: 100%;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .cm-scroller { background: var(--bg); }
+  .cm-gutters {
+    background: var(--bg-dark);
+    color: var(--fg-muted);
+    border-right: 1px solid var(--border);
+  }
+  .cm-activeLine { background: var(--hover); }
+  .cm-activeLineGutter { background: var(--hover); }
+  .cm-selectionBackground { background: var(--selection-bg) !important; }
+  .cm-cursor { border-left-color: var(--fg) !important; }
+}
+
+.embed-editor__cm {
+  flex: 1 1 auto;
+  min-height: 80px;
+  overflow: hidden;
+}
+
+.embed-editor__toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--bg-dark);
+  border-top: 1px solid var(--border);
+  gap: 6px;
+}
+
+.embed-editor__run {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  background: var(--blue);
+  color: var(--bg);
+  border: 1px solid var(--blue);
+  border-radius: 3px;
+  cursor: pointer;
+
+  &:hover { filter: brightness(1.08); }
+  &:active { filter: brightness(0.92); }
+  &:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+}
+
+// ----------------------------------------------------------------------
+// Result panel
+// ----------------------------------------------------------------------
+
+.embed-result {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.embed-result__surface {
+  flex: 1 1 auto;
+  min-height: 0; // allow children to size against flex parent
+  position: relative;
+  overflow: hidden;
+}
+
+.embed-result__grid {
+  width: 100%;
+  height: 100%;
+}
+
+// Stats panel is hidden by default in the embed (its toggle is on the
+// column header inside SpreadsheetVisualizer). Keep the container in
+// the DOM so the visualizer's setSpreadsheetVisualizer wire-up works,
+// but let it size to its content rather than reserving a row.
+.embed-result__stats {
+  flex: 0 0 auto;
+}
+
+.embed-result__hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.embed-result__error {
+  padding: 16px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--red);
+  background: var(--error-bg);
+  border-bottom: 1px solid var(--red);
+  white-space: pre-wrap;
+  font-family: Consolas, "Courier New", monospace;
+}

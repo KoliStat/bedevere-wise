@@ -40,4 +40,9 @@ public/extensions/*
 
 # Temp
 src/data.ts
-testfiles/
+# Local-only test data; embed harness fixtures are excepted so the
+# /embed route has something to demo against on a fresh clone.
+testfiles/*
+!testfiles/embed-demo.csv
+!testfiles/embed-demo.parquet
+!testfiles/embed-harness.html
