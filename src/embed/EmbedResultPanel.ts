@@ -93,6 +93,14 @@ export class EmbedResultPanel {
     const viz = new SpreadsheetVisualizer(mount, provider, opts, this.statsVisualizer, "embed-result");
     this.current = viz;
     await viz.initialize();
+    // The initial updateLayout inside initialize() races
+    // calculateColumnWidths against draw — the unwrapped microtask order
+    // can land draw() first, leaving the canvas painted with empty
+    // colWidths until the next event (scroll / theme switch) forces a
+    // redraw. The main app's TabManager.activateTab works around this
+    // by yielding one frame and calling resize(); we do the same.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await viz.resize();
   }
 
   public async resize(): Promise<void> {

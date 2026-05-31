@@ -59,7 +59,13 @@
   .cm-activeLine { background: var(--hover); }
   .cm-activeLineGutter { background: var(--hover); }
   .cm-selectionBackground { background: var(--selection-bg) !important; }
-  .cm-cursor { border-left-color: var(--fg) !important; }
+  // CodeMirror 6 renders the blinking caret via `caret-color` on the
+  // content node; `.cm-cursor`'s border is the fallback overlay shape.
+  // Set both so the cursor is visible against the dark theme background
+  // (the default browser caret-color would inherit `currentColor` which
+  // resolves to `var(--fg)` and reads as low-contrast in tokyonight).
+  .cm-cursor { border-left-color: var(--magenta); }
+  .cm-content { caret-color: var(--magenta); }
 }
 
 .embed-editor__cm {
