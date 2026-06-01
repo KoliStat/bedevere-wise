@@ -159,6 +159,19 @@ export class DuckDBService {
     await this.db.registerFileBuffer(name, buffer);
   }
 
+  /**
+   * Register a remote URL as a DuckDB virtual file so `read_parquet(name)` /
+   * `read_csv(name)` resolve to an HTTP fetch instead of a buffer. Used by
+   * the /embed route to load datasets the parent blog hosts. The remote
+   * server must serve appropriate CORS headers (Access-Control-Allow-Origin)
+   * — we don't paper over CORS failures; they surface as a normal fetch
+   * error when DuckDB tries to read the registered file.
+   */
+  public async registerFileURL(name: string, url: string): Promise<void> {
+    if (!this.db) throw new Error("DuckDB not initialized");
+    await this.db.registerFileURL(name, url, duckdb.DuckDBDataProtocol.HTTP, false);
+  }
+
   public isReady(): boolean {
     return this.isInitialized;
   }

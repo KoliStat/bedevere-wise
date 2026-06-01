@@ -1,0 +1,15 @@
+# HTTP headers applied by Cloudflare Workers' static-asset serving.
+# Vite copies `public/_headers` verbatim into `dist/`, and Cloudflare
+# Workers' assets pipeline reads it as a route → header map.
+#
+# `frame-ancestors` MUST be set as an HTTP header — the CSP spec
+# explicitly disallows it from <meta http-equiv> tags. Without this
+# header /embed could not be iframed cross-origin.
+
+/embed
+  Content-Security-Policy: frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
+  X-Frame-Options: ALLOW-FROM https://caveofcaerbannog.com
+
+/embed.html
+  Content-Security-Policy: frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
+  X-Frame-Options: ALLOW-FROM https://caveofcaerbannog.com

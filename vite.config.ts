@@ -30,6 +30,10 @@ export default defineConfig(({ command }) => {
       rollupOptions: {
         input: {
           main: resolve(__dirname, "index.html"),
+          // /embed is a slim, iframable view for blog posts (see
+          // src/embed/main.ts). MPA shape — its own bundle so the
+          // main app's tabs/env/help-panel code doesn't ride along.
+          embed: resolve(__dirname, "embed.html"),
         },
       },
     },

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bedevere /embed harness</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        margin: 0;
+        padding: 16px;
+        background: #f6f6f7;
+        color: #222;
+      }
+      h1 { margin: 0 0 8px; font-size: 17px; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+      input[type="text"] { flex: 1 1 320px; padding: 4px 6px; font-family: Consolas, monospace; font-size: 12px; }
+      button {
+        padding: 4px 10px;
+        background: #0a66c2;
+        color: #fff;
+        border: 1px solid #0a66c2;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      button.secondary { background: #fff; color: #0a66c2; }
+      iframe {
+        width: 100%;
+        height: 480px;
+        border: 1px solid #ccc;
+        background: #fff;
+        display: block;
+      }
+      .log {
+        margin-top: 12px;
+        max-height: 240px;
+        overflow: auto;
+        padding: 8px;
+        background: #1b1d22;
+        color: #e0e0e0;
+        font-family: Consolas, monospace;
+        font-size: 12px;
+        border-radius: 3px;
+      }
+      .log pre { margin: 0; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Bedevere Wise — /embed harness</h1>
+    <p>
+      Drives an iframe to <code>/embed</code> with a configurable URL, posts
+      <code>embed-theme</code> / <code>embed-run</code> at it, and logs
+      <code>embed-resize</code> / <code>embed-ready</code> back from the iframe.
+      Open this page from the Vite dev server (<code>http://localhost:3000/testfiles/embed-harness.html</code>)
+      so the iframe is same-origin with the served fixtures under
+      <code>http://localhost:3000/testfiles/*</code>.
+    </p>
+
+    <div class="row">
+      <label for="src">/embed src:</label>
+      <input id="src" type="text" />
+      <button id="reload">Reload</button>
+    </div>
+    <div class="row">
+      <button id="theme-light" class="secondary">→ light</button>
+      <button id="theme-dark" class="secondary">→ dark</button>
+      <button id="run">Trigger run</button>
+    </div>
+
+    <iframe id="frame" sandbox="allow-scripts allow-same-origin allow-popups" referrerpolicy="no-referrer"></iframe>
+
+    <div class="log"><pre id="log"></pre></div>
+
+    <script>
+      const DEFAULT_QUERY = "SELECT treatment, COUNT(*) AS n, AVG(response) AS avg_r FROM embed_demo GROUP BY 1 ORDER BY 1;";
+      // CSV fixture under testfiles/ — Vite serves it from the project root
+      // in dev. Adjust to embed-demo.parquet to exercise the parquet path.
+      const params = new URLSearchParams({
+        dataset: location.origin + "/testfiles/embed-demo.csv",
+        query: DEFAULT_QUERY,
+        theme: "dark",
+        autorun: "1",
+        id: "harness-1",
+      });
+      const defaultSrc = "/embed?" + params.toString();
+
+      const srcInput = document.getElementById("src");
+      const frame = document.getElementById("frame");
+      const log = document.getElementById("log");
+      srcInput.value = defaultSrc;
+
+      function append(line) {
+        log.textContent += line + "\n";
+        log.parentElement.scrollTop = log.parentElement.scrollHeight;
+      }
+
+      function load() {
+        log.textContent = "";
+        frame.src = srcInput.value;
+        append(`[harness] loading ${srcInput.value}`);
+      }
+
+      document.getElementById("reload").addEventListener("click", load);
+      document.getElementById("theme-light").addEventListener("click", () => {
+        frame.contentWindow?.postMessage({ type: "embed-theme", theme: "light" }, "*");
+        append("[harness] → embed-theme light");
+      });
+      document.getElementById("theme-dark").addEventListener("click", () => {
+        frame.contentWindow?.postMessage({ type: "embed-theme", theme: "dark" }, "*");
+        append("[harness] → embed-theme dark");
+      });
+      document.getElementById("run").addEventListener("click", () => {
+        frame.contentWindow?.postMessage({ type: "embed-run" }, "*");
+        append("[harness] → embed-run");
+      });
+
+      window.addEventListener("message", (e) => {
+        if (!e.data || typeof e.data !== "object") return;
+        append(`[embed] ← ${JSON.stringify(e.data)}`);
+        // Demonstrate auto-resize of the iframe to fit content.
+        if (e.data.type === "embed-resize" && typeof e.data.height === "number") {
+          frame.style.height = Math.max(240, e.data.height) + "px";
+        }
+      });
+
+      load();
+    </script>
+  </body>
+</html>
