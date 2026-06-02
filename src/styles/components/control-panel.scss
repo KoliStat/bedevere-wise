@@ -265,6 +265,21 @@
     }
   }
 
+  // Inline rename input shown when the user double-clicks a saved-query name.
+  &__section-item-rename {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--blue);
+    padding: 1px 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    margin: 0;
+
+    &:focus { outline: none; }
+  }
+
   // --- Column Stats (embedded in accordion) ---
 
   &__column-stats { padding: 0; }

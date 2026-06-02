@@ -1,7 +1,8 @@
-import { TabManager } from "../TabManager";
-import { ControlPanel } from "../ControlPanel";
-import { StatusBar } from "../StatusBar";
-import { HelpPanel, HelpPanelTab } from "../HelpPanel";
+import { TabManager } from "../TabManager/TabManager";
+import { ControlPanel } from "../ControlPanel/ControlPanel";
+import { StatusBar } from "../StatusBar/StatusBar";
+import { HelpPanel, HelpPanelTab } from "../HelpPanel/HelpPanel";
+import { DEFAULT_AUTO_IMPORT_THRESHOLD } from "../HelpPanel/formatPresets";
 import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_DATETIME_FORMAT,
@@ -20,6 +21,7 @@ import { DuckDBService } from "@/data/DuckDBService";
 import { PersistenceService, persistenceService } from "@/data/PersistenceService";
 import { keymapService } from "@/data/KeymapService";
 import { commandRegistry } from "@/data/CommandRegistry";
+import { environmentService } from "@/data/environments/EnvironmentService";
 import { formatCommandHelp } from "@/data/Shell";
 import { FileImportService } from "@/data/FileImportService";
 import { DuckDBExtensionLoader } from "@/data/DuckDBExtensionLoader";
@@ -31,7 +33,7 @@ import { fetchAsFile } from "@/data/UrlImport";
 import { AliasManager } from "@/data/AliasManager";
 import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
-import { HideColumnsDialog } from "../HideColumnsDialog";
+import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -194,6 +196,15 @@ export class BedevereApp implements EventHandler {
       this.leftPanel.toggleMinimize();
     }
 
+    // Re-acquire the active environment's folder and re-scan its tree
+    // so the previous session's dataset list comes back on page load.
+    // Best-effort: permission denied / handle stale shows a toast via
+    // the existing recent-folders pathway; default envs no-op (the
+    // method just returns).
+    if (this.leftPanel) {
+      await this.leftPanel.restoreActiveEnvironment();
+    }
+
     const path = window.location.pathname.replace(/\/$/, "");
     if (path === "/demo") {
       await this.runDemo();
@@ -278,6 +289,10 @@ export class BedevereApp implements EventHandler {
     if (!action) return false;
     e.preventDefault();
     if (commandRegistry.has(action)) {
+      // Fire-and-forget: the keystroke is consumed regardless, and
+      // user-facing command failures already surface their own
+      // toasts via showMessage. Catching here keeps a stray rejection
+      // from polluting the console as an unhandled promise.
       commandRegistry.run(action).catch((err) => console.error(`command ${action} failed:`, err));
     }
     return true;
@@ -367,6 +382,7 @@ export class BedevereApp implements EventHandler {
           numberUseGrouping: s.numberUseGrouping ?? true,
           minCellWidth: s.minCellWidth ?? DEFAULT_MIN_CELL_WIDTH,
           maxStringLength: s.maxStringLength ?? DEFAULT_MAX_STRING_LENGTH,
+          autoImportSizeThreshold: s.autoImportSizeThreshold ?? DEFAULT_AUTO_IMPORT_THRESHOLD,
         };
       },
       setFormatOptions: (opts) => {
@@ -378,8 +394,12 @@ export class BedevereApp implements EventHandler {
         s.numberUseGrouping = opts.numberUseGrouping;
         s.minCellWidth = opts.minCellWidth;
         s.maxStringLength = opts.maxStringLength;
+        s.autoImportSizeThreshold = opts.autoImportSizeThreshold;
         this.persistenceService.saveAppSettings(s);
         this.applyFormatSettings(opts);
+        // Refresh the tree so warning glyphs / size labels update if
+        // the threshold changed. Cheap — no DuckDB re-imports.
+        this.leftPanel.refreshTree();
       },
     });
     this.statusBar?.setOnHelpClickCallback(() => this.helpPanel.show("howto"));
@@ -503,12 +523,10 @@ export class BedevereApp implements EventHandler {
       this.leftPanel.setOnShowMessageCallback((msg, type, options) =>
         this.showMessage(msg, type, options),
       );
-      this.leftPanel.setOnOpenQueryCallback((sql) => {
+      this.leftPanel.setOnOpenQueryCallback((queryId) => {
         const editor = this.tabManager.getSqlEditor();
-        if (editor) {
-          editor.setQuery(sql);
-          editor.expand();
-        }
+        // openSavedQuery already calls expand() + focus.
+        editor?.openSavedQuery(queryId);
       });
 
       // Handle panel toggle
@@ -1080,27 +1098,164 @@ export class BedevereApp implements EventHandler {
       },
     });
 
-    // ---- .query save <name> ---------------------------------------------
+    // ---- .query [list | save | open | delete] ---------------------------
     commandRegistry.register({
       id: "shell.query",
       shellName: "query",
-      title: "Manage Query Bookmarks",
-      description: "`.query save <name>` bookmarks the editor's current query.",
+      title: "Manage saved queries",
+      description:
+        "`.query list` lists the active env's queries · " +
+        "`.query save <name>` renames the active editor tab · " +
+        "`.query open <name>` opens that query as a tab · " +
+        "`.query delete <name>` removes it from the active env",
       category: "Query",
       parameters: [
-        { name: "action", type: "string", required: true, options: () => ["save"] },
-        { name: "name", type: "string", required: true },
+        { name: "action", type: "string", required: true, options: () => ["list", "save", "open", "delete"] },
+        {
+          name: "name",
+          type: "string",
+          required: false,
+          options: () => environmentService.getActive()?.queries.map((q) => q.name) ?? [],
+        },
       ],
       execute: (params) => {
         const action = String(params?.action ?? "").trim();
         const name = String(params?.name ?? "").trim();
-        if (action !== "save") throw new Error(".query currently supports only 'save'");
-        if (!name) throw new Error(".query save requires a name");
+        const env = environmentService.getActive();
+        if (!env) throw new Error("No active environment");
         const editor = this.tabManager.getSqlEditor();
-        const query = editor?.getQuery().trim();
-        if (!query) throw new Error("SQL editor is empty — open it with .sql and type a query first");
-        this.persistenceService.saveQueryBookmark(name, query);
-        this.showMessage(`Query "${name}" bookmarked`, "success");
+        const findByName = (n: string) =>
+          env.queries.find((q) => q.name.toLowerCase() === n.toLowerCase());
+
+        switch (action) {
+          case "list": {
+            if (env.queries.length === 0) {
+              this.showMessage(`No saved queries in "${env.name}"`, "info");
+              return;
+            }
+            const lines = env.queries.map((q) => `  ${q.name}`);
+            this.showMessage(
+              `Queries in "${env.name}":\n${lines.join("\n")}`,
+              "info",
+              { duration: 8000 },
+            );
+            return;
+          }
+          case "save": {
+            if (!name) throw new Error(".query save requires a name");
+            if (!editor) throw new Error("SQL editor is not available");
+            const activeId = editor.getActiveQueryId();
+            if (!activeId) throw new Error("No active editor tab to save");
+            if (findByName(name)) throw new Error(`A query called "${name}" already exists`);
+            environmentService.updateQuery(env.id, activeId, { name });
+            this.showMessage(`Renamed active tab to "${name}"`, "success");
+            return;
+          }
+          case "open": {
+            if (!name) throw new Error(".query open requires the name of a saved query");
+            const target = findByName(name);
+            if (!target) throw new Error(`No query called "${name}" in "${env.name}"`);
+            if (!editor) throw new Error("SQL editor is not available");
+            editor.openSavedQuery(target.id);
+            return;
+          }
+          case "delete": {
+            if (!name) throw new Error(".query delete requires the name of a saved query");
+            const target = findByName(name);
+            if (!target) throw new Error(`No query called "${name}" in "${env.name}"`);
+            environmentService.deleteQuery(env.id, target.id);
+            this.showMessage(`Deleted query "${name}"`, "success");
+            return;
+          }
+          default:
+            throw new Error(`.query: unknown action "${action}". Try list / save / open / delete.`);
+        }
+      },
+    });
+
+    // ---- .env [list | new | rename | delete | switch] ------------------
+    commandRegistry.register({
+      id: "shell.env",
+      shellName: "env",
+      title: "Manage environments",
+      description:
+        "`.env list` lists envs · `.env new <name>` creates · `.env rename <new>` renames the active env · " +
+        "`.env switch <name>` activates · `.env delete <name>` removes (cannot delete the default env) · " +
+        "`.env cleanup` prunes orphan untitled queries from the active env",
+      category: "Environment",
+      parameters: [
+        { name: "action", type: "string", required: true, options: () => ["list", "new", "rename", "switch", "delete", "cleanup"] },
+        {
+          name: "name",
+          type: "string",
+          required: false,
+          // Suggest existing env names for `switch` / `delete`; for
+          // `new` / `rename` the user types a fresh name. The option
+          // list is harmless for those — they can ignore it.
+          options: () => environmentService.list().map((e) => e.name),
+        },
+      ],
+      execute: (params) => {
+        const action = String(params?.action ?? "").trim();
+        const name = String(params?.name ?? "").trim();
+        const findByName = (n: string) => environmentService.list().find((e) => e.name === n);
+        switch (action) {
+          case "list": {
+            const envs = environmentService.list();
+            const activeId = environmentService.getActiveId();
+            const lines = envs.map((e) => `${e.id === activeId ? "* " : "  "}${e.name}` + (e.kind === "default" ? " (default)" : ""));
+            this.showMessage(`Environments:\n${lines.join("\n")}`, "info", { duration: 8000 });
+            return;
+          }
+          case "new": {
+            if (!name) throw new Error(".env new requires a name");
+            if (findByName(name)) throw new Error(`An environment called "${name}" already exists`);
+            const env = environmentService.create({ name, kind: "folder" });
+            environmentService.setActive(env.id);
+            this.showMessage(`Environment "${name}" created`, "success");
+            return;
+          }
+          case "rename": {
+            if (!name) throw new Error(".env rename requires a new name");
+            const active = environmentService.getActive();
+            if (!active) throw new Error("No active environment");
+            if (findByName(name)) throw new Error(`An environment called "${name}" already exists`);
+            environmentService.rename(active.id, name);
+            this.showMessage(`Renamed environment to "${name}"`, "success");
+            return;
+          }
+          case "switch": {
+            if (!name) throw new Error(".env switch requires the name of an existing environment");
+            const target = findByName(name);
+            if (!target) throw new Error(`No environment called "${name}"`);
+            environmentService.setActive(target.id);
+            this.showMessage(`Switched to "${name}"`, "info");
+            return;
+          }
+          case "delete": {
+            if (!name) throw new Error(".env delete requires the name of an existing environment");
+            const target = findByName(name);
+            if (!target) throw new Error(`No environment called "${name}"`);
+            if (target.kind === "default") throw new Error("Cannot delete the default environment");
+            environmentService.delete(target.id);
+            this.showMessage(`Deleted environment "${name}"`, "success");
+            return;
+          }
+          case "cleanup": {
+            const active = environmentService.getActive();
+            if (!active) throw new Error("No active environment");
+            const removed = environmentService.cleanupOrphanUntitled(active.id);
+            this.showMessage(
+              removed === 0
+                ? `No orphan untitled queries in "${active.name}"`
+                : `Removed ${removed} orphan untitled queries from "${active.name}"`,
+              removed === 0 ? "info" : "success",
+            );
+            return;
+          }
+          default:
+            throw new Error(`.env: unknown action "${action}". Try list / new / rename / switch / delete / cleanup.`);
+        }
       },
     });
 
@@ -1156,6 +1311,75 @@ export class BedevereApp implements EventHandler {
       category: "SQL",
       when: () => this.tabManager.getSqlEditor()?.isExpanded() === true,
       execute: () => this.tabManager.getSqlEditor()?.clear(),
+    });
+
+    // ---- .drop [name | --all] -----------------------------------------
+    commandRegistry.register({
+      id: "shell.drop",
+      shellName: "drop",
+      title: "Drop a table, view, macro, type or sequence",
+      description:
+        "`.drop <name>` drops a single user object (table/view/macro/type/sequence) by name. " +
+        "`.drop --all` wipes every user-created object in the `main` schema — used when you want " +
+        "a clean DuckDB without switching environments.",
+      category: "Dataset",
+      parameters: [
+        {
+          name: "name",
+          type: "string",
+          required: false,
+          description: "Object name (omit when using --all)",
+          options: () => this.tabManager.getDatasetIds(),
+        },
+      ],
+      execute: async (params) => {
+        if (!this.duckDBService) throw new Error("Database not initialized");
+        if (params?.all) {
+          // Close any open tabs first — leaving them visible after the
+          // backing table is gone would just produce errors on the next
+          // refresh. Snapshot ids to avoid mutating while iterating.
+          for (const id of [...this.tabManager.getDatasetIds()]) {
+            this.tabManager.closeDataset(id);
+          }
+          const summary = await this.duckDBService.wipeUserState();
+          // Without this, the panel still believes every imported file is
+          // backed by a live DuckDB table; clicking a tree row would try to
+          // reuse a stale DataProvider pointing at a relation that no
+          // longer exists.
+          this.leftPanel?.markAllAsUnloaded();
+          this.tabManager.getSqlEditor()?.refreshSchema?.();
+          const parts: string[] = [];
+          if (summary.tables) parts.push(`${summary.tables} table${summary.tables === 1 ? "" : "s"}`);
+          if (summary.views) parts.push(`${summary.views} view${summary.views === 1 ? "" : "s"}`);
+          if (summary.macros) parts.push(`${summary.macros} macro${summary.macros === 1 ? "" : "s"}`);
+          if (summary.types) parts.push(`${summary.types} type${summary.types === 1 ? "" : "s"}`);
+          if (summary.sequences) parts.push(`${summary.sequences} sequence${summary.sequences === 1 ? "" : "s"}`);
+          this.showMessage(
+            parts.length === 0 ? "Nothing to drop — DuckDB was already empty" : `Dropped ${parts.join(", ")}`,
+            parts.length === 0 ? "info" : "success",
+          );
+          return;
+        }
+        const name = (params?.name as string | undefined)?.trim();
+        if (!name) throw new Error(".drop needs a name, or pass --all to wipe everything");
+        // If the named object is currently shown as a dataset tab, close
+        // the tab so the user doesn't end up looking at a stale view of a
+        // deleted relation.
+        if (this.tabManager.getDatasetIds().includes(name)) {
+          this.tabManager.closeDataset(name);
+        }
+        const kind = await this.duckDBService.dropByName(name);
+        if (!kind) throw new Error(`No table, view, macro, type or sequence called "${name}" in main`);
+        // For tables / views, also clear the panel's cached DataProvider
+        // and tree-node import markers so a future click re-imports
+        // cleanly. Macros / types / sequences aren't tracked in the
+        // panel, so no follow-up needed.
+        if (kind === "table" || kind === "view") {
+          this.leftPanel?.markDatasetAsDropped(name);
+        }
+        this.tabManager.getSqlEditor()?.refreshSchema?.();
+        this.showMessage(`Dropped ${kind} "${name}"`, "success");
+      },
     });
 
     // ---- .alias <dataset> <alias> -------------------------------------

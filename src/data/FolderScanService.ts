@@ -96,16 +96,28 @@ export class FolderScanService {
       } else if (this.isSupportedFile(name)) {
         const fileType = detectFileType(name);
         const isAvailable = fileType ? this.fileImportService.canImport(name) : false;
+        // `getFile()` only reads the file's metadata — it does NOT
+        // pull the content into memory. Cheap to await per entry; the
+        // size lets us drive the auto-import / warning UX downstream.
+        const fileHandle = child as FileSystemFileHandle;
+        let size: number | undefined;
+        try {
+          const file = await fileHandle.getFile();
+          size = file.size;
+        } catch (err) {
+          console.warn(`Failed to read size for ${name}:`, err);
+        }
 
         children.push({
           id: `${fullPath}/${name}`,
           name,
           kind: "file",
-          fileHandle: child as FileSystemFileHandle,
+          fileHandle,
           fileType: fileType ?? undefined,
           isImported: false,
           isExpanded: false,
           isUnavailable: !isAvailable,
+          size,
         });
       }
     }
@@ -143,6 +155,7 @@ export class FolderScanService {
         isImported: false,
         isExpanded: false,
         isUnavailable: !isAvailable,
+        size: file.size,
       });
     } else {
       // Intermediate folder

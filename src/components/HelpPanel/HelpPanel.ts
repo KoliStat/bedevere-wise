@@ -12,6 +12,18 @@ import {
   submitFeedback,
 } from "@/data/FeedbackService";
 import { Command, commandRegistry } from "@/data/CommandRegistry";
+import { renderAboutBody } from "./aboutHtml";
+import {
+  AUTO_IMPORT_THRESHOLD_PRESETS,
+  DATE_FORMAT_PRESETS,
+  DATETIME_FORMAT_PRESETS,
+  DECIMAL_PRESETS,
+  FormatPrefs,
+  formatThresholdLabel,
+  MAX_STRING_LENGTH_PRESETS,
+  MIN_CELL_WIDTH_PRESETS,
+} from "./formatPresets";
+import { PENGUINS_TUTORIAL, TutorialNode } from "./tutorial";
 
 export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "feedback" | "settings" | "about";
 
@@ -36,34 +48,6 @@ export interface HelpPanelOptions {
   onRecentFolderClick?: (id: string) => void;
 }
 
-export interface FormatPrefs {
-  dateFormat: string;
-  datetimeFormat: string;
-  numberMinDecimals: number;
-  numberMaxDecimals: number;
-  numberUseGrouping: boolean;
-  minCellWidth: number;
-  maxStringLength: number;
-}
-
-export const DATE_FORMAT_PRESETS: string[] = [
-  "yyyy-MM-dd",
-  "dd/MM/yyyy",
-  "MM/dd/yyyy",
-  "yyyy/MM/dd",
-  "yyyyMMdd",
-];
-
-export const DATETIME_FORMAT_PRESETS: string[] = [
-  "yyyy-MM-dd HH:mm:ss",
-  "dd/MM/yyyy HH:mm:ss",
-];
-
-export const DECIMAL_PRESETS: number[] = [0, 1, 2, 3, 4];
-export const MIN_CELL_WIDTH_PRESETS: number[] = [50, 75, 100, 150, 200];
-/** 0 means "no cap" — the dropdown labels it as "None". */
-export const MAX_STRING_LENGTH_PRESETS: number[] = [50, 100, 200, 500, 0];
-
 const TAB_ORDER: HelpPanelTab[] = ["howto", "import", "shortcuts", "commands", "feedback", "settings", "about"];
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -74,231 +58,6 @@ const SCOPE_LABELS: Record<string, string> = {
 };
 
 const SCOPE_ORDER: string[] = ["global", "spreadsheet", "sqlEditor", "commandPalette"];
-
-type TutorialNode =
-  | { kind: "heading"; text: string }
-  | { kind: "prose"; html: string }
-  | { kind: "tip"; html: string }
-  | { kind: "snippet"; sql: string };
-
-const PENGUINS_TUTORIAL: TutorialNode[] = [
-  {
-    kind: "prose",
-    html:
-      `DuckDB supports a rich SQL dialect \u2014 see the ` +
-      `<a href="https://duckdb.org/docs/current/sql/introduction" target="_blank" rel="noopener noreferrer">DuckDB SQL reference</a> ` +
-      `for the full syntax. The examples below assume the Palmer Penguins sample loaded via the button above.`,
-  },
-
-  { kind: "heading", text: "Parse the dataset" },
-  {
-    kind: "prose",
-    html:
-      `The raw CSV stores numeric columns as strings with <code>"NA"</code> for missing values and leaves the ` +
-      `categorical columns as free-form text. Cast the numerics with <code>TRY_CAST</code>, and tighten the ` +
-      `categoricals into <code>ENUM</code>s so they take less memory and only accept valid values.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "CREATE OR REPLACE TYPE sex_type AS ENUM ('female', 'male');\n" +
-      "\n" +
-      "-- Tighten categorical text into ENUMs (less memory, only valid values)\n" +
-      "-- and cast measurements to DOUBLE. TRY_CAST yields NULL on failure, so\n" +
-      "-- the string \"NA\" becomes a real NULL.\n" +
-      "CREATE OR REPLACE TABLE penguins_clean AS\n" +
-      "SELECT\n" +
-      "    species::ENUM ('Adelie', 'Gentoo', 'Chinstrap') AS species\n" +
-      "  , island::ENUM ('Dream', 'Torgersen', 'Biscoe') AS island\n" +
-      "  , TRY_CAST(sex AS sex_type) AS sex\n" +
-      "  , TRY_CAST(bill_length_mm AS DOUBLE) AS bill_length_mm\n" +
-      "  , TRY_CAST(bill_depth_mm AS DOUBLE) AS bill_depth_mm\n" +
-      "  , TRY_CAST(flipper_length_mm AS DOUBLE) AS flipper_length_mm\n" +
-      "  , TRY_CAST(body_mass_g AS DOUBLE) AS body_mass_g\n" +
-      "FROM penguins\n" +
-      "ORDER BY species, island, sex\n" +
-      ";",
-  },
-
-  { kind: "heading", text: "Basic summary" },
-  {
-    kind: "prose",
-    html: `A classic <code>GROUP BY</code> with the standard <code>AVG</code> / <code>STDDEV</code> aggregates.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "-- Mean and standard deviation of every measurement, broken down by\n" +
-      "-- species x island x sex. Rows where sex couldn't be parsed are\n" +
-      "-- NULL after the TRY_CAST in penguins_clean — GROUP BY drops them\n" +
-      "-- into their own bucket, which is usually what you want.\n" +
-      "SELECT species, island, sex\n" +
-      "  , AVG(bill_length_mm)    AS mean_bill_length\n" +
-      "  , STDDEV(bill_length_mm) AS std_bill_length\n" +
-      "  , AVG(bill_depth_mm)     AS mean_bill_depth\n" +
-      "  , STDDEV(bill_depth_mm)  AS std_bill_depth\n" +
-      "  , AVG(flipper_length_mm)    AS mean_flipper_length\n" +
-      "  , STDDEV(flipper_length_mm) AS std_flipper_length\n" +
-      "  , AVG(body_mass_g)    AS mean_body_mass\n" +
-      "  , STDDEV(body_mass_g) AS std_body_mass\n" +
-      "FROM penguins_clean\n" +
-      "GROUP BY species, island, sex\n" +
-      "ORDER BY species, island, sex",
-  },
-
-  { kind: "heading", text: "Better summary with Stats Duck" },
-  {
-    kind: "prose",
-    html:
-      `Bedevere auto-loads the ` +
-      `<a href="https://github.com/caerbannogwhite/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> ` +
-      `DuckDB extension. Its <code>summary_stats()</code> aggregate returns a STRUCT with count, mean, sd, quartiles, ` +
-      `min/max, skewness, and kurtosis.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "-- One summary_stats() call per measurement. Each result cell is a\n" +
-      "-- STRUCT holding count, mean, sd, quartiles, min/max, skewness, and\n" +
-      "-- kurtosis \u2014 click a cell to inspect it.\n" +
-      "SELECT species, island, sex\n" +
-      "  , summary_stats(bill_length_mm)    AS bill_length_summ\n" +
-      "  , summary_stats(bill_depth_mm)     AS bill_depth_summ\n" +
-      "  , summary_stats(flipper_length_mm) AS flipper_length_summ\n" +
-      "  , summary_stats(body_mass_g)       AS body_mass_summ\n" +
-      "FROM penguins_clean\n" +
-      "GROUP BY species, island, sex\n" +
-      "ORDER BY species, island, sex",
-  },
-  {
-    kind: "tip",
-    html:
-      `Each result cell is a STRUCT. Click the cell, then click the value in the status bar to open an inspector ` +
-      `with every field on its own row.`,
-  },
-
-  { kind: "heading", text: "Publication-style \"Table 1\"" },
-  {
-    kind: "prose",
-    html:
-      `Stats Duck's <code>TABLE_ONE()</code> produces a long-format summary — one row per ` +
-      `(variable × level × statistic) — that you can pivot into the wide layout most papers use. ` +
-      `Variables are passed by name; the <code>by</code> argument splits the summary by a stratifier ` +
-      `(here, <code>species</code>). Display strings are already formatted (e.g. <code>"45.32 ± 5.46"</code>); ` +
-      `the <code>PIVOT … USING FIRST(display)</code> step reshapes them into one column per stratum.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "-- Build the long-format summary silently — we only want to see the\n" +
-      "-- pivoted result, so .no-output suppresses the intermediate tab.\n" +
-      ".no-output\n" +
-      "CREATE OR REPLACE TABLE penguins_temp AS\n" +
-      "SELECT * FROM TABLE_ONE(\n" +
-      "  'penguins_clean'\n" +
-      "  , variables := ['island', 'sex', 'bill_length_mm', 'flipper_length_mm', 'body_mass_g']\n" +
-      "  , by := 'species'\n" +
-      ")\n" +
-      ";\n" +
-      "\n" +
-      "-- Reshape into one column per species. Each row carries the\n" +
-      "-- variable, its level (for categoricals) or NULL (for numerics),\n" +
-      "-- and the statistic name; FIRST(display) picks up the pre-formatted\n" +
-      "-- value for each stratum.\n" +
-      "CREATE OR REPLACE TABLE penguins_summ AS\n" +
-      "PIVOT penguins_temp ON stratum USING FIRST(display)\n" +
-      "GROUP BY variable, level, statistic\n" +
-      ";",
-  },
-  {
-    kind: "tip",
-    html:
-      `Drop the <code>by</code> argument to get an overall (unstratified) Table 1.`,
-  },
-
-  { kind: "heading", text: "All in one query" },
-  {
-    kind: "prose",
-    html: `Skip the intermediate view \u2014 cast inline.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "-- Cast and summarise in one pass, without a saved view.\n" +
-      "SELECT species, island\n" +
-      "  , summary_stats(TRY_CAST(bill_length_mm AS DOUBLE))    AS bill_length_mm\n" +
-      "  , summary_stats(TRY_CAST(bill_depth_mm AS DOUBLE))     AS bill_depth_mm\n" +
-      "  , summary_stats(TRY_CAST(flipper_length_mm AS DOUBLE)) AS flipper_length_mm\n" +
-      "  , summary_stats(TRY_CAST(body_mass_g AS DOUBLE))       AS body_mass_g\n" +
-      "FROM penguins\n" +
-      "GROUP BY species, island",
-  },
-
-  { kind: "heading", text: "Testing a hypothesis" },
-  {
-    kind: "prose",
-    html:
-      `Stats Duck ships a battery of hypothesis tests. Here's a two-sample t-test comparing body mass between Adelie and ` +
-      `Gentoo penguins. <code>CASE WHEN species = 'X'</code> selects one group per argument and NULLs out the rest; ` +
-      `Stats Duck ignores NULLs.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "-- Two-sample Welch's t-test on two measurements at once: is body mass\n" +
-      "-- (and flipper length) different between Adelie and Gentoo penguins?\n" +
-      "-- CASE WHEN selects one group per argument; NULLs in the other group\n" +
-      "-- are ignored by Stats Duck. Each result cell is a STRUCT with\n" +
-      "-- t_statistic, p_value, df, and the confidence interval.\n" +
-      "SELECT\n" +
-      "    ttest_2samp(\n" +
-      "      CASE WHEN species = 'Adelie' THEN body_mass_g END,\n" +
-      "      CASE WHEN species = 'Gentoo' THEN body_mass_g END\n" +
-      "    ) AS t_test_body_mass\n" +
-      "  , ttest_2samp(\n" +
-      "      CASE WHEN species = 'Adelie' THEN flipper_length_mm END,\n" +
-      "      CASE WHEN species = 'Gentoo' THEN flipper_length_mm END\n" +
-      "    ) AS t_test_flipper_length\n" +
-      "FROM penguins_clean\n" +
-      "WHERE body_mass_g IS NOT NULL\n" +
-      "  AND flipper_length_mm IS NOT NULL",
-  },
-  {
-    kind: "tip",
-    html:
-      `For a non-parametric alternative (no normality assumption), replace <code>ttest_2samp</code> with ` +
-      `<code>mann_whitney_u</code>.`,
-  },
-
-  { kind: "heading", text: "Plot it" },
-  {
-    kind: "prose",
-    html:
-      `Stats Duck also adds a <code>VISUALIZE … DRAW &lt;mark&gt;</code> clause that compiles to a Vega-Lite spec. ` +
-      `Channels are <code>x</code>, <code>y</code>, <code>color</code> (and a few others); marks include ` +
-      `<code>point</code>, <code>line</code>, <code>bar</code>, <code>area</code>, <code>tick</code>, <code>circle</code>, ` +
-      `<code>square</code>, <code>rect</code>. Run the query and a chart tab opens alongside the dataset tabs.`,
-  },
-  {
-    kind: "snippet",
-    sql:
-      "-- Scatter of bill depth vs bill length, coloured by species.\n" +
-      "VISUALIZE\n" +
-      "    bill_depth_mm AS x\n" +
-      "    , bill_length_mm AS y\n" +
-      "    , species AS color\n" +
-      "FROM penguins_clean\n" +
-      "DRAW point\n" +
-      ";",
-  },
-  {
-    kind: "tip",
-    html:
-      `Stack <code>DRAW</code> clauses to layer marks (e.g. <code>DRAW point DRAW line</code>) and add ` +
-      `<code>FACET BY &lt;col&gt;</code> (optionally followed by <code>ROWS</code>) for small multiples. ` +
-      `Use the action menu in the chart's top-right corner — or <code>.export png</code> / <code>.export svg</code> — to save the chart.`,
-  },
-];
 
 export class HelpPanel {
   private parent: HTMLElement;
@@ -1399,6 +1158,27 @@ export class HelpPanel {
       ));
     }));
 
+    // --- Import ---
+    body.appendChild(this.buildSettingsSection("Import", (section) => {
+      const hint = document.createElement("p");
+      hint.className = "help-panel__hint";
+      hint.textContent =
+        "Files at or below this size are auto-imported on drop. Larger files show a warning glyph in the tree and stay un-imported until clicked.";
+      section.appendChild(hint);
+
+      const initialThreshold = this.options.getFormatOptions?.().autoImportSizeThreshold
+        ?? AUTO_IMPORT_THRESHOLD_PRESETS[1];
+      section.appendChild(this.buildLabeledRow(
+        "Auto-import threshold",
+        this.buildSegmented(
+          AUTO_IMPORT_THRESHOLD_PRESETS,
+          initialThreshold,
+          formatThresholdLabel,
+          (n) => updateFormat("autoImportSizeThreshold", n),
+        ),
+      ));
+    }));
+
     // --- Reset keymap ---
     body.appendChild(this.buildSettingsSection("Reset keymap", (section) => {
       const hint = document.createElement("p");
@@ -1521,61 +1301,7 @@ export class HelpPanel {
     body.className = "help-panel__tab-body help-panel__tab-body--about";
     this.tabBodies.set("about", body);
 
-    body.innerHTML = `
-      <p class="help-panel__about-version">v${this.options.version}</p>
-      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
-      <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.11</h3>
-        <ul class="help-panel__about-list">
-          <li>The <strong>SQL editor autosaves</strong> while you type and restores the draft on reload. Press <code>Ctrl+S</code> to save the current query as a named bookmark; <code>Ctrl+F</code> opens an in-editor find panel.</li>
-          <li><em>(preview)</em> <strong>Import HTML tables</strong> from the clipboard (<code>.paste</code>) or from a saved <code>.html</code> file — multi-table pages open a picker; image-only cells (e.g. flag icons) fall back to the <code>alt</code> attribute or the <code>src</code> basename so a column of icons still carries data.</li>
-          <li><em>(preview)</em> <strong>Fetch remote files by URL</strong> (<code>.fetch &lt;url&gt;</code>) — CSV / JSON / Parquet / HTML routed through the same handlers as local files. CORS-blocked sources surface a clear "save and drag it in" hint.</li>
-          <li><strong>Drag-to-reorder columns</strong> in the spreadsheet header; the order persists per dataset alongside hide / sort / filter.</li>
-          <li><strong>Click-to-copy</strong> on the column-stats panel — clicking the column name or any categorical histogram value copies it to the clipboard with a brief flash.</li>
-          <li><strong>Ctrl+C respects text selections outside the spreadsheet</strong> — drag-select text in the column-stats panel, status bar, help panel, etc. and Ctrl+C copies that instead of the spreadsheet cells.</li>
-          <li>Dirty CSV / Excel imports recover gracefully — full-file type detection and an <code>ignore_errors</code> fallback handle stray non-numeric values that used to abort the whole import.</li>
-        </ul>
-      </div>
-      <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">Shell</h3>
-        <p class="help-panel__about-shell-intro">
-          Above the spreadsheet sits a command bar. Lines starting with <code>.</code> run as shell
-          commands (type <code>.help</code> for the full list); anything else is executed as
-          DuckDB SQL.
-        </p>
-      </div>
-      <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">Dependencies</h3>
-        <ul class="help-panel__about-list">
-          <li><a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a> &mdash; in-browser SQL engine.</li>
-          <li><a href="https://github.com/caerbannogwhite/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> &mdash; DuckDB extension that adds <code>VISUALIZE … DRAW</code> and stats helpers.</li>
-          <li><a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a> &mdash; SQL editor with autocomplete and tokyonight highlighting.</li>
-          <li><a href="https://vega.github.io/vega-lite/" target="_blank" rel="noopener noreferrer">Vega-Lite</a> + <a href="https://github.com/vega/vega-embed" target="_blank" rel="noopener noreferrer">vega-embed</a> &mdash; chart rendering. Code-split: only loaded on first <code>VISUALIZE</code>.</li>
-        </ul>
-      </div>
-      <div class="help-panel__about-links">
-        <a href="https://github.com/caerbannogwhite/bedevere-wise" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <span class="help-panel__about-separator">\u00B7</span>
-        <a href="https://github.com/caerbannogwhite/bedevere-wise/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
-        <span class="help-panel__about-separator">\u00B7</span>
-        <a href="https://github.com/caerbannogwhite/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
-      </div>
-      <p class="help-panel__about-author">Made by <a href="https://github.com/caerbannogwhite" target="_blank" rel="noopener noreferrer">caerbannogwhite</a></p>
-      <details class="help-panel__lore">
-        <summary class="help-panel__lore-summary">Why a duck?</summary>
-        <p class="help-panel__lore-body">
-          Why is there a duck next to the name of a knight of the Round Table? Well, <i>logically</i>, you might think it's because
-          the mighty DuckDB powers this application, and including references to it is wise and fair.<br>However, you would be at fault:
-          the real reason for the duck is that Sir Bedevere the Wise is the one who can tell if a witch is such, thanks to just a duck.
-        </p>
-        <p class="help-panel__lore-body">
-          <a href="https://www.youtube.com/watch?v=yp_l5ntikaU" target="_blank" rel="noopener noreferrer">https://www.youtube.com/watch?v=yp_l5ntikaU</a>
-        </p>
-      </details>
-      <p class="help-panel__attribution">
-        Duck icons created by <a href="https://www.flaticon.com/free-icons/duck" target="_blank" rel="noopener noreferrer" title="duck icons">Marz Gallery &mdash; Flaticon</a>.
-      </p>
-    `;
+    body.innerHTML = renderAboutBody(this.options.version);
 
     return body;
   }

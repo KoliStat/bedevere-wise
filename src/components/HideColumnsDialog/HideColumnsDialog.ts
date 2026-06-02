@@ -1,3 +1,5 @@
+import { Dialog } from "../Dialog/Dialog";
+
 export interface HideColumnsDialogArgs {
   /** Title shown in the dialog header. */
   title: string;
@@ -22,12 +24,10 @@ export interface HideColumnsDialogArgs {
  * The caller owns the persisted state, so the dialog only needs to
  * receive the current snapshot and call `onApply` with the next.
  */
-export class HideColumnsDialog {
-  private overlay: HTMLDivElement;
-  private dialog: HTMLDivElement;
-  private listEl: HTMLDivElement;
-  private filterInput: HTMLInputElement;
-  private summary: HTMLSpanElement;
+export class HideColumnsDialog extends Dialog {
+  private listEl!: HTMLDivElement;
+  private filterInput!: HTMLInputElement;
+  private summary!: HTMLSpanElement;
   // `staged` shadows the user's edits across the dialog's lifetime; we
   // apply / discard it on close so the row checkboxes can stay live even
   // before the user clicks OK.
@@ -35,46 +35,41 @@ export class HideColumnsDialog {
   private allColumns: string[];
   private filterText = "";
   private onApplyCallback: (hidden: Set<string>) => void;
-  private readonly onKeyDown: (e: KeyboardEvent) => void;
 
   public static show(args: HideColumnsDialogArgs): HideColumnsDialog {
     return new HideColumnsDialog(args);
   }
 
   private constructor(args: HideColumnsDialogArgs) {
+    super({ title: args.title, classPrefix: "hide-columns" });
     this.allColumns = [...args.allColumns];
     this.staged = new Set(args.hidden);
     this.onApplyCallback = args.onApply;
 
-    this.overlay = document.createElement("div");
-    this.overlay.className = "hide-columns-overlay";
-    this.overlay.addEventListener("mousedown", (e) => {
-      if (e.target === this.overlay) this.dismiss();
-    });
+    this.buildToolbar();
+    this.buildList();
+    this.buildFooter();
 
-    this.dialog = document.createElement("div");
-    this.dialog.className = "hide-columns";
-    this.dialog.setAttribute("role", "dialog");
-    this.dialog.setAttribute("aria-modal", "true");
-    this.overlay.appendChild(this.dialog);
+    this.mount();
+    this.renderList();
+    this.updateSummary();
+    // Defer focus so the modal's open animation (if any) doesn't fight
+    // the focus ring; the search field is the natural first stop.
+    setTimeout(() => this.filterInput.focus(), 0);
+  }
 
-    const header = document.createElement("div");
-    header.className = "hide-columns__header";
-    const titleEl = document.createElement("h2");
-    titleEl.className = "hide-columns__title";
-    titleEl.textContent = args.title;
-    header.appendChild(titleEl);
-    const close = document.createElement("button");
-    close.className = "hide-columns__close";
-    close.setAttribute("aria-label", "Close");
-    close.title = "Close (Esc)";
-    close.textContent = "✕";
-    close.addEventListener("click", () => this.dismiss());
-    header.appendChild(close);
-    this.dialog.appendChild(header);
+  protected handleKeyDown(e: KeyboardEvent): void {
+    super.handleKeyDown(e);
+    if (e.key === "Enter" && document.activeElement !== this.filterInput) {
+      e.preventDefault();
+      this.apply();
+    }
+  }
 
+  private buildToolbar(): void {
     const toolbar = document.createElement("div");
     toolbar.className = "hide-columns__toolbar";
+
     this.filterInput = document.createElement("input");
     this.filterInput.type = "search";
     this.filterInput.placeholder = "Filter columns…";
@@ -108,12 +103,17 @@ export class HideColumnsDialog {
       this.updateSummary();
     });
     toolbar.appendChild(bulkHide);
-    this.dialog.appendChild(toolbar);
 
+    this.panel.appendChild(toolbar);
+  }
+
+  private buildList(): void {
     this.listEl = document.createElement("div");
     this.listEl.className = "hide-columns__list";
-    this.dialog.appendChild(this.listEl);
+    this.panel.appendChild(this.listEl);
+  }
 
+  private buildFooter(): void {
     const footer = document.createElement("div");
     footer.className = "hide-columns__footer";
 
@@ -133,25 +133,7 @@ export class HideColumnsDialog {
     apply.addEventListener("click", () => this.apply());
     footer.appendChild(apply);
 
-    this.dialog.appendChild(footer);
-
-    this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        this.dismiss();
-      } else if (e.key === "Enter" && document.activeElement !== this.filterInput) {
-        e.preventDefault();
-        this.apply();
-      }
-    };
-    document.addEventListener("keydown", this.onKeyDown, true);
-
-    document.body.appendChild(this.overlay);
-    this.renderList();
-    this.updateSummary();
-    // Defer focus so the modal's open animation (if any) doesn't fight
-    // the focus ring; the search field is the natural first stop.
-    setTimeout(() => this.filterInput.focus(), 0);
+    this.panel.appendChild(footer);
   }
 
   private renderList(): void {
@@ -214,11 +196,7 @@ export class HideColumnsDialog {
       return;
     }
     this.onApplyCallback(new Set(this.staged));
+    this.markConfirmed();
     this.dismiss();
-  }
-
-  private dismiss(): void {
-    document.removeEventListener("keydown", this.onKeyDown, true);
-    this.overlay.remove();
   }
 }

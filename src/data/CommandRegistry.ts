@@ -119,6 +119,10 @@ class CommandRegistryImpl implements CommandRegistry {
   }
 
   private emit(): void {
+    // One listener throwing must not stop the rest from being notified —
+    // each listener is independent (palette, help panel, shell suggester,
+    // …) and a failure in one shouldn't blackhole the others. Log so
+    // the broken listener is debuggable; swallow so dispatch continues.
     for (const listener of this.listeners) {
       try { listener(); } catch (err) { console.error("CommandRegistry listener failed:", err); }
     }

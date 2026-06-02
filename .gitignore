@@ -38,6 +38,14 @@ public/extensions/*
 # Claude Code local settings
 .claude/
 
+# sigillo MCP local index
+.sigillo/
+
 # Temp
 src/data.ts
-testfiles/
+# Local-only test data; embed harness fixtures are excepted so the
+# /embed route has something to demo against on a fresh clone.
+testfiles/*
+!testfiles/embed-demo.csv
+!testfiles/embed-demo.parquet
+!testfiles/embed-harness.html

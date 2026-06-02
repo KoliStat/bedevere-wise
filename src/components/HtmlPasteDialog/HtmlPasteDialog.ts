@@ -1,4 +1,5 @@
 import { ParsedHtmlTable, parseHtmlTables, tableToCsv } from "../../data/formats/htmlTables";
+import { Dialog } from "../Dialog/Dialog";
 
 export interface HtmlPasteDialogArgs {
   /** Title shown in the dialog header. */
@@ -26,8 +27,9 @@ export interface HtmlPasteDialogArgs {
 
 /**
  * Modal dialog for ingesting HTML tables from the clipboard or from a
- * multi-table source. Mounts under `document.body`, dismisses on
- * backdrop click / Escape / Cancel, applies via the Import button.
+ * multi-table source. Inherits the overlay / backdrop-dismiss / Escape
+ * lifecycle from `Dialog`; this class owns the textarea + picker body,
+ * the parse-debounce timer, and the import success path.
  *
  * Two modes:
  *   - **paste mode** (no `initialTables`): textarea + "paste from
@@ -41,25 +43,20 @@ export interface HtmlPasteDialogArgs {
  * Result is delivered through `onImport(csvText, name)`; the caller
  * owns the final FileImportService / TabManager wiring.
  */
-export class HtmlPasteDialog {
-  private overlay: HTMLDivElement;
-  private dialog: HTMLDivElement;
+export class HtmlPasteDialog extends Dialog {
   private textarea!: HTMLTextAreaElement;
-  private clipboardBtn!: HTMLButtonElement;
   private pickerEl!: HTMLDivElement;
   private nameInput!: HTMLInputElement;
   private importBtn!: HTMLButtonElement;
   private summary!: HTMLSpanElement;
-  private status!: HTMLDivElement;
+  // Only present in paste mode (textarea section); picker-mode skips it.
+  private status: HTMLDivElement | null = null;
 
   private tables: ParsedHtmlTable[] = [];
   private selectedIndex = -1;
   private parseDebounce: number | null = null;
-  private importedSuccessfully = false;
   private readonly defaultName: string;
   private readonly onImportCallback: HtmlPasteDialogArgs["onImport"];
-  private readonly onCancelCallback?: () => void;
-  private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly isPickerMode: boolean;
 
   public static show(args: HtmlPasteDialogArgs): HtmlPasteDialog {
@@ -84,44 +81,21 @@ export class HtmlPasteDialog {
   }
 
   private constructor(args: HtmlPasteDialogArgs) {
+    const isPickerMode = !!(args.initialTables && args.initialTables.length > 0);
+    super({
+      title: args.title ?? (isPickerMode ? "Pick a table" : "Paste HTML table"),
+      classPrefix: "html-paste",
+      onCancel: args.onCancel,
+    });
     this.defaultName = args.defaultName ?? "pasted_table";
     this.onImportCallback = args.onImport;
-    this.onCancelCallback = args.onCancel;
-    this.isPickerMode = !!(args.initialTables && args.initialTables.length > 0);
+    this.isPickerMode = isPickerMode;
 
-    this.overlay = document.createElement("div");
-    this.overlay.className = "html-paste-overlay";
-    this.overlay.addEventListener("mousedown", (e) => {
-      if (e.target === this.overlay) this.dismiss();
-    });
-
-    this.dialog = document.createElement("div");
-    this.dialog.className = "html-paste";
-    this.dialog.setAttribute("role", "dialog");
-    this.dialog.setAttribute("aria-modal", "true");
-    this.overlay.appendChild(this.dialog);
-
-    this.buildHeader(args.title ?? (this.isPickerMode ? "Pick a table" : "Paste HTML table"));
     if (!this.isPickerMode) this.buildTextarea();
     this.buildPicker();
     this.buildNameAndFooter();
 
-    this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        this.dismiss();
-      } else if (
-        e.key === "Enter" &&
-        document.activeElement !== this.textarea &&
-        document.activeElement !== this.nameInput
-      ) {
-        e.preventDefault();
-        if (!this.importBtn.disabled) this.tryImport();
-      }
-    };
-    document.addEventListener("keydown", this.onKeyDown, true);
-
-    document.body.appendChild(this.overlay);
+    this.mount();
 
     if (this.isPickerMode) {
       this.tables = args.initialTables!;
@@ -134,27 +108,28 @@ export class HtmlPasteDialog {
     }
   }
 
-  // ---------- DOM construction ------------------------------------------
-
-  private buildHeader(title: string): void {
-    const header = document.createElement("div");
-    header.className = "html-paste__header";
-
-    const titleEl = document.createElement("h2");
-    titleEl.className = "html-paste__title";
-    titleEl.textContent = title;
-    header.appendChild(titleEl);
-
-    const close = document.createElement("button");
-    close.className = "html-paste__close";
-    close.setAttribute("aria-label", "Close");
-    close.title = "Close (Esc)";
-    close.textContent = "✕";
-    close.addEventListener("click", () => this.dismiss());
-    header.appendChild(close);
-
-    this.dialog.appendChild(header);
+  protected handleKeyDown(e: KeyboardEvent): void {
+    super.handleKeyDown(e);
+    if (
+      e.key === "Enter" &&
+      document.activeElement !== this.textarea &&
+      document.activeElement !== this.nameInput &&
+      !this.importBtn.disabled
+    ) {
+      e.preventDefault();
+      this.tryImport();
+    }
   }
+
+  protected dismiss(): void {
+    if (this.parseDebounce !== null) {
+      window.clearTimeout(this.parseDebounce);
+      this.parseDebounce = null;
+    }
+    super.dismiss();
+  }
+
+  // ---------- DOM construction ------------------------------------------
 
   private buildTextarea(): void {
     const section = document.createElement("div");
@@ -172,25 +147,25 @@ export class HtmlPasteDialog {
     const actions = document.createElement("div");
     actions.className = "html-paste__textarea-actions";
 
-    this.clipboardBtn = document.createElement("button");
-    this.clipboardBtn.className = "html-paste__btn html-paste__btn--secondary";
-    this.clipboardBtn.textContent = "Paste from clipboard";
-    this.clipboardBtn.title = "Read text/html from the system clipboard";
-    this.clipboardBtn.addEventListener("click", () => this.pasteFromClipboard());
-    actions.appendChild(this.clipboardBtn);
+    const clipboardBtn = document.createElement("button");
+    clipboardBtn.className = "html-paste__btn html-paste__btn--secondary";
+    clipboardBtn.textContent = "Paste from clipboard";
+    clipboardBtn.title = "Read text/html from the system clipboard";
+    clipboardBtn.addEventListener("click", () => this.pasteFromClipboard());
+    actions.appendChild(clipboardBtn);
 
     this.status = document.createElement("div");
     this.status.className = "html-paste__status";
     actions.appendChild(this.status);
 
     section.appendChild(actions);
-    this.dialog.appendChild(section);
+    this.panel.appendChild(section);
   }
 
   private buildPicker(): void {
     this.pickerEl = document.createElement("div");
     this.pickerEl.className = "html-paste__picker";
-    this.dialog.appendChild(this.pickerEl);
+    this.panel.appendChild(this.pickerEl);
   }
 
   private buildNameAndFooter(): void {
@@ -206,7 +181,7 @@ export class HtmlPasteDialog {
     this.nameInput.addEventListener("input", () => this.refreshImportEnabled());
     nameRow.appendChild(nameLabel);
     nameRow.appendChild(this.nameInput);
-    this.dialog.appendChild(nameRow);
+    this.panel.appendChild(nameRow);
 
     const footer = document.createElement("div");
     footer.className = "html-paste__footer";
@@ -228,7 +203,7 @@ export class HtmlPasteDialog {
     this.importBtn.addEventListener("click", () => this.tryImport());
     footer.appendChild(this.importBtn);
 
-    this.dialog.appendChild(footer);
+    this.panel.appendChild(footer);
   }
 
   // ---------- Paste / parse flow ----------------------------------------
@@ -409,7 +384,7 @@ export class HtmlPasteDialog {
     this.importBtn.disabled = true;
     try {
       await this.onImportCallback(csv, name);
-      this.importedSuccessfully = true;
+      this.markConfirmed();
       this.dismiss();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -422,22 +397,6 @@ export class HtmlPasteDialog {
     if (!this.status) return; // picker-mode has no textarea section
     this.status.textContent = message;
     this.status.classList.toggle("html-paste__status--error", isError);
-  }
-
-  private dismiss(): void {
-    if (this.parseDebounce !== null) window.clearTimeout(this.parseDebounce);
-    document.removeEventListener("keydown", this.onKeyDown, true);
-    this.overlay.remove();
-    if (!this.importedSuccessfully && this.onCancelCallback) {
-      // Fire `onCancel` for the promise-flavoured wrapper to resolve
-      // with null. Only the success path skips this (the import callback
-      // already resolved the promise).
-      try {
-        this.onCancelCallback();
-      } catch {
-        // best-effort; cancel callbacks shouldn't throw
-      }
-    }
   }
 }
 

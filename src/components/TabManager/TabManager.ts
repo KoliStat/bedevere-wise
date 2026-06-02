@@ -1,9 +1,9 @@
 import { SpreadsheetVisualizer } from "../SpreadsheetVisualizer/SpreadsheetVisualizer";
 import { SpreadsheetOptions } from "../SpreadsheetVisualizer/types";
 import { ColumnStatsVisualizerFocusable } from "../ColumnStatsVisualizer/ColumnStatsVisualizerFocusable";
-import { CommandBar } from "../CommandBar";
-import { SqlEditor } from "../SqlEditor";
-import type { ChartVisualizer } from "../ChartVisualizer";
+import { CommandBar } from "../CommandBar/CommandBar";
+import { SqlEditor } from "../SqlEditor/SqlEditor";
+import type { ChartVisualizer } from "../ChartVisualizer/ChartVisualizer";
 import { DataProvider, DatasetMetadata } from "../../data/types";
 import { DuckDBService } from "../../data/DuckDBService";
 import { ColumnFilterManager } from "../../data/ColumnFilterManager";
@@ -76,7 +76,22 @@ interface ChartTab {
   onCloseTab?: () => void;
 }
 
-type Tab = DatasetTab | ChartTab;
+/**
+ * Read-only text view for files that failed to import. Surfaces the
+ * file content + the DuckDB error so the user can see what tripped
+ * the parser. Ephemeral — not persisted into the env workspace.
+ */
+interface TextTab {
+  kind: "text";
+  metadata: { name: string };
+  /** Optional banner shown above the content; usually the import error. */
+  errorMessage?: string;
+  container: HTMLElement;
+  isActive: boolean;
+  onCloseTab?: () => void;
+}
+
+type Tab = DatasetTab | ChartTab | TextTab;
 
 export class TabManager {
   private container: HTMLElement;
@@ -325,9 +340,11 @@ export class TabManager {
       if (this.eventDispatcher) {
         this.eventDispatcher.unregisterComponent(tab.spreadsheetVisualizer.componentId);
       }
-    } else {
+    } else if (tab.kind === "chart") {
       tab.chartVisualizer.destroy();
     }
+    // TextTab has nothing to dispose — its container is removed below
+    // alongside every other tab kind.
 
     // Remove tab element
     const tabElement = this.tabsContainer.querySelector(`[data-tab-id="${name}"]`);
@@ -562,13 +579,19 @@ export class TabManager {
       if (this.onSelectCallback) {
         this.onSelectCallback(newTab.dataProvider);
       }
-    } else {
+    } else if (newTab.kind === "chart") {
       // Chart tabs have no spreadsheet → hide the column-stats sidebar so
       // a stale dataset's stats don't sit beside the chart, and notify the
       // host so the status bar shows the chart name instead of a stale
       // dataset's row/column count + selection info.
       this.sharedStatsVisualizer.hide();
       this.onChartActivateCallback?.(newTab.metadata.name);
+    } else {
+      // Text tabs (failed-import fallback) likewise have no columns;
+      // hide the stats sidebar. No host notification — the status bar
+      // shows whatever it's already showing; nothing to add for a
+      // raw text view.
+      this.sharedStatsVisualizer.hide();
     }
   }
 
@@ -629,6 +652,14 @@ export class TabManager {
     return this.filterManager;
   }
 
+  /**
+   * Expose the DuckDB service so the panel can run the env-switch wipe
+   * through it. Returns null before `initSqlEditor` has been called.
+   */
+  public getDuckDBService(): DuckDBService | null {
+    return this.duckDBService;
+  }
+
   public initSqlEditor(duckDBService: DuckDBService): void {
     if (this.sqlEditor) return;
 
@@ -651,10 +682,28 @@ export class TabManager {
       setTimeout(() => this.handleResize(), 260);
     });
 
+    // Drag-resize on the SQL editor changes the height of the panel
+    // above; the spreadsheet below has to re-layout to fill what's
+    // left. The drag itself uses the flex layout to push the canvas
+    // container around in real time; this fires once on mouseup so
+    // the canvas redraws against the new dimensions.
+    this.sqlEditor.setOnResizeCallback(() => {
+      this.handleResize().catch(console.error);
+    });
+
     // CommandBar shell submit is wired here because dispatch to SQL needs
     // duckDBService; dot-only commands (.help etc.) would work earlier but
     // this keeps the wiring in one place.
     this.commandBar?.setOnSubmitCallback((input) => this.dispatchInput(input));
+
+    // Restore the active environment's tabs now that the toggle callback
+    // is wired — `restoreActiveEnvironment` may auto-expand the editor
+    // if the env had an active query last session, and that expand
+    // fires `onToggleCallback` to sync the CommandBar chip. Doing this
+    // before the callback was set would skip that sync.
+    this.sqlEditor.restoreActiveEnvironment().catch((err) => {
+      console.error("SqlEditor: restoreActiveEnvironment failed", err);
+    });
   }
 
   public toggleSqlEditor(): void {
@@ -784,9 +833,17 @@ export class TabManager {
    * existing tab when one already shows the same name.
    */
   private async openExistingTable(name: string, duckDBService: DuckDBService): Promise<void> {
+    // If the table already has an open tab, the DuckDB rows behind it
+    // may have just been replaced by CREATE OR REPLACE — the existing
+    // SpreadsheetVisualizer + DuckDBDataProvider hold cached metadata
+    // and cell data from the previous version, so simply switching to
+    // the tab would paint stale rows. Close it and fall through to the
+    // fresh-tab path, which re-reads metadata and rebuilds the cache.
+    // Trade-off: scroll position / selection / local filter+sort don't
+    // survive the rebuild — acceptable for v0.12; a v0.13 follow-up can
+    // add an in-place refresh that preserves view state.
     if (this.getDatasetIds().includes(name)) {
-      await this.switchToDataset(name);
-      return;
+      this.closeDataset(name);
     }
     const { DuckDBDataProvider } = await import("../../data/DuckDBDataProvider");
     const provider = new DuckDBDataProvider(duckDBService, name, "");
@@ -896,6 +953,62 @@ export class TabManager {
     }
   }
 
+  /**
+   * Open a read-only text tab. The failed-import fallback uses this
+   * to show a file's content when DuckDB couldn't parse it as a
+   * table — the `errorMessage` becomes a banner above the content.
+   *
+   * Names collide with other tabs by string, so if `name` matches an
+   * already-open tab we suffix a counter (e.g. `weird.csv (text)`).
+   * Content is capped at 200 KB to keep `<pre>` rendering snappy
+   * even for huge text files — anything past the cap is truncated
+   * with a hint line at the bottom.
+   */
+  public addTextTab(name: string, content: string, errorMessage?: string): void {
+    const safeName = this.uniqueTabName(name);
+
+    const textContainer = document.createElement("div");
+    textContainer.className = "tab-manager__dataset-container tab-manager__text-container";
+
+    if (errorMessage) {
+      const banner = document.createElement("div");
+      banner.className = "tab-manager__text-banner";
+      banner.textContent = errorMessage;
+      textContainer.appendChild(banner);
+    }
+
+    const MAX_CHARS = 200_000;
+    const truncated = content.length > MAX_CHARS;
+    const pre = document.createElement("pre");
+    pre.className = "tab-manager__text-pre";
+    pre.textContent = truncated
+      ? content.slice(0, MAX_CHARS) + `\n\n… [truncated after ${MAX_CHARS.toLocaleString()} characters]`
+      : content;
+    textContainer.appendChild(pre);
+
+    this.contentContainer.appendChild(textContainer);
+
+    const tab: TextTab = {
+      kind: "text",
+      metadata: { name: safeName },
+      errorMessage,
+      container: textContainer,
+      isActive: false,
+    };
+    this.tabs.push(tab);
+    this.createTabElement(tab);
+    this.activateTab(safeName);
+  }
+
+  /** Pick a tab name unused by any currently-open tab. Appends `(2)`,
+   *  `(3)`, … on collision. */
+  private uniqueTabName(name: string): string {
+    if (!this.tabs.some((t) => t.metadata.name === name)) return name;
+    let i = 2;
+    while (this.tabs.some((t) => t.metadata.name === `${name} (${i})`)) i += 1;
+    return `${name} (${i})`;
+  }
+
   public async addChartResult(spec: VisualizationSpec, datasets: Record<string, unknown[]>): Promise<void> {
     const chartContainer = document.createElement("div");
     chartContainer.className = "tab-manager__dataset-container";
@@ -906,7 +1019,7 @@ export class TabManager {
 
     // Dynamic import keeps the ~800 KB vega-embed bundle out of the initial
     // page-load chunk for users who never run a VISUALIZE query.
-    const { ChartVisualizer } = await import("../ChartVisualizer");
+    const { ChartVisualizer } = await import("../ChartVisualizer/ChartVisualizer");
     const chartVisualizer = new ChartVisualizer(chartContainer);
 
     const tab: ChartTab = {
@@ -927,13 +1040,14 @@ export class TabManager {
   }
 
   public destroy(): void {
-    // Clean up all visualizers (spreadsheet or chart).
+    // Clean up all visualizers (spreadsheet, chart, or text).
     this.tabs.forEach((tab) => {
       if (tab.kind === "dataset") {
         tab.spreadsheetVisualizer.destroy();
-      } else {
+      } else if (tab.kind === "chart") {
         tab.chartVisualizer.destroy();
       }
+      // TextTab has no visualizer to dispose.
     });
 
     // Hide shared stats visualizer

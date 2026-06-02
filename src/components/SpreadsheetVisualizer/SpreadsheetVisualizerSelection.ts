@@ -64,18 +64,20 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
     let width = Math.floor(minMax(rawClientWidth, this.options.minWidth, this.options.maxWidth));
     let height = Math.floor(minMax(rawClientHeight, this.options.minHeight, this.options.maxHeight));
 
-    // Snap the height down to `header + N × rowHeight` so the visible
-    // canvas always holds an integer number of full rows. Without this,
-    // a pixel mismatch (e.g. viewport 250 px, row 24 px → 9 full rows
-    // fit but one extra row is drawn half-clipped at the bottom) leaves
-    // the bottom row half-visible. The leftover pixels — at most
-    // `cellHeight - 1` — sit below the canvas, inside the scrollContainer
-    // and above any horizontal scrollbar; they show through to
-    // `#spreadsheet-container`'s background, which matches the cell
-    // background in both themes, so the gap is visually seamless.
+    // Snap the height to `header + N × rowHeight`, choosing N by
+    // rounding-to-nearest rather than always-floor. Floor would waste
+    // up to `cellHeight - 1` pixels below the canvas, which the user
+    // perceives as "room for another row going to waste". With round-
+    // to-nearest, when more than half a row of leftover space is
+    // available we instead snap UP one row — the canvas then extends a
+    // few pixels past `clientHeight`, the overflow is cropped at the
+    // scrollContainer's bottom edge (or by the horizontal scrollbar if
+    // present), and the user sees mostly-full bottom rows instead of a
+    // near-row of empty padding. Worst-case clipping under round is
+    // `cellHeight / 2 ≈ 12 px` — half a row, still legible.
     const ch = this.options.cellHeight;
     if (height > ch) {
-      const dataRowsThatFit = Math.floor((height - ch) / ch);
+      const dataRowsThatFit = Math.round((height - ch) / ch);
       height = ch + dataRowsThatFit * ch;
     }
 

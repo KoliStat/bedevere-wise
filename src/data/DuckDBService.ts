@@ -1,4 +1,8 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
+import mvpWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
+import ehWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
+import coiWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?url";
+import coiPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
 
@@ -32,23 +36,29 @@ export class DuckDBService {
     }
 
     try {
-      // jsDelivr bundles instead of `?url` imports — the DuckDB-WASM
-      // artefacts are 35–41 MB each, which exceeds Cloudflare Workers'
-      // 25 MiB per-asset cap, so we can't ship them in our own bundle.
-      const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+      // jsDelivr for the .wasm modules — they're 35–41 MB each, which
+      // exceeds Cloudflare Workers' 25 MiB per-asset cap, so we can't
+      // ship them in our own bundle. The JS workers are <1 MB and
+      // self-hosting them keeps the app functional when jsDelivr is
+      // unreachable (DuckDB still pays a wasm fetch on first load,
+      // but the worker won't fail to bootstrap).
+      // getJsDelivrBundles() currently returns only `mvp` and `eh` — no
+      // `coi`. Guard each entry so the override survives an upstream
+      // change that adds COI, without breaking today's two-entry shape.
+      const bundles = duckdb.getJsDelivrBundles();
+      bundles.mvp.mainWorker = mvpWorkerUrl;
+      if (bundles.eh) bundles.eh.mainWorker = ehWorkerUrl;
+      if (bundles.coi) {
+        bundles.coi.mainWorker = coiWorkerUrl;
+        bundles.coi.pthreadWorker = coiPthreadWorkerUrl;
+      }
+      const bundle = await duckdb.selectBundle(bundles);
 
-      // Workers can't be loaded cross-origin directly; wrap the jsDelivr
-      // URL in a same-origin Blob shim that importScripts() the real code.
-      const workerUrl = URL.createObjectURL(
-        new Blob([`importScripts("${bundle.mainWorker!}");`], { type: "text/javascript" })
-      );
-
-      this.worker = new Worker(workerUrl);
+      this.worker = new Worker(bundle.mainWorker!);
       const logger = new duckdb.VoidLogger();
       this.db = new duckdb.AsyncDuckDB(logger, this.worker);
 
       await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-      URL.revokeObjectURL(workerUrl);
       await this.db.open({ allowUnsignedExtensions: true });
       this.isInitialized = true;
 
@@ -149,6 +159,19 @@ export class DuckDBService {
     await this.db.registerFileBuffer(name, buffer);
   }
 
+  /**
+   * Register a remote URL as a DuckDB virtual file so `read_parquet(name)` /
+   * `read_csv(name)` resolve to an HTTP fetch instead of a buffer. Used by
+   * the /embed route to load datasets the parent blog hosts. The remote
+   * server must serve appropriate CORS headers (Access-Control-Allow-Origin)
+   * — we don't paper over CORS failures; they surface as a normal fetch
+   * error when DuckDB tries to read the registered file.
+   */
+  public async registerFileURL(name: string, url: string): Promise<void> {
+    if (!this.db) throw new Error("DuckDB not initialized");
+    await this.db.registerFileURL(name, url, duckdb.DuckDBDataProtocol.HTTP, false);
+  }
+
   public isReady(): boolean {
     return this.isInitialized;
   }
@@ -160,6 +183,194 @@ export class DuckDBService {
     }
     this.db = null;
     this.isInitialized = false;
+  }
+
+  /**
+   * Drop every user-created object in the `main` schema: views, tables,
+   * macros, types, sequences. Used when switching environments so the new
+   * env starts from a clean DuckDB instead of seeing the previous env's
+   * tables / aliases / macros still hanging around.
+   *
+   * Order matters: views may reference tables, so views go first; macros
+   * and types may reference each other in principle, so each phase is
+   * isolated in its own try/catch so a single failure doesn't strand
+   * the rest. Anything we couldn't enumerate (older DuckDB-WASM build
+   * lacks `duckdb_types()` etc.) is logged as a warning, not raised.
+   *
+   * Returns a summary of what got dropped, for the caller to surface
+   * via the status bar if it wants.
+   */
+  public async wipeUserState(): Promise<{
+    tables: number;
+    views: number;
+    macros: number;
+    types: number;
+    sequences: number;
+  }> {
+    const summary = { tables: 0, views: 0, macros: 0, types: 0, sequences: 0 };
+    if (!this.isInitialized) return summary;
+    const conn = await this.getConnection();
+    try {
+      // Views first — they may select from tables we'd otherwise need to
+      // CASCADE-drop. Iterating per-row with quoted identifiers keeps
+      // names with spaces / unicode safe.
+      try {
+        const viewRows = (await conn.query(
+          "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'main' AND table_type = 'VIEW'",
+        )).toArray() as Array<{ name: string }>;
+        for (const v of viewRows) {
+          try {
+            await conn.query(`DROP VIEW IF EXISTS ${quoteIdent(String(v.name))} CASCADE`);
+            summary.views += 1;
+          } catch (err) {
+            console.warn(`wipeUserState: failed to drop view ${v.name}:`, err);
+          }
+        }
+      } catch (err) {
+        console.warn("wipeUserState: failed to enumerate views:", err);
+      }
+
+      try {
+        const tableRows = (await conn.query(
+          "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'main' AND table_type = 'BASE TABLE'",
+        )).toArray() as Array<{ name: string }>;
+        for (const t of tableRows) {
+          try {
+            await conn.query(`DROP TABLE IF EXISTS ${quoteIdent(String(t.name))} CASCADE`);
+            summary.tables += 1;
+          } catch (err) {
+            console.warn(`wipeUserState: failed to drop table ${t.name}:`, err);
+          }
+        }
+      } catch (err) {
+        console.warn("wipeUserState: failed to enumerate tables:", err);
+      }
+
+      // Macros — `duckdb_functions()` lists every function in the DB,
+      // including the ~100 built-in macros that live in the `main`
+      // schema (array_pop_front, histogram, date_add, …). Filtering on
+      // schema alone catches all of them and produces a flood of
+      // "Cannot drop internal catalog entry" errors. `internal = false`
+      // is the correct filter for user-created macros.
+      try {
+        const macroRows = (await conn.query(
+          "SELECT DISTINCT function_name AS name FROM duckdb_functions() WHERE schema_name = 'main' AND function_type IN ('macro', 'table_macro') AND internal = false",
+        )).toArray() as Array<{ name: string }>;
+        for (const m of macroRows) {
+          try {
+            await conn.query(`DROP MACRO IF EXISTS ${quoteIdent(String(m.name))}`);
+            summary.macros += 1;
+          } catch (err) {
+            console.warn(`wipeUserState: failed to drop macro ${m.name}:`, err);
+          }
+        }
+      } catch (err) {
+        console.warn("wipeUserState: failed to enumerate macros:", err);
+      }
+
+      // User-defined types (ENUMs etc.). `duckdb_types()` has an
+      // `internal` boolean that distinguishes user types from the
+      // built-in ones. The outer try/catch tolerates older DuckDB
+      // builds that lack `duckdb_types()` entirely.
+      try {
+        const typeRows = (await conn.query(
+          "SELECT type_name AS name FROM duckdb_types() WHERE schema_name = 'main' AND internal = false",
+        )).toArray() as Array<{ name: string }>;
+        for (const t of typeRows) {
+          try {
+            await conn.query(`DROP TYPE IF EXISTS ${quoteIdent(String(t.name))}`);
+            summary.types += 1;
+          } catch (err) {
+            console.warn(`wipeUserState: failed to drop type ${t.name}:`, err);
+          }
+        }
+      } catch (err) {
+        console.warn("wipeUserState: failed to enumerate types:", err);
+      }
+
+      // Sequences — `information_schema.sequences` doesn't exist in
+      // DuckDB-WASM; use `duckdb_sequences()` and filter for non-
+      // internal entries.
+      try {
+        const seqRows = (await conn.query(
+          "SELECT sequence_name AS name FROM duckdb_sequences() WHERE schema_name = 'main' AND internal = false",
+        )).toArray() as Array<{ name: string }>;
+        for (const s of seqRows) {
+          try {
+            await conn.query(`DROP SEQUENCE IF EXISTS ${quoteIdent(String(s.name))}`);
+            summary.sequences += 1;
+          } catch (err) {
+            console.warn(`wipeUserState: failed to drop sequence ${s.name}:`, err);
+          }
+        }
+      } catch (err) {
+        console.warn("wipeUserState: failed to enumerate sequences:", err);
+      }
+    } finally {
+      await conn.close();
+    }
+    return summary;
+  }
+
+  /**
+   * Drop a single user object by name. Tries each object kind in order
+   * (table, view, macro, type, sequence) and returns the kind that
+   * succeeded — or null if nothing with that name existed. Used by
+   * the `.drop <name>` shell command; bulk wipe uses {@link wipeUserState}.
+   */
+  public async dropByName(name: string): Promise<"table" | "view" | "macro" | "type" | "sequence" | null> {
+    if (!this.isInitialized) return null;
+    const ident = quoteIdent(name);
+    const conn = await this.getConnection();
+    try {
+      // Probe information_schema first so we know which kind to drop.
+      // Avoids running blind `DROP TABLE ... CASCADE` on a view and the
+      // reverse, which can spuriously remove other deps with CASCADE.
+      const probe = (await conn.query(
+        `SELECT table_type FROM information_schema.tables WHERE table_schema = 'main' AND table_name = '${name.replace(/'/g, "''")}'`,
+      )).toArray() as Array<{ table_type: string }>;
+      if (probe.length > 0) {
+        const isView = String(probe[0].table_type).toUpperCase() === "VIEW";
+        await conn.query(`${isView ? "DROP VIEW" : "DROP TABLE"} IF EXISTS ${ident} CASCADE`);
+        return isView ? "view" : "table";
+      }
+
+      const macroProbe = (await conn.query(
+        `SELECT 1 AS x FROM duckdb_functions() WHERE schema_name = 'main' AND function_type IN ('macro', 'table_macro') AND internal = false AND function_name = '${name.replace(/'/g, "''")}' LIMIT 1`,
+      )).toArray();
+      if (macroProbe.length > 0) {
+        await conn.query(`DROP MACRO IF EXISTS ${ident}`);
+        return "macro";
+      }
+
+      try {
+        const typeProbe = (await conn.query(
+          `SELECT 1 AS x FROM duckdb_types() WHERE schema_name = 'main' AND internal = false AND type_name = '${name.replace(/'/g, "''")}' LIMIT 1`,
+        )).toArray();
+        if (typeProbe.length > 0) {
+          await conn.query(`DROP TYPE IF EXISTS ${ident}`);
+          return "type";
+        }
+      } catch {
+        // Older DuckDB-WASM lacks duckdb_types(); fall through.
+      }
+
+      try {
+        const seqProbe = (await conn.query(
+          `SELECT 1 AS x FROM duckdb_sequences() WHERE schema_name = 'main' AND internal = false AND sequence_name = '${name.replace(/'/g, "''")}' LIMIT 1`,
+        )).toArray();
+        if (seqProbe.length > 0) {
+          await conn.query(`DROP SEQUENCE IF EXISTS ${ident}`);
+          return "sequence";
+        }
+      } catch {
+        // `duckdb_sequences()` missing on older builds — fall through.
+      }
+
+      return null;
+    } finally {
+      await conn.close();
+    }
   }
 }
 

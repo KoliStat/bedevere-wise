@@ -1,5 +1,5 @@
 import "./styles/main.scss";
-import { BedevereApp } from "./components/BedevereApp";
+import { BedevereApp } from "./components/BedevereApp/BedevereApp";
 import { duckDBService } from "./data/DuckDBService.ts";
 import { persistenceService } from "./data/PersistenceService.ts";
 import {
@@ -13,7 +13,7 @@ import {
 // Initialize the Bedevere Wise application
 async function initApplication() {
   const debugMode = import.meta.env.DEV;
-  const appVersion = "0.11-sovereign-of-all-england";
+  const appVersion = "0.12-pull-the-other-one";
 
   // Initialize DuckDB first
   try {

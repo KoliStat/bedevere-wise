@@ -1,3 +1,5 @@
+import { persistenceService } from "./PersistenceService";
+
 /**
  * A key combination descriptor. Matches against KeyboardEvent properties.
  * Examples: "Ctrl+B", "Ctrl+Shift+P", "ArrowUp", "Ctrl+Enter", "F11", "Escape"
@@ -92,8 +94,6 @@ const DEFAULT_KEYMAP: KeymapEntry[] = [
 
 // ─── KeymapService ─────────────────────────────────────────────────
 
-const STORAGE_KEY = "bedevere_keymap";
-
 export class KeymapService {
   private entries: KeymapEntry[];
 
@@ -134,7 +134,7 @@ export class KeymapService {
   /** Reset all bindings to defaults */
   public resetToDefaults(): void {
     this.entries = DEFAULT_KEYMAP.map((e) => ({ ...e, binding: { ...e.binding } }));
-    localStorage.removeItem(STORAGE_KEY);
+    persistenceService.saveKeymapOverrides({});
   }
 
   /** Get the default binding for comparison / reset */
@@ -143,29 +143,22 @@ export class KeymapService {
   }
 
   private loadKeymap(): KeymapEntry[] {
-    // Start with a deep copy of defaults
+    // Start with a deep copy of defaults, then layer the user's
+    // overrides (loaded via PersistenceService) on top.
     const keymap = DEFAULT_KEYMAP.map((e) => ({ ...e, binding: { ...e.binding } }));
-
-    // Merge any user overrides from localStorage
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const overrides: Record<string, KeyBinding> = JSON.parse(raw);
-        for (const entry of keymap) {
-          if (overrides[entry.action]) {
-            entry.binding = overrides[entry.action];
-          }
-        }
-      } catch {
-        // Ignore corrupt storage
+    const overrides = persistenceService.loadKeymapOverrides();
+    for (const entry of keymap) {
+      if (overrides[entry.action]) {
+        entry.binding = overrides[entry.action];
       }
     }
-
     return keymap;
   }
 
   private saveKeymap(): void {
-    // Only save entries that differ from defaults
+    // Only save entries that differ from defaults — the rest are
+    // recovered from DEFAULT_KEYMAP on load. PersistenceService deletes
+    // the storage key when the overrides map is empty.
     const overrides: Record<string, KeyBinding> = {};
     for (const entry of this.entries) {
       const def = DEFAULT_KEYMAP.find((d) => d.action === entry.action);
@@ -173,12 +166,7 @@ export class KeymapService {
         overrides[entry.action] = entry.binding;
       }
     }
-
-    if (Object.keys(overrides).length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    persistenceService.saveKeymapOverrides(overrides);
   }
 }
 

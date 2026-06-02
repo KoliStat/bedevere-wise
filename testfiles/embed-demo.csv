@@ -1,0 +1,11 @@
+subject_id,treatment,response
+S001,placebo,3.4
+S002,placebo,2.1
+S003,placebo,4.8
+S004,placebo,3.0
+S005,placebo,5.2
+S006,active,6.1
+S007,active,7.4
+S008,active,5.9
+S009,active,8.0
+S010,active,7.2

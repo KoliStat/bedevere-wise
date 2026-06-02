@@ -3,7 +3,6 @@ import { FileTreeNode } from "../../data/FileTreeTypes";
 export interface FileTreeCallbacks {
   onNodeClick: (node: FileTreeNode) => void;
   onNodeExpand: (node: FileTreeNode) => void;
-  onNodeContextMenu: (node: FileTreeNode, e: MouseEvent) => void;
   onAliasChange: (node: FileTreeNode, alias: string) => void;
 }
 
@@ -34,6 +33,11 @@ export class FileTreeRenderer {
   private searchUseRegex: boolean = false;
   // Cached roots so the search input can re-render without the caller.
   private lastRoots: FileTreeNode[] = [];
+  /** Auto-import threshold (bytes). Files larger than this AND not
+   *  yet imported show a warning glyph. `0` means auto-import is
+   *  disabled, which we treat as "every file is over-threshold" for
+   *  warning purposes — the user always has to click. */
+  private autoImportThreshold: number = 1_048_576;
 
   constructor(container: HTMLElement, callbacks: FileTreeCallbacks) {
     this.container = container;
@@ -78,6 +82,15 @@ export class FileTreeRenderer {
 
   public render(roots: FileTreeNode[]): void {
     this.lastRoots = roots;
+    this.renderTree();
+  }
+
+  /** Update the threshold used to decide which file rows show the
+   *  warning glyph. Re-renders the tree so the change is visible
+   *  immediately. */
+  public setAutoImportThreshold(bytes: number): void {
+    if (this.autoImportThreshold === bytes) return;
+    this.autoImportThreshold = bytes;
     this.renderTree();
   }
 
@@ -154,8 +167,8 @@ export class FileTreeRenderer {
     const el = this.treeContainer.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`) as HTMLElement;
     if (!el) return;
 
-    if (updates.isImported !== undefined) {
-      el.classList.toggle("file-tree__node--imported", updates.isImported);
+    if (updates.isOpenAsTab !== undefined) {
+      el.classList.toggle("file-tree__node--imported", updates.isOpenAsTab);
     }
     if (updates.isExpanded !== undefined) {
       el.classList.toggle("file-tree__node--expanded", updates.isExpanded);
@@ -208,7 +221,10 @@ export class FileTreeRenderer {
     el.className = "file-tree__node";
     el.dataset.nodeId = node.id;
 
-    if (node.isImported) el.classList.add("file-tree__node--imported");
+    // `--imported` styles "this dataset is currently open in a
+    // spreadsheet tab". Silent-imported files (DuckDB has the table
+    // but no tab is open) stay visually neutral.
+    if (node.isOpenAsTab) el.classList.add("file-tree__node--imported");
     if (node.isUnavailable) el.classList.add("file-tree__node--unavailable");
     if (expanded) el.classList.add("file-tree__node--expanded");
 
@@ -260,16 +276,34 @@ export class FileTreeRenderer {
     }
     row.appendChild(name);
 
+    // Warning glyph + size label for file rows. The glyph appears
+    // when the file is over the auto-import threshold AND not yet
+    // imported — clicks-to-open clears it. xlsx/xls always need the
+    // sheet picker so we don't flag them as "over threshold" (it
+    // would be misleading; their oversized-ness isn't the blocker).
+    if (node.kind === "file" && node.size !== undefined) {
+      const isOversized =
+        this.autoImportThreshold === 0
+          ? false  // threshold off → no implicit warning; user clicks everything anyway
+          : node.size > this.autoImportThreshold;
+      const isExcel = node.fileType === "xlsx" || node.fileType === "xls";
+      if (isOversized && !node.isImported && !isExcel) {
+        const warn = document.createElement("span");
+        warn.className = "file-tree__warn";
+        warn.textContent = "⚠";
+        warn.title = "Above auto-import threshold — click to open.";
+        row.appendChild(warn);
+      }
+      const sizeEl = document.createElement("span");
+      sizeEl.className = "file-tree__size";
+      sizeEl.textContent = formatBytes(node.size);
+      row.appendChild(sizeEl);
+    }
+
     // Click handler
     if (!node.isUnavailable) {
       row.addEventListener("click", () => this.callbacks.onNodeClick(node));
     }
-
-    // Context menu
-    row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      this.callbacks.onNodeContextMenu(node, e);
-    });
 
     // Double-click to rename
     name.addEventListener("dblclick", (e) => {
@@ -335,4 +369,14 @@ export class FileTreeRenderer {
     });
     input.addEventListener("blur", commit);
   }
+}
+
+/** "12 B" / "3 KB" / "1.4 MB" — small bytes use B, KB up to 999 KB,
+ *  MB after, one decimal for sub-10 MB and zero decimals from 10 MB
+ *  up so the column stays narrow. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
 }

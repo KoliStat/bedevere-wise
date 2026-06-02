@@ -53,12 +53,13 @@
       color: var(--fg-dark);
     }
 
-    // Active tab: solid bg with accent underline, like vim's selected
-    // tabline segment.
+    // Active tab: solid bg with blue accent on the TOP edge, matching
+    // the SQL editor tab strip so both tab rows feel like a single
+    // visual language.
     &--active {
       background-color: var(--bg);
       color: var(--fg);
-      box-shadow: inset 0 -2px 0 var(--blue);
+      box-shadow: inset 0 2px 0 0 var(--blue);
 
       &:hover { background-color: var(--bg); }
     }
@@ -112,5 +113,37 @@
       display: flex;
       flex-direction: column;
     }
+  }
+
+  // Read-only text view used by the failed-import fallback. Sits in
+  // the same slot as dataset / chart containers so show/hide is
+  // identical, but its body is a scrollable <pre>.
+  &__text-container {
+    overflow: hidden;
+  }
+
+  &__text-banner {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    background: var(--error-bg);
+    color: var(--red);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    border-bottom: 1px solid var(--border);
+    white-space: pre-wrap;
+  }
+
+  &__text-pre {
+    flex: 1;
+    margin: 0;
+    padding: 8px 12px;
+    overflow: auto;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre;
+    tab-size: 4;
   }
 }

@@ -4,6 +4,7 @@ import {
   classifyStatement,
   firstSqlKeyword,
   extractCreateTargetName,
+  hasTopLevelVisualize,
 } from "../sqlScript";
 
 describe("parseScript", () => {
@@ -110,6 +111,21 @@ describe("classifyStatement", () => {
     expect(classifyStatement("SELECT 1")).toBe("query");
     expect(classifyStatement("WITH x AS (SELECT 1) SELECT * FROM x")).toBe("query");
   });
+  it("routes WITH … VISUALIZE to the chart kind, not the wrapped-query path", () => {
+    // Headline bug: a CTE feeding VISUALIZE starts with WITH, so the
+    // first-keyword check misrouted it to the result-grid path and the
+    // CREATE TABLE wrapper broke the embedded VISUALIZE.
+    expect(
+      classifyStatement("WITH c AS (SELECT 1 AS r, 2 AS p) VISUALIZE r AS x, p AS y FROM c DRAW point"),
+    ).toBe("visualize");
+    expect(
+      classifyStatement("with c as (select 1) visualize x as x from c draw bar"),
+    ).toBe("visualize");
+  });
+  it("keeps a WITH whose only 'visualize' is inside a string/identifier as a query", () => {
+    expect(classifyStatement("WITH c AS (SELECT 'visualize' AS s) SELECT * FROM c")).toBe("query");
+    expect(classifyStatement('WITH c AS (SELECT 1 AS visualize_count) SELECT * FROM c')).toBe("query");
+  });
   it("treats CREATE / INSERT / DROP as side-effects", () => {
     expect(classifyStatement("CREATE TABLE t AS SELECT 1")).toBe("side-effect");
     expect(classifyStatement("INSERT INTO t VALUES (1)")).toBe("side-effect");
@@ -157,6 +173,33 @@ describe("extractCreateTargetName", () => {
   it("ignores CREATE INDEX / CREATE SCHEMA / etc.", () => {
     expect(extractCreateTargetName("CREATE INDEX idx ON foo (a)")).toBeNull();
     expect(extractCreateTargetName("CREATE SCHEMA s")).toBeNull();
+  });
+});
+
+describe("hasTopLevelVisualize", () => {
+  it("finds a standalone VISUALIZE after a CTE", () => {
+    expect(hasTopLevelVisualize("WITH c AS (SELECT 1) VISUALIZE x FROM c DRAW point")).toBe(true);
+    expect(hasTopLevelVisualize("with c as (select 1) visualize x from c")).toBe(true);
+  });
+  it("returns false when there is no VISUALIZE token", () => {
+    expect(hasTopLevelVisualize("WITH c AS (SELECT 1) SELECT * FROM c")).toBe(false);
+    expect(hasTopLevelVisualize("SELECT 1")).toBe(false);
+  });
+  it("ignores VISUALIZE inside string literals", () => {
+    expect(hasTopLevelVisualize("SELECT 'VISUALIZE this'")).toBe(false);
+    expect(hasTopLevelVisualize("SELECT $$VISUALIZE$$")).toBe(false);
+  });
+  it("ignores VISUALIZE inside parentheses (depth > 0)", () => {
+    // Not legal SQL, but the depth guard should still not claim it.
+    expect(hasTopLevelVisualize("SELECT * FROM (VISUALIZE x FROM t)")).toBe(false);
+  });
+  it("requires a word boundary so identifiers don't match", () => {
+    expect(hasTopLevelVisualize("SELECT 1 AS visualize_count FROM t")).toBe(false);
+    expect(hasTopLevelVisualize("SELECT myvisualize FROM t")).toBe(false);
+  });
+  it("ignores VISUALIZE inside comments", () => {
+    expect(hasTopLevelVisualize("SELECT 1 -- VISUALIZE\nFROM t")).toBe(false);
+    expect(hasTopLevelVisualize("SELECT 1 /* VISUALIZE */ FROM t")).toBe(false);
   });
 });
 

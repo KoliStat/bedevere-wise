@@ -1,3 +1,6 @@
+import type { KeyBinding } from "./KeymapService";
+import type { EnvironmentsFile } from "./environments/types";
+
 export interface QueryBookmark {
   name: string;
   sql: string;
@@ -62,6 +65,45 @@ export interface AppSettings {
    * saves don't.
    */
   editorAutoSaveDraft?: string;
+  /**
+   * The environment id the user was on when they last left the app.
+   * Restored on load via `EnvironmentService`; falls back to the
+   * default env if the id no longer resolves (env was deleted).
+   */
+  activeEnvironmentId?: string;
+  /**
+   * Files at or below this size (bytes) auto-import silently into
+   * DuckDB on drop / folder-scan — no spreadsheet tab opens, but the
+   * table becomes available to SQL queries. Above this, the file
+   * tree shows a warning glyph and the user clicks-to-open. Default
+   * 100 KB; `0` disables auto-import entirely.
+   */
+  autoImportSizeThreshold?: number;
+  /**
+   * One-shot flag flipped by `EnvironmentService` the first time it
+   * folds the legacy `bedevere_queries` localStorage store into the
+   * default environment. Once set, the migration never runs again,
+   * even if the user empties their environments file.
+   */
+  queriesMigratedToEnv?: boolean;
+  /**
+   * User-chosen height (px) for the SQL editor panel when expanded.
+   * Drag-resize handle below the editor writes this; on next expand
+   * the editor restores to this size. Undefined falls back to the
+   * SCSS-driven default (min 212 / max 400 px).
+   */
+  sqlEditorHeight?: number;
+  /**
+   * Indentation kind used by the SQL editor's Tab key: `"tab"` inserts
+   * a real tab character, `"space"` inserts `editorIndentSize` spaces.
+   * Defaults to `"tab"` when unset.
+   */
+  editorIndentKind?: "tab" | "space";
+  /**
+   * Width (in spaces) used when `editorIndentKind === "space"`.
+   * Defaults to 4 when unset.
+   */
+  editorIndentSize?: number;
 }
 
 export interface RecentFolderEntry {
@@ -73,6 +115,9 @@ export interface RecentFolderEntry {
 const STORAGE_KEYS = {
   queries: "bedevere_queries",
   settings: "bedevere_settings",
+  aliases: "bedevere_aliases",
+  keymap: "bedevere_keymap",
+  environments: "bedevere_environments",
 } as const;
 
 const DB_NAME = "bedevere_db";
@@ -150,6 +195,71 @@ export class PersistenceService {
     return this.loadAppSettings().editorAutoSaveDraft ?? "";
   }
 
+  // --- Aliases (localStorage) -------------------------------------------
+  //
+  // Persisted as a flat `Record<tableName, alias>`. `AliasManager` owns
+  // the in-memory `Map` and the renaming logic; this only owns the
+  // storage boundary.
+
+  public loadAliases(): Record<string, string> {
+    const raw = localStorage.getItem(STORAGE_KEYS.aliases);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
+  public saveAliases(aliases: Record<string, string>): void {
+    localStorage.setItem(STORAGE_KEYS.aliases, JSON.stringify(aliases));
+  }
+
+  // --- Keymap overrides (localStorage) ----------------------------------
+  //
+  // Only entries that diverge from the DEFAULT_KEYMAP are stored, keyed
+  // by action id. `KeymapService` reconstructs the full table at load by
+  // merging defaults with these overrides. Empty overrides delete the
+  // key entirely so a clean state never carries a stray empty object.
+
+  public loadKeymapOverrides(): Record<string, KeyBinding> {
+    const raw = localStorage.getItem(STORAGE_KEYS.keymap);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw) as Record<string, KeyBinding>;
+    } catch {
+      return {};
+    }
+  }
+
+  public saveKeymapOverrides(overrides: Record<string, KeyBinding>): void {
+    if (Object.keys(overrides).length === 0) {
+      localStorage.removeItem(STORAGE_KEYS.keymap);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.keymap, JSON.stringify(overrides));
+    }
+  }
+
+  // --- Environments (localStorage) --------------------------------------
+  //
+  // Single envelope `{ schemaVersion, environments }` so future shape
+  // changes have a version number to migrate against. `EnvironmentService`
+  // owns the in-memory list + mutations; this is just the storage hop.
+
+  public loadEnvironmentsFile(): EnvironmentsFile | null {
+    const raw = localStorage.getItem(STORAGE_KEYS.environments);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as EnvironmentsFile;
+    } catch {
+      return null;
+    }
+  }
+
+  public saveEnvironmentsFile(file: EnvironmentsFile): void {
+    localStorage.setItem(STORAGE_KEYS.environments, JSON.stringify(file));
+  }
+
   // --- Table Snapshots (IndexedDB) ---
 
   private async openDB(): Promise<IDBDatabase> {
@@ -213,9 +323,20 @@ export class PersistenceService {
 
   /**
    * Persist a directory handle and stamp it on the recent-folders MRU.
-   * Existing entries with the same `name` are dropped (newer wins) so
-   * the list never shows the same folder twice. Returns the persisted
-   * entry — useful for UI updates.
+   * If an entry with the same `name` already exists, its id is reused
+   * (the IDB handle is overwritten in place, lastUsed bumped, and the
+   * entry moves to the front of the list). This keeps the IDB key
+   * stable across re-picks so external bindings (e.g.
+   * `Environment.folderHandleId`) survive — re-opening the same
+   * folder reuses the same env instead of orphaning the old one.
+   *
+   * Known limitation: two folders with the same basename in different
+   * locations on disk collide on the same id; re-picking one
+   * effectively rebinds the slot to the other. Recoverable (re-pick
+   * the right folder) and rare enough that `FileSystemDirectoryHandle.
+   * isSameEntry()` based matching is deferred — it would need an
+   * async loop over every stored handle for a comparatively small
+   * correctness gain.
    *
    * Silently no-ops on failure (storage quota, browser refusing to
    * structured-clone the handle); callers shouldn't have their import
@@ -223,7 +344,15 @@ export class PersistenceService {
    */
   public async pushRecentFolder(handle: FileSystemDirectoryHandle): Promise<RecentFolderEntry | null> {
     try {
-      const id = `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const settings = this.loadAppSettings();
+      const existing = settings.recentFolders ?? [];
+      const prior = existing.find((e) => e.name === handle.name);
+      const id = prior?.id ?? `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Always overwrite the handle at `id`. A fresh pick may produce
+      // a different handle object for the "same" folder (different
+      // browser session, different picker invocation) — replacing
+      // ensures permission and freshness are accurate.
       const db = await this.openDB();
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(FOLDER_HANDLE_STORE, "readwrite");
@@ -232,29 +361,21 @@ export class PersistenceService {
         tx.onerror = () => reject(tx.error);
       });
 
-      const settings = this.loadAppSettings();
-      const existing = settings.recentFolders ?? [];
-      // Dedupe by name and drop any pruned ids from IDB at the same time.
-      const purged: string[] = [];
-      const remaining = existing.filter((e) => {
-        if (e.name === handle.name) {
-          purged.push(e.id);
-          return false;
-        }
-        return true;
-      });
+      // Move-to-front MRU: drop the matching entry (by id, which
+      // equals the prior entry's id when reusing), put the fresh one
+      // at the head, cap, then purge any entries that fall off the end.
+      const remaining = existing.filter((e) => e.id !== id);
       const entry: RecentFolderEntry = { id, name: handle.name, lastUsed: Date.now() };
       const next = [entry, ...remaining].slice(0, RECENT_FOLDERS_CAP);
-      // Anything beyond the cap also gets its handle deleted.
       const trimmed = [entry, ...remaining].slice(RECENT_FOLDERS_CAP);
-      for (const t of trimmed) purged.push(t.id);
+      const purged = trimmed.map((t) => t.id);
       settings.recentFolders = next;
       this.saveAppSettings(settings);
 
       if (purged.length > 0) {
         await new Promise<void>((resolve) => {
           const tx = db.transaction(FOLDER_HANDLE_STORE, "readwrite");
-          for (const id of purged) tx.objectStore(FOLDER_HANDLE_STORE).delete(id);
+          for (const pid of purged) tx.objectStore(FOLDER_HANDLE_STORE).delete(pid);
           tx.oncomplete = () => resolve();
           tx.onerror = () => resolve(); // best-effort cleanup
         });

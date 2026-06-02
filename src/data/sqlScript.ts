@@ -138,8 +138,67 @@ function skipDollarQuoted(input: string, start: number): number | null {
 export function classifyStatement(sql: string): StatementKind {
   const tok = firstSqlKeyword(sql);
   if (tok === "VISUALIZE") return "visualize";
+  // `WITH <cte> VISUALIZE …` (ggsql) starts with WITH, so the first-keyword
+  // check alone would route it to the result-grid path, which wraps the
+  // statement in `CREATE TABLE result_n AS (…)`. That's invalid SQL —
+  // VISUALIZE can't appear inside CREATE TABLE AS — and DuckDB's native
+  // parser claims the CREATE before the stats_duck extension can intercept
+  // the embedded VISUALIZE. Scan for a standalone top-level VISUALIZE so
+  // these run raw (the extension's own GgsqlParse does the same depth-0
+  // scan to claim the statement).
+  if (tok === "WITH" && hasTopLevelVisualize(sql)) return "visualize";
   if (tok === "SELECT" || tok === "WITH") return "query";
   return "side-effect";
+}
+
+/**
+ * True when `input` contains a standalone `VISUALIZE` keyword at paren
+ * depth 0, outside of string literals, dollar-quotes and comments. Used
+ * to route `WITH … VISUALIZE` scripts to the chart path. Mirrors the
+ * stats_duck extension's claim logic so client and engine agree on what
+ * counts as a plot statement.
+ */
+export function hasTopLevelVisualize(input: string): boolean {
+  let i = 0;
+  let depth = 0;
+  while (i < input.length) {
+    const c = input[i];
+    if (c === "-" && input[i + 1] === "-") {
+      while (i < input.length && input[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && input[i + 1] === "*") {
+      i = skipBlockComment(input, i);
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      i = skipQuoted(input, i, c);
+      continue;
+    }
+    if (c === "$") {
+      const after = skipDollarQuoted(input, i);
+      if (after !== null) {
+        i = after;
+        continue;
+      }
+    }
+    if (c === "(") { depth++; i++; continue; }
+    if (c === ")") { if (depth > 0) depth--; i++; continue; }
+    // Only consider a match at top level, on a word boundary, so column
+    // aliases / identifiers containing "visualize" don't trip it.
+    if (depth === 0 && (c === "v" || c === "V")) {
+      const prev = i > 0 ? input[i - 1] : " ";
+      if (!/[A-Za-z0-9_]/.test(prev)) {
+        const word = input.slice(i, i + 9);
+        const next = input[i + 9];
+        if (/^visualize$/i.test(word) && (next === undefined || !/[A-Za-z0-9_]/.test(next))) {
+          return true;
+        }
+      }
+    }
+    i++;
+  }
+  return false;
 }
 
 /**

@@ -5,9 +5,11 @@ import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
+import { environmentService } from "../../data/environments/EnvironmentService";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
-import { TabManager } from "../TabManager";
+import { TabManager } from "../TabManager/TabManager";
+import { EnvironmentSwitcher } from "../EnvironmentSwitcher/EnvironmentSwitcher";
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
 import type { MessageOptions } from "../StatusBar/StatusBar";
 
@@ -26,6 +28,43 @@ function formatError(err: unknown): { message: string; details?: string } {
 
 function stripExt(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, "");
+}
+
+/** Extensions we'll happily treat as text without sniffing — covers
+ *  the formats the import pipeline understands plus a few obvious
+ *  text-y siblings the user might drop accidentally. */
+const TEXT_EXTENSIONS = new Set([
+  "txt", "csv", "tsv", "json", "html", "htm", "md", "log", "sql",
+  "yml", "yaml", "xml", "ini", "conf",
+]);
+
+/** Reasonable heuristic for "is this a file we should show in a
+ *  text view". A known text extension is a yes. Otherwise sniff a
+ *  sample: a single NULL byte means binary; otherwise look at the
+ *  density of non-printable chars (anything below 0x20 except tab /
+ *  LF / CR). Mirrors the plan from v0.12 spec. */
+function isLikelyText(file: File, sample: string): boolean {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext && TEXT_EXTENSIONS.has(ext)) return true;
+  if (sample.length === 0) return false;
+  let nonPrintable = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample.charCodeAt(i);
+    if (c === 0) return false;
+    if (c < 9 || (c > 13 && c < 32)) nonPrintable++;
+  }
+  return nonPrintable / sample.length < 0.05;
+}
+
+/** Read the first `maxBytes` of a file as UTF-8 for the binary-sniff.
+ *  Returns null if the slice can't be decoded. */
+async function readTextSample(file: File, maxBytes: number): Promise<string | null> {
+  try {
+    const slice = file.slice(0, Math.min(maxBytes, file.size));
+    return await slice.text();
+  } catch {
+    return null;
+  }
 }
 
 export interface DatasetInfo {
@@ -56,7 +95,10 @@ export class ControlPanel {
   private onToggleCallback?: (isMinimized: boolean) => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
   private persistenceService?: PersistenceService;
-  private onOpenQueryCallback?: (sql: string) => void;
+  private onOpenQueryCallback?: (queryId: string) => void;
+  /** Tab-state for the inline-rename UI in Saved Queries. Single id at
+   *  most — clicking on another row commits and switches focus. */
+  private renamingQueryId: string | null = null;
   private onAliasChangeCallback?: (tableName: string, alias: string) => void;
   private onShowMessageCallback?: ShowMessageFn;
 
@@ -65,6 +107,16 @@ export class ControlPanel {
   private folderScanService?: FolderScanService;
   private treeRenderer?: FileTreeRenderer;
   private fileTree: FileTreeNode[] = [];
+
+  // Environment switcher (top of the panel, above the accordion)
+  private envSwitcher: EnvironmentSwitcher | null = null;
+  // Watches the EnvironmentService for active-id changes so every
+  // mutation source — switcher click, `.env switch` shell command,
+  // initial page-reload restore — converges through a single
+  // `applyActiveEnvironment` call. Without this, only the switcher
+  // path applied the tab-close / folder-rescan side-effects.
+  private envUnsubscribe?: () => void;
+  private lastActiveEnvId: string | null = null;
 
   // Accordion
   private accordionSections: Map<string, AccordionSection> = new Map();
@@ -124,8 +176,17 @@ export class ControlPanel {
     this.resizeHandle.className = "control-panel__resize-handle";
     this.resizeHandle.addEventListener("mousedown", (e) => this.handleResizeStart(e));
 
-    // Assemble the panel
+    // Assemble the panel. The env switcher sits between the header
+    // chrome and the accordion content so it reads as a workspace-
+    // wide context selector for everything below it. The switcher
+    // only mutates the active id via `environmentService.setActive`;
+    // the actual "close tabs + re-scan folder" side-effects are
+    // handled by the onChange subscription below, so the shell
+    // `.env switch` command and the startup-restore path get the
+    // same behaviour as the GUI without each having to remember to
+    // fire it themselves.
     this.panelElement.appendChild(this.headerElement);
+    this.envSwitcher = new EnvironmentSwitcher(this.panelElement);
     this.panelElement.appendChild(this.contentElement);
     this.panelElement.appendChild(this.resizeHandle);
     this.container.appendChild(this.panelElement);
@@ -133,6 +194,27 @@ export class ControlPanel {
     parent.appendChild(this.container);
 
     this.toggleButton.addEventListener("click", () => this.toggleMinimize());
+
+    // Watch for active-env changes from any source (switcher click,
+    // `.env switch`, programmatic `setActive`, env-creation flows that
+    // activate the new env). The listener fires on every mutation —
+    // we guard with `lastActiveEnvId` so unrelated changes (rename,
+    // addQuery, …) don't trigger a needless re-scan.
+    this.lastActiveEnvId = environmentService.getActiveId();
+    this.envUnsubscribe = environmentService.onChange(() => {
+      const nextId = environmentService.getActiveId();
+      // Saved Queries lists the active env's queries — re-render on
+      // every emit so add/delete/rename are reflected without waiting
+      // for a switch.
+      this.renderSavedQueries();
+      if (nextId === this.lastActiveEnvId) return;
+      this.lastActiveEnvId = nextId;
+      if (nextId) {
+        this.applyActiveEnvironment(nextId).catch((err) => {
+          console.error("Apply active environment failed:", err);
+        });
+      }
+    });
   }
 
   private buildAccordion(): void {
@@ -229,7 +311,9 @@ export class ControlPanel {
 
     // If no tree node represents this dataset yet (e.g. programmatic add via
     // command palette or view materialization), synthesize one so the user
-    // sees it in the panel.
+    // sees it in the panel. These are always added via a path that
+    // opens a tab, so flag both `isImported` (DuckDB has the table)
+    // AND `isOpenAsTab` (the spreadsheet view is up).
     const alreadyTracked = this.findTreeNodeByTableName(metadata.name);
     if (!alreadyTracked) {
       this.fileTree.push({
@@ -238,6 +322,7 @@ export class ControlPanel {
         kind: "file",
         fileType: undefined,
         isImported: true,
+        isOpenAsTab: true,
         tableName: metadata.name,
         isExpanded: false,
       });
@@ -252,9 +337,55 @@ export class ControlPanel {
     }
     const node = this.findTreeNodeByTableName(name);
     if (node) {
-      node.isImported = true;
-      this.treeRenderer?.updateNode(node.id, { isImported: true });
+      node.isOpenAsTab = true;
+      this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
     }
+  }
+
+  /**
+   * Drop one dataset's panel-side bookkeeping after `.drop <name>` has
+   * removed the underlying DuckDB object. Removes the cached
+   * DataProvider entry (`this.datasets`) and unmarks the tree node's
+   * import flags so clicking the row re-imports cleanly from disk.
+   */
+  public markDatasetAsDropped(name: string): void {
+    this.datasets = this.datasets.filter((d) => d.metadata.name !== name);
+    const node = this.findTreeNodeByTableName(name);
+    if (node) {
+      node.isImported = false;
+      node.isOpenAsTab = false;
+      node.tableName = undefined;
+    }
+    // Full re-render — `updateNode` only handles the `--imported`
+    // class toggle; the warning glyph (which keys off `isImported`)
+    // wants a full row rebuild.
+    this.renderTree();
+  }
+
+  /**
+   * Drop the in-memory dataset cache and reset every tree node's import
+   * markers. Called by `.drop --all` so that after the underlying DuckDB
+   * tables are gone, clicking a tree row re-imports the file from
+   * scratch instead of reusing a now-stale DataProvider that points at
+   * a table DuckDB no longer knows about.
+   *
+   * Keeps the tree structure itself (folders, file names, sizes) — only
+   * the "this is currently in DuckDB" state is cleared.
+   */
+  public markAllAsUnloaded(): void {
+    this.datasets = [];
+    const walk = (nodes: FileTreeNode[]) => {
+      for (const n of nodes) {
+        if (n.isImported || n.isOpenAsTab || n.tableName) {
+          n.isImported = false;
+          n.isOpenAsTab = false;
+          n.tableName = undefined;
+        }
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(this.fileTree);
+    this.renderTree();
   }
 
   public markDatasetAsUnloaded(name: string): void {
@@ -262,12 +393,14 @@ export class ControlPanel {
     if (dataset) {
       dataset.isLoaded = false;
     }
-    // Reflect tab-closed state on the tree node too, so the panel no longer
-    // shows the file as "open".
+    // Reflect tab-closed state on the tree node too, so the panel no
+    // longer flags the file as "open as tab". `isImported` stays true
+    // — the DuckDB table is still there; clicking the row again will
+    // re-open the spreadsheet tab without re-importing.
     const node = this.findTreeNodeByTableName(name);
     if (node) {
-      node.isImported = false;
-      this.treeRenderer?.updateNode(node.id, { isImported: false });
+      node.isOpenAsTab = false;
+      this.treeRenderer?.updateNode(node.id, { isOpenAsTab: false });
     }
   }
 
@@ -348,17 +481,24 @@ export class ControlPanel {
     if (!this.folderScanService) return;
 
     let tree: FileTreeNode | null = null;
+    let folderHandleId: string | undefined;
 
     if (this.folderScanService.supportsDirectoryPicker()) {
       const picked = await this.folderScanService.scanWithDirectoryPicker();
       if (picked) {
         tree = picked.tree;
-        // Persist the handle for the recent-folders list. Best-effort —
-        // a quota-exceeded or structured-clone failure shouldn't block
-        // the import flow.
-        persistenceService.pushRecentFolder(picked.handle).catch((e) => {
+        // Persist the handle for the recent-folders list AND so the
+        // env-binding hook below has a stable id to look up by. Best-
+        // effort — a quota-exceeded or structured-clone failure
+        // shouldn't block the import flow; the env still gets created,
+        // just without a handle binding (and so won't auto-reopen on
+        // a fresh session).
+        try {
+          const entry = await persistenceService.pushRecentFolder(picked.handle);
+          if (entry) folderHandleId = entry.id;
+        } catch (e) {
           console.warn("Recent folders: persist failed", e);
-        });
+        }
       }
     } else {
       // Fallback: webkitdirectory input
@@ -378,7 +518,7 @@ export class ControlPanel {
       });
     }
 
-    this.attachFolderTree(tree);
+    this.attachFolderTree(tree, folderHandleId);
   }
 
   /** Re-open a folder picked earlier (recent-folders shortcut). */
@@ -418,7 +558,7 @@ export class ControlPanel {
       }
       // Touch the entry so it bumps to the top of the MRU.
       await persistenceService.pushRecentFolder(handle);
-      this.attachFolderTree(tree);
+      this.attachFolderTree(tree, id);
     } catch (err) {
       console.error("openRecentFolder failed:", err);
       this.onShowMessageCallback?.(
@@ -429,8 +569,11 @@ export class ControlPanel {
   }
 
   /** Common path for both fresh picks and recent re-opens: dedupe on
-   *  matching id, otherwise push to the file tree. */
-  private attachFolderTree(tree: FileTreeNode | null): void {
+   *  matching id, otherwise push to the file tree. The optional
+   *  `folderHandleId` (only set on the FSA-API branch) binds the
+   *  folder to an environment so re-opening the same folder picks up
+   *  where the user left off. */
+  private attachFolderTree(tree: FileTreeNode | null, folderHandleId?: string): void {
     if (!tree) return;
     const existingIdx = this.fileTree.findIndex((n) => n.id === tree.id);
     if (existingIdx >= 0) {
@@ -443,11 +586,158 @@ export class ControlPanel {
         `Refreshed folder "${tree.name}"`,
         "info",
       );
-      return;
+    } else {
+      this.fileTree.push(tree);
+      this.renderTree();
+      this.expandSection("datasets");
     }
-    this.fileTree.push(tree);
+    this.bindFolderToEnvironment(tree, folderHandleId);
+
+    // Auto-import small files in the folder. Fire-and-forget — the
+    // tree is already visible, so a slow import doesn't block the
+    // user. Already-imported leaves (carried over by
+    // `preserveImportedState`) are filtered out so a folder re-scan
+    // doesn't redo work.
+    const leaves = this.collectFileLeaves(tree).filter((n) => !n.isImported);
+    if (leaves.length > 0) {
+      this.autoImportBatch(leaves).catch((err) => {
+        console.error("Folder auto-import failed:", err);
+      });
+    }
+  }
+
+  private collectFileLeaves(node: FileTreeNode): FileTreeNode[] {
+    const out: FileTreeNode[] = [];
+    const walk = (n: FileTreeNode): void => {
+      if (n.kind === "file" && n.fileType) out.push(n);
+      if (n.children) for (const c of n.children) walk(c);
+    };
+    walk(node);
+    return out;
+  }
+
+  /**
+   * Find or create the environment for a folder and make it active.
+   * Match priority: by `folderHandleId` first (so re-opening the same
+   * folder reuses the same env even if it was renamed); then by name
+   * (covers webkitdirectory where there's no persistent handle id).
+   * Falls through to `create` if nothing matched.
+   */
+  private bindFolderToEnvironment(tree: FileTreeNode, folderHandleId?: string): void {
+    let env = folderHandleId ? environmentService.findByFolderHandleId(folderHandleId) : null;
+    if (!env) {
+      env = environmentService.list().find(
+        (e) => e.kind === "folder" && !e.folderHandleId && e.name === tree.name,
+      ) ?? null;
+    }
+    if (!env) {
+      env = environmentService.create({
+        name: tree.name,
+        kind: "folder",
+        folderHandleId,
+      });
+    } else if (folderHandleId && !env.folderHandleId) {
+      // Upgrade an existing name-matched env (webkitdirectory) to a
+      // handle-bound env when the FSA API becomes available. No
+      // dedicated service method for this — the binding is just a
+      // field on the env, and `create()` would lose the queries the
+      // user has already saved.
+      env.folderHandleId = folderHandleId;
+    }
+    if (environmentService.getActiveId() !== env.id) {
+      environmentService.setActive(env.id);
+    }
+    this.collectLeavesIntoEnv(env.id, tree, "");
+  }
+
+  /**
+   * Walk a freshly-attached tree and add every file leaf to the env's
+   * dataset list. Idempotent — `addDataset` deduplicates by nodeId so
+   * re-scans of the same folder don't multiply entries.
+   */
+  private collectLeavesIntoEnv(envId: string, node: FileTreeNode, pathPrefix: string): void {
+    if (node.kind === "file" && node.fileType) {
+      const relativePath = pathPrefix ? `${pathPrefix}/${node.name}` : node.name;
+      environmentService.addDataset(envId, {
+        nodeId: node.id,
+        name: node.name,
+        relativePath,
+      });
+    }
+    if (node.children) {
+      const nextPrefix = pathPrefix
+        ? `${pathPrefix}/${node.name}`
+        : (node.kind === "folder" ? node.name : "");
+      for (const child of node.children) {
+        this.collectLeavesIntoEnv(envId, child, nextPrefix);
+      }
+    }
+  }
+
+  /**
+   * Apply the side-effects of "this env is now active" to the panel:
+   * close every open dataset tab, clear the in-memory file tree, and
+   * — for folder envs — re-acquire permission and re-scan the bound
+   * directory so the tree reflects the env's contents. Default envs
+   * land on an empty tree (their drops can't be re-acquired after a
+   * reload; the env list still describes what was loaded).
+   *
+   * Invoked from a single subscriber to `environmentService.onChange`
+   * (above) and from `restoreActiveEnvironment` on app boot. The
+   * switcher / shell command / programmatic `setActive` paths all
+   * converge here through the service emit.
+   */
+  private async applyActiveEnvironment(envId: string): Promise<void> {
+    // Close every open dataset tab. The TabManager API works by name;
+    // snapshot first so we don't mutate while iterating.
+    const openIds = this.tabManager.getDatasetIds();
+    for (const id of openIds) {
+      this.tabManager.closeDataset(id);
+    }
+
+    // Wipe every user-created object in DuckDB's `main` schema. Without
+    // this, switching from env A to env B leaves env A's tables, views,
+    // macros and types visible in autocomplete + reachable by SQL —
+    // confusing because the panel says they aren't part of B, but the
+    // engine still knows them. The new env's datasets re-import below
+    // through `openRecentFolder` / silent-import.
+    const duck = this.tabManager.getDuckDBService();
+    if (duck) {
+      try {
+        await duck.wipeUserState();
+      } catch (err) {
+        console.warn("applyActiveEnvironment: wipeUserState failed", err);
+      }
+    }
+
+    // Reset the panel's in-memory state.
+    this.fileTree = [];
+    this.datasets = [];
     this.renderTree();
-    this.expandSection("datasets");
+    this.renderSavedQueries();
+
+    const env = environmentService.get(envId);
+    if (!env) return;
+    if (env.kind === "folder" && env.folderHandleId) {
+      // Re-scan via the recent-folder pathway: it already handles
+      // permission prompts and stale-handle cleanup.
+      await this.openRecentFolder(env.folderHandleId);
+    }
+  }
+
+  /**
+   * Apply the currently-active env to the panel. Called by BedevereApp
+   * once during boot (after all the panel callbacks have been wired)
+   * so a folder env restored from the previous session actually has
+   * its directory re-scanned — without this, the switcher label would
+   * show the right env name but the dataset tree would stay empty.
+   * After boot, the onChange subscription keeps things in sync.
+   */
+  public async restoreActiveEnvironment(): Promise<void> {
+    const activeId = environmentService.getActiveId();
+    if (!activeId) return;
+    this.lastActiveEnvId = activeId;
+    await this.applyActiveEnvironment(activeId);
   }
 
   /**
@@ -501,19 +791,64 @@ export class ControlPanel {
         fileType,
         isImported: false,
         isExpanded: false,
+        size: file.size,
       };
       this.fileTree.push(node);
       newNodes.push(node);
+    }
+
+    // Record the dropped files in whichever environment is currently
+    // active (default for fresh sessions, the folder env if the user
+    // dropped onto an open folder workspace). The env stores name +
+    // relative path so a future "reopen workspace" can show what was
+    // loaded — even though dropped File objects can't be re-acquired
+    // after a reload (no FSA handle).
+    const activeEnvId = environmentService.getActiveId();
+    if (activeEnvId) {
+      for (const node of newNodes) {
+        environmentService.addDataset(activeEnvId, {
+          nodeId: node.id,
+          name: node.name,
+          relativePath: node.name,
+        });
+      }
     }
 
     this.renderTree();
     this.expandSection("datasets");
 
     if (!autoImport) return;
+    await this.autoImportBatch(newNodes);
+  }
 
-    // Auto-import non-Excel files so dropping a CSV/Parquet still opens it
-    // straight away. Excel files stay collapsed until the user picks a sheet.
-    const importable = newNodes.filter((n) => n.fileType !== "xlsx" && n.fileType !== "xls");
+  /**
+   * Size-aware silent-import for a batch of file nodes (drop or
+   * folder scan). Behaviour per node:
+   *
+   * - Excel (`xlsx` / `xls`): always user-driven (needs the sheet
+   *   picker). Skipped entirely.
+   * - `size` known and over `autoImportSizeThreshold` (or unknown
+   *   size, treated as over): skipped. The tree shows a warning glyph
+   *   and the user clicks-to-open via the existing import path.
+   * - Else: silent import \u2014 DuckDB table registered, dataset added to
+   *   the in-memory list, but no spreadsheet tab is opened.
+   *
+   * Threshold of `0` disables auto-import entirely. The threshold
+   * comes from AppSettings (Settings tab \u2192 Import \u2192 "Auto-import
+   * threshold"); defaults to 100 KB.
+   */
+  private async autoImportBatch(nodes: FileTreeNode[]): Promise<void> {
+    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 1_048_576;
+    const importable = nodes.filter((n) => {
+      if (n.fileType === "xlsx" || n.fileType === "xls") return false;
+      if (threshold === 0) return false;
+      // Files with no known size (unusual \u2014 only happens for
+      // drag-and-drop where `file.size` was 0 or for synthetic nodes)
+      // are conservatively skipped so they go through the explicit
+      // user-click path.
+      if (n.size === undefined) return false;
+      return n.size <= threshold;
+    });
     if (importable.length === 0) return;
 
     const errors: Array<{ name: string; message: string; details?: string }> = [];
@@ -525,10 +860,12 @@ export class ControlPanel {
       // Persistent progress line; each call replaces the previous one in the
       // status bar's single transient-message slot.
       this.onShowMessageCallback?.(label, "info", { duration: 0 });
-      const result = await this.importNode(node);
+      const result = await this.importNode(node, { silent: true });
       if (!result.ok) errors.push({ name: node.name, ...result.error });
     }
 
+    // Re-render so the now-imported nodes show the imported-tick state.
+    this.renderTree();
     this.emitBatchSummary(importable, errors);
   }
 
@@ -569,12 +906,16 @@ export class ControlPanel {
       const callbacks: FileTreeCallbacks = {
         onNodeClick: (node) => this.handleTreeNodeClick(node),
         onNodeExpand: (node) => this.handleTreeNodeExpand(node),
-        onNodeContextMenu: (_node, _e) => { /* TODO: context menu */ },
         onAliasChange: (node, alias) => this.onAliasChangeCallback?.(node.alias || node.name, alias),
       };
       this.treeRenderer = new FileTreeRenderer(this.datasetListElement, callbacks);
     }
 
+    // Re-apply the threshold on every render — cheap, and ensures
+    // a Settings-tab change shows up next time the tree refreshes
+    // without needing a dedicated listener.
+    const threshold = persistenceService.loadAppSettings().autoImportSizeThreshold ?? 1_048_576;
+    this.treeRenderer.setAutoImportThreshold(threshold);
     this.treeRenderer.render(this.fileTree);
   }
 
@@ -608,8 +949,8 @@ export class ControlPanel {
           await this.tabManager.addDataset(existing.metadata, existing.dataset);
         }
         await this.tabManager.switchToDataset(existing.metadata.name);
-        node.isImported = true;
-        this.treeRenderer?.updateNode(node.id, { isImported: true });
+        node.isOpenAsTab = true;
+        this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
         this.onSelectCallback?.(existing.dataset);
         return;
       }
@@ -639,7 +980,10 @@ export class ControlPanel {
    * short-circuiting folders / excel files / unavailable nodes / already-
    * imported nodes before calling this.
    */
-  private async importNode(node: FileTreeNode): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
+  private async importNode(
+    node: FileTreeNode,
+    options: { silent?: boolean } = {},
+  ): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
     if (!this.fileImportService) return { ok: false, error: { message: "File import service unavailable" } };
 
     try {
@@ -657,11 +1001,11 @@ export class ControlPanel {
           ? `${node.alias || stripExt((node.fileHandle as any)?.name || node.name)}__${node.sheetName}`
           : node.alias || stripExt(node.name);
       const tableName = baseName;
-      const options = node.kind === "sheet" && node.sheetName ? { sheetName: node.sheetName } : undefined;
+      const importOpts = node.kind === "sheet" && node.sheetName ? { sheetName: node.sheetName } : undefined;
 
       let provider;
       try {
-        provider = await this.fileImportService.importFile(file, tableName, options);
+        provider = await this.fileImportService.importFile(file, tableName, importOpts);
       } catch (importErr) {
         if (importErr instanceof MultipleHtmlTablesError) {
           // Multi-table HTML — defer to the picker so the user chooses
@@ -669,7 +1013,8 @@ export class ControlPanel {
           // which we route back through the import pipeline as a
           // synthetic .csv file so the rest of the flow (provider
           // construction, TabManager wiring, persistence) stays
-          // unchanged.
+          // unchanged. The picker is interactive, so even silent
+          // imports surface it — there's no sensible silent fallback.
           const picked = await HtmlPasteDialog.showAsync({
             title: `Pick a table — ${importErr.sourceName}`,
             initialTables: importErr.tables,
@@ -689,17 +1034,57 @@ export class ControlPanel {
 
       node.isImported = true;
       node.tableName = metadata.name;
-      this.treeRenderer?.updateNode(node.id, { isImported: true });
+      // `isOpenAsTab` only flips when we actually open a spreadsheet
+      // tab. Silent imports stay visually neutral in the tree (the
+      // user-visible "this row is loaded" highlight is reserved for
+      // rows whose tab is currently open).
+      if (!options.silent) {
+        node.isOpenAsTab = true;
+      }
+      this.treeRenderer?.updateNode(node.id, { isOpenAsTab: node.isOpenAsTab });
 
       this.datasets.push({ metadata, dataset: provider, isLoaded: true });
 
-      await this.tabManager.addDataset(metadata, provider);
-      await this.tabManager.switchToDataset(metadata.name);
-      this.onSelectCallback?.(provider);
+      if (!options.silent) {
+        await this.tabManager.addDataset(metadata, provider);
+        await this.tabManager.switchToDataset(metadata.name);
+        this.onSelectCallback?.(provider);
+      }
       return { ok: true };
     } catch (error) {
+      // Log + return structured error: the batch caller
+      // (`addFilesFromDrop`) aggregates these into a single user-facing
+      // summary toast, so we don't surface here. Console log is for
+      // debug/dev visibility into the underlying DuckDB / fetch / I-O
+      // failure.
       console.error(`Failed to import ${node.name}:`, error);
-      return { ok: false, error: formatError(error) };
+      const formatted = formatError(error);
+
+      // Failed-import → text-tab fallback. Only for non-silent imports
+      // (silent imports must stay silent — opening a tab from a folder
+      // scan would be jarring). The file is opened read-only with the
+      // import error as a banner so the user can see what tripped the
+      // parser. Binary files fall through to the existing error toast.
+      if (!options.silent && node.fileHandle) {
+        try {
+          const file =
+            node.fileHandle instanceof File
+              ? node.fileHandle
+              : await (node.fileHandle as FileSystemFileHandle).getFile();
+          const sample = await readTextSample(file, 4096);
+          if (sample !== null && isLikelyText(file, sample)) {
+            const full = await file.text();
+            this.tabManager.addTextTab(node.name, full, formatted.message);
+            // User has a visible result; the batch summary doesn't
+            // need to count this as an error.
+            return { ok: true };
+          }
+        } catch (fallbackErr) {
+          console.warn(`Text-tab fallback failed for ${node.name}:`, fallbackErr);
+        }
+      }
+
+      return { ok: false, error: formatted };
     }
   }
 
@@ -739,6 +1124,11 @@ export class ControlPanel {
         const depth = row ? Math.floor(parseInt(row.style.paddingLeft) / 16) : 0;
         this.treeRenderer?.appendChildren(node.id, node.children, depth);
       } catch (error) {
+        // Two-channel surfacing: console.error for debug visibility of
+        // the underlying read failure, plus a user-facing toast so the
+        // user knows the expand action didn't silently succeed. Caught
+        // here (not propagated) because expand is a UI affordance —
+        // there's no caller waiting on a Promise that needs to know.
         console.error(`Failed to enumerate sheets for ${node.name}:`, error);
         const { message, details } = formatError(error);
         this.onShowMessageCallback?.(
@@ -813,12 +1203,15 @@ export class ControlPanel {
     }
   }
 
-  public setOnOpenQueryCallback(callback: (sql: string) => void): void {
+  public setOnOpenQueryCallback(callback: (queryId: string) => void): void {
     this.onOpenQueryCallback = callback;
   }
 
-  public refreshSavedQueries(): void {
-    this.renderSavedQueries();
+  /** Re-render the file tree. Called by BedevereApp after the Settings
+   *  tab changes the auto-import threshold so warning glyphs update
+   *  immediately. */
+  public refreshTree(): void {
+    this.renderTree();
   }
 
   // --- Resize ---
@@ -866,45 +1259,123 @@ export class ControlPanel {
   public destroy(): void {
     document.removeEventListener("mousemove", this.onResizeMove);
     document.removeEventListener("mouseup", this.onResizeEnd);
+    this.envUnsubscribe?.();
+    this.envUnsubscribe = undefined;
+    this.envSwitcher?.destroy();
+    this.envSwitcher = null;
     this.container.remove();
   }
 
   // --- Renderers ---
 
   private renderSavedQueries(): void {
-    if (!this.persistenceService) return;
-
-    const queries = this.persistenceService.loadQueryBookmarks();
+    const env = environmentService.getActive();
     this.queriesListElement.innerHTML = "";
+    if (!env) return;
+
+    // Sort: most recently updated first, falls back to created.
+    const queries = env.queries.slice().sort(
+      (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
+    );
 
     for (const query of queries) {
-      const item = document.createElement("div");
-      item.className = "control-panel__section-item";
-
-      const name = document.createElement("span");
-      name.className = "control-panel__section-item-name";
-      name.textContent = query.name;
-      name.title = query.sql;
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.className = "control-panel__section-item-delete";
-      deleteBtn.textContent = "×";
-      deleteBtn.title = "Delete query";
-      deleteBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.persistenceService!.deleteQueryBookmark(query.name);
-        this.renderSavedQueries();
-      });
-
-      item.appendChild(name);
-      item.appendChild(deleteBtn);
-
-      item.addEventListener("click", () => {
-        this.onOpenQueryCallback?.(query.sql);
-      });
-
-      this.queriesListElement.appendChild(item);
+      this.queriesListElement.appendChild(this.buildSavedQueryRow(env.id, query));
     }
+  }
+
+  private buildSavedQueryRow(
+    envId: string,
+    query: { id: string; name: string; sql: string },
+  ): HTMLElement {
+    const item = document.createElement("div");
+    item.className = "control-panel__section-item";
+    item.dataset.queryId = query.id;
+
+    if (this.renamingQueryId === query.id) {
+      this.fillRenamingRow(item, envId, query);
+    } else {
+      this.fillNormalRow(item, envId, query);
+    }
+    return item;
+  }
+
+  private fillNormalRow(
+    item: HTMLElement,
+    envId: string,
+    query: { id: string; name: string; sql: string },
+  ): void {
+    const name = document.createElement("span");
+    name.className = "control-panel__section-item-name";
+    name.textContent = query.name;
+    name.title = query.sql || query.name;
+    // Double-click on the name → inline rename. Click stops propagation
+    // so the row's click handler (open in editor) doesn't fire too.
+    name.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this.renamingQueryId = query.id;
+      this.renderSavedQueries();
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "control-panel__section-item-delete";
+    deleteBtn.textContent = "×";
+    deleteBtn.title = "Delete query";
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      environmentService.deleteQuery(envId, query.id);
+      // Service emit re-renders us via the onChange subscription.
+    });
+
+    item.appendChild(name);
+    item.appendChild(deleteBtn);
+
+    item.addEventListener("click", () => {
+      this.onOpenQueryCallback?.(query.id);
+    });
+  }
+
+  private fillRenamingRow(
+    item: HTMLElement,
+    envId: string,
+    query: { id: string; name: string },
+  ): void {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "control-panel__section-item-rename";
+    input.value = query.name;
+    input.spellcheck = false;
+
+    const commit = (apply: boolean): void => {
+      if (this.renamingQueryId !== query.id) return;
+      const next = input.value.trim();
+      this.renamingQueryId = null;
+      if (apply && next && next !== query.name) {
+        environmentService.updateQuery(envId, query.id, { name: next });
+        // Service emit triggers re-render.
+      } else {
+        this.renderSavedQueries();
+      }
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        commit(false);
+      }
+      e.stopPropagation();
+    });
+    input.addEventListener("blur", () => commit(true));
+    input.addEventListener("click", (e) => e.stopPropagation());
+
+    item.appendChild(input);
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
   }
 
 }

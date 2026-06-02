@@ -17,6 +17,16 @@ export interface FileTreeNode {
   tableName?: string;
   /** True if the format handler reports this type as unavailable (extension not loaded) */
   isUnavailable?: boolean;
+  /** File size in bytes (only set for file/sheet nodes). Drives the
+   *  auto-import policy (small ↦ silent, large ↦ user-click) and the
+   *  size label shown next to each row. */
+  size?: number;
+  /** True when the dataset is currently open as a spreadsheet tab.
+   *  Distinct from `isImported` (which only tracks "is registered as
+   *  a DuckDB table"): silent-imported files have `isImported = true`
+   *  but `isOpenAsTab = false`, so the row stays visually neutral
+   *  until the user actually opens it. */
+  isOpenAsTab?: boolean;
 }
 
 /** Map file extensions to SupportedFileType */
