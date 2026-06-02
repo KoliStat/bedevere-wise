@@ -38,6 +38,9 @@ public/extensions/*
 # Claude Code local settings
 .claude/
 
+# sigillo MCP local index
+.sigillo/
+
 # Temp
 src/data.ts
 # Local-only test data; embed harness fixtures are excepted so the

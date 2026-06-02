@@ -411,8 +411,16 @@ export class StatusBar {
       timestamp: new Date(),
     };
 
-    // If the popover was already open for a previous message, update it in place
-    if (this.popover.isOpen() && this.activeMessage) {
+    // Auto-open the popover for errors and warnings so the user sees the
+    // full text (and any stack-trace details) without having to click the
+    // status bar. The status-bar item is narrow and truncates long
+    // messages; the popover wraps and shows details. Outside-click /
+    // Escape still dismiss, and the existing duration timeout below hides
+    // the popover when the transient message expires. For success / info
+    // we keep the old "update in place if already open, otherwise stay
+    // collapsed" behavior — those messages are short and self-contained.
+    const autoOpen = type === "error" || type === "warning";
+    if ((this.popover.isOpen() || autoOpen) && this.activeMessage) {
       this.popover.show(this.activeMessage);
     }
 

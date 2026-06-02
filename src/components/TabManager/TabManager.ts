@@ -833,9 +833,17 @@ export class TabManager {
    * existing tab when one already shows the same name.
    */
   private async openExistingTable(name: string, duckDBService: DuckDBService): Promise<void> {
+    // If the table already has an open tab, the DuckDB rows behind it
+    // may have just been replaced by CREATE OR REPLACE — the existing
+    // SpreadsheetVisualizer + DuckDBDataProvider hold cached metadata
+    // and cell data from the previous version, so simply switching to
+    // the tab would paint stale rows. Close it and fall through to the
+    // fresh-tab path, which re-reads metadata and rebuilds the cache.
+    // Trade-off: scroll position / selection / local filter+sort don't
+    // survive the rebuild — acceptable for v0.12; a v0.13 follow-up can
+    // add an in-place refresh that preserves view state.
     if (this.getDatasetIds().includes(name)) {
-      await this.switchToDataset(name);
-      return;
+      this.closeDataset(name);
     }
     const { DuckDBDataProvider } = await import("../../data/DuckDBDataProvider");
     const provider = new DuckDBDataProvider(duckDBService, name, "");

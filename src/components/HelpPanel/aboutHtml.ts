@@ -14,15 +14,16 @@ export function renderAboutBody(version: string): string {
       <p class="help-panel__about-version">v${version}</p>
       <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
       <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.11</h3>
+        <h3 class="help-panel__about-section-title">What's new in 0.12</h3>
         <ul class="help-panel__about-list">
-          <li>The <strong>SQL editor autosaves</strong> while you type and restores the draft on reload. Press <code>Ctrl+S</code> to save the current query as a named bookmark; <code>Ctrl+F</code> opens an in-editor find panel.</li>
-          <li><em>(preview)</em> <strong>Import HTML tables</strong> from the clipboard (<code>.paste</code>) or from a saved <code>.html</code> file — multi-table pages open a picker; image-only cells (e.g. flag icons) fall back to the <code>alt</code> attribute or the <code>src</code> basename so a column of icons still carries data.</li>
-          <li><em>(preview)</em> <strong>Fetch remote files by URL</strong> (<code>.fetch &lt;url&gt;</code>) — CSV / JSON / Parquet / HTML routed through the same handlers as local files. CORS-blocked sources surface a clear "save and drag it in" hint.</li>
-          <li><strong>Drag-to-reorder columns</strong> in the spreadsheet header; the order persists per dataset alongside hide / sort / filter.</li>
-          <li><strong>Click-to-copy</strong> on the column-stats panel — clicking the column name or any categorical histogram value copies it to the clipboard with a brief flash.</li>
-          <li><strong>Ctrl+C respects text selections outside the spreadsheet</strong> — drag-select text in the column-stats panel, status bar, help panel, etc. and Ctrl+C copies that instead of the spreadsheet cells.</li>
-          <li>Dirty CSV / Excel imports recover gracefully — full-file type detection and an <code>ignore_errors</code> fallback handle stray non-numeric values that used to abort the whole import.</li>
+          <li><strong>Environments.</strong> Opening a folder auto-creates an environment named after that folder — holding its datasets, saved queries, and open-tab state. Switch between environments from the dropdown above the file tree; the workspace restores when you switch back. Single-file drops land in a "default" env so casual imports don't bloat the list. <code>.env list | new | switch | rename | delete</code> covers the same surface from the shell.</li>
+          <li><strong>SQL editor tabs.</strong> The single-document editor grew a tab strip. Each tab is a <code>.sql</code> "file" owned by the active environment; rename via double-click, close with the × on the tab, <code>Ctrl+S</code> still saves a named bookmark. Autosave (750&nbsp;ms idle) writes per-tab into the env, so reload restores exactly what was open.</li>
+          <li><strong>Auto-import small files + size warnings.</strong> Drops &lt; 100&nbsp;KB import silently into DuckDB without opening a tab; larger files show a ⚠ glyph and a size label in the tree and wait for a click. Threshold is configurable in Settings (10&nbsp;KB / 100&nbsp;KB / 1&nbsp;MB / never).</li>
+          <li><strong>Failed-import → text view.</strong> When a CSV / JSON / log import throws, the file opens as a read-only text tab with the DuckDB error pinned above. Binary files (PNG renamed to .csv, etc.) still surface a toast.</li>
+          <li><strong>Embeddable view at <code>/embed</code>.</strong> A chromeless iframable Bedevere — pass <code>?dataset=…&amp;query=…&amp;theme=…&amp;autorun=1</code> in the URL, the iframe reports its rendered height back to the host via <code>postMessage</code>, and the host can flip the theme or trigger a re-run without reloading. Built for embedding writeups on a blog or doc site.</li>
+          <li><strong>Editor resize handle + indent selector.</strong> The splitter between editor and result is now draggable; the editor toolbar carries an indent dropdown (2 / 4 spaces / Tab) that drives <code>Tab</code> behaviour.</li>
+          <li><strong>Self-hosted DuckDB worker.</strong> The DuckDB-WASM worker JS now ships with the app instead of being fetched from jsDelivr — one fewer third-party runtime dependency and a reload that doesn't break when jsDelivr blips.</li>
+          <li><strong>Bug-fix:</strong> <code>WITH … VISUALIZE</code> queries now route through the chart path instead of being treated as plain CTEs.</li>
         </ul>
       </div>
       <div class="help-panel__about-section">
