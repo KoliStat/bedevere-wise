@@ -6,7 +6,7 @@
     "type": "git",
     "url": "https://github.com/caerbannogwhite/bedevere-wise"
   },
-  "main": "dist/index.js",
+  "main": "dist/index.es.js",
   "module": "dist/index.es.js",
   "devDependencies": {
     "@types/node": "^20.11.19",
@@ -20,8 +20,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.es.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.es.js"
     },
     "./style.css": "./dist/style.css"
   },
@@ -62,7 +61,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && node scripts/verify-build.mjs",
-    "build:lib": "vite build --config vite.config.ts",
+    "build:lib": "rm -rf dist && vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
