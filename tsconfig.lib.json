@@ -14,6 +14,7 @@
   "exclude": [
     "src/main.ts",
     "src/embed/main.ts",
+    "src/test/**",
     "src/**/__tests__/**",
     "src/**/*.test.ts"
   ]
