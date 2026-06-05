@@ -46,13 +46,27 @@ export default defineConfig({
     emptyOutDir: false,
     cssCodeSplit: false, // single style.css for the whole library
     lib: {
-      entry: resolve(__dirname, "src/index.ts"),
+      // Three published sub-entries:
+      //   - index : combined (UI + DuckDB), back-compat
+      //   - ui    : UI components + DataProvider interface + types,
+      //             zero DuckDB dependency
+      //   - duckdb: DuckDBService + DuckDBDataProvider only
+      // See README "Embedding surface" + "Bundler compatibility".
+      entry: {
+        index: resolve(__dirname, "src/index.ts"),
+        ui: resolve(__dirname, "src/ui.ts"),
+        duckdb: resolve(__dirname, "src/duckdb.ts"),
+      },
       formats: ["es"],
-      fileName: () => "index.es.js",
+      fileName: (_format, entryName) => `${entryName}.es.js`,
     },
     rollupOptions: {
       external,
       output: {
+        // Shared code (e.g. CodeMirror dialect, type helpers used by
+        // both `ui` and `duckdb`) lands here instead of being
+        // duplicated into every entry bundle.
+        chunkFileNames: "chunks/[name]-[hash].js",
         // Keep the CSS asset filename predictable so `./style.css`
         // in package.json `exports` resolves.
         assetFileNames: (asset) => {

@@ -55,6 +55,14 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.es.js"
     },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.es.js"
+    },
+    "./duckdb": {
+      "types": "./dist/duckdb.d.ts",
+      "import": "./dist/duckdb.es.js"
+    },
     "./style.css": "./dist/style.css"
   },
   "description": "Open SAS, SPSS, Stata, Parquet, and Excel files in your browser. Query them with SQL — no install, no upload.",
