@@ -21,6 +21,12 @@ export type { SpreadsheetOptions } from "./components/SpreadsheetVisualizer/type
 
 export { ChartVisualizer } from "./components/ChartVisualizer/ChartVisualizer";
 
+// stats_duck VISUALIZE pipeline. Decoupled from DuckDB-WASM (takes any
+// SqlExecutor) so downstream consumers — bedevere-desktop's native
+// renderer, etc. — can drive the same pipeline against their own backend.
+export { runVisualize } from "./data/visualize";
+export type { SqlExecutor, VisualizeResult } from "./data/visualize";
+
 export { EmbedSqlEditor } from "./embed/EmbedSqlEditor";
 export type { EmbedSqlEditorOptions } from "./embed/EmbedSqlEditor";
 
