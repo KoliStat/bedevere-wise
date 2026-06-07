@@ -1,7 +1,9 @@
 import { SpreadsheetVisualizer } from "../components/SpreadsheetVisualizer/SpreadsheetVisualizer";
 import { SpreadsheetOptions } from "../components/SpreadsheetVisualizer/types";
 import { ColumnStatsVisualizerFocusable } from "../components/ColumnStatsVisualizer/ColumnStatsVisualizerFocusable";
+import type { ChartVisualizer } from "../components/ChartVisualizer/ChartVisualizer";
 import { DuckDBDataProvider } from "../data/DuckDBDataProvider";
+import type { VisualizeResult } from "../data/visualize";
 
 export interface EmbedResultPanelOptions {
   spreadsheetOptions: SpreadsheetOptions;
@@ -9,14 +11,17 @@ export interface EmbedResultPanelOptions {
 
 /**
  * Bottom-half result surface for the /embed route. Owns one
- * SpreadsheetVisualizer at a time — running a new query tears the
- * previous one down and constructs a fresh visualizer against the new
- * data provider. The main app's TabManager keeps every result around
- * as a tab; the embed is intentionally single-result so a parent page
- * with multiple iframes stays predictable in height.
+ * SpreadsheetVisualizer or ChartVisualizer at a time — running a new
+ * query tears the previous one down and constructs a fresh visualizer.
+ * The main app's TabManager keeps every result around as a tab; the
+ * embed is intentionally single-result so a parent page with multiple
+ * iframes stays predictable in height.
  *
  * The shared ColumnStatsVisualizer is created lazily so we don't pay
- * for it on a "no dataset yet" first paint.
+ * for it on a "no dataset yet" first paint. The ChartVisualizer module
+ * is loaded via dynamic import to keep the vega-embed bundle (~800 KB)
+ * off the initial embed page-load — only users who run a VISUALIZE
+ * query pay for it.
  */
 export class EmbedResultPanel {
   private container: HTMLElement;
@@ -28,6 +33,7 @@ export class EmbedResultPanel {
   private statsContainer: HTMLElement;
   private statsVisualizer: ColumnStatsVisualizerFocusable | null = null;
   private current: SpreadsheetVisualizer | null = null;
+  private currentChart: ChartVisualizer | null = null;
   private options: EmbedResultPanelOptions;
 
   constructor(parent: HTMLElement, options: EmbedResultPanelOptions) {
@@ -103,15 +109,51 @@ export class EmbedResultPanel {
     await viz.resize();
   }
 
+  /**
+   * Render a stats_duck VISUALIZE result. The spec + datasets come from
+   * {@link runVisualize} (pre-processed: Arrow rows unwrapped, decimals
+   * scaled, composite spec data refs patched).
+   *
+   * `vega-embed` is pulled in via dynamic import inside ChartVisualizer
+   * so this method's first call is what loads the chart bundle —
+   * downstream pages that never run VISUALIZE pay nothing for it.
+   */
+  public async showChart(visualizeResult: VisualizeResult, _name: string): Promise<void> {
+    this.disposeCurrent();
+    this.surface.textContent = "";
+
+    const mount = document.createElement("div");
+    mount.className = "embed-result__chart";
+    this.surface.appendChild(mount);
+
+    // Force layout so vega-embed measures the host's real
+    // clientWidth/Height when computing chart size, not zero.
+    void this.container.offsetHeight;
+
+    // Dynamic import keeps the ~800 KB vega-embed bundle out of the
+    // initial /embed page-load. Same trick TabManager.addChartResult uses.
+    const { ChartVisualizer } = await import("../components/ChartVisualizer/ChartVisualizer");
+    const viz = new ChartVisualizer(mount);
+    this.currentChart = viz;
+    await viz.setSpec(visualizeResult.spec, visualizeResult.datasets);
+  }
+
   public async resize(): Promise<void> {
-    if (!this.current) return;
-    await this.current.resize();
+    if (this.current) await this.current.resize();
+    // ChartVisualizer (Vega-Lite) auto-fits its container — nothing to
+    // call here. The embed parent listens for ResizeObserver and
+    // emits the iframe height, so the chart self-corrects on the
+    // next paint.
   }
 
   private disposeCurrent(): void {
     if (this.current) {
       this.current.destroy();
       this.current = null;
+    }
+    if (this.currentChart) {
+      this.currentChart.destroy();
+      this.currentChart = null;
     }
   }
 }
