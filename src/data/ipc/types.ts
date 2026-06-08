@@ -134,6 +134,9 @@ export type IpcMethod =
   | "executeQuery"
   | "listTables"
   | "visualize"
+  // Persistence (kv snapshot — see IpcFilesystemPersistence)
+  | "loadPersistence"
+  | "savePersistence"
   // Plugins
   | "getPluginCatalog"
   | "loadPlugin"
@@ -267,6 +270,24 @@ export interface VisualizeResult {
   datasets: Record<string, unknown[]>;
 }
 
+// ----- Persistence methods --------------------------------------------------
+
+export type LoadPersistenceParams = Record<string, never>;
+/**
+ * Full snapshot of the kv store, as written by {@link SavePersistenceParams}.
+ * Keys are the same Bedevere-namespaced strings the web app writes to
+ * localStorage (`bedevere_settings`, `bedevere_environments`, …); values
+ * are their JSON-stringified payloads.
+ */
+export interface LoadPersistenceResult {
+  data: Record<string, string>;
+}
+
+export interface SavePersistenceParams {
+  data: Record<string, string>;
+}
+export type SavePersistenceResult = Record<string, never>;
+
 // ----- Plugin methods -------------------------------------------------------
 
 export type GetPluginCatalogParams = Record<string, never>;
@@ -342,6 +363,8 @@ export interface IpcMethodMap {
   executeQuery: { params: ExecuteQueryParams; result: ExecuteQueryResult };
   listTables: { params: ListTablesParams; result: ListTablesResult };
   visualize: { params: VisualizeParams; result: VisualizeResult };
+  loadPersistence: { params: LoadPersistenceParams; result: LoadPersistenceResult };
+  savePersistence: { params: SavePersistenceParams; result: SavePersistenceResult };
   getPluginCatalog: {
     params: GetPluginCatalogParams;
     result: GetPluginCatalogResult;

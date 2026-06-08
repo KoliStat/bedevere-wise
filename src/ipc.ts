@@ -33,6 +33,9 @@ export type { IpcBackendOptions } from "./data/IpcBackend";
 
 export { IpcDataProvider } from "./data/ipc/IpcDataProvider";
 
+export { IpcFilesystemPersistence } from "./data/persistence/IpcFilesystemPersistence";
+export type { IpcFilesystemPersistenceOptions } from "./data/persistence/IpcFilesystemPersistence";
+
 // Wire types — re-exported so host implementations + tests can build
 // against the canonical protocol shape.
 export {
@@ -105,6 +108,10 @@ export type {
   AddLicenseResult,
   RemoveLicenseParams,
   RemoveLicenseResult,
+  LoadPersistenceParams,
+  LoadPersistenceResult,
+  SavePersistenceParams,
+  SavePersistenceResult,
   GetProtocolVersionParams,
   GetProtocolVersionResult,
 } from "./data/ipc/types";

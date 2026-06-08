@@ -29,3 +29,11 @@ export type { BedevereAppOptions } from "./components/BedevereApp/BedevereApp";
 export type { StatusBarItem } from "./components/StatusBar/StatusBar";
 export type { Command } from "./data/CommandRegistry";
 export type { CommandBarOptions, CellInfo } from "./components/CommandBar/CommandBar";
+
+// PersistenceService singleton — the kv store that backs settings,
+// environments, query bookmarks, and the editor autosave draft. Hosts
+// that want to swap its substrate (the desktop's IpcFilesystemPersistence,
+// a future server-synced backend) call `persistenceService.setBackend(...)`
+// before constructing BedevereApp.
+export { PersistenceService, persistenceService } from "./data/PersistenceService";
+export type { AppSettings, QueryBookmark, RecentFolderEntry } from "./data/PersistenceService";

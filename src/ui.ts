@@ -37,6 +37,13 @@ export type {
   DropKind,
 } from "./data/Backend";
 
+// PersistenceBackend — the kv substrate PersistenceService writes into.
+// Hosts that want to persist user state outside localStorage (the desktop
+// shell, server-synced accounts) implement this and call
+// `persistenceService.setBackend(...)` before BedevereApp constructs.
+export type { PersistenceBackend } from "./data/persistence/PersistenceBackend";
+export { LocalStoragePersistenceBackend } from "./data/persistence/LocalStoragePersistenceBackend";
+
 export { EmbedSqlEditor } from "./embed/EmbedSqlEditor";
 export type { EmbedSqlEditorOptions } from "./embed/EmbedSqlEditor";
 
