@@ -6,6 +6,12 @@
     "type": "git",
     "url": "https://github.com/caerbannogwhite/bedevere-wise"
   },
+  "bugs": {
+    "url": "https://github.com/caerbannogwhite/bedevere-wise/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "main": "dist/index.es.js",
   "module": "dist/index.es.js",
   "sideEffects": [
@@ -23,7 +29,6 @@
     "@codemirror/language": "^6.12.3",
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
-    "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.41.0",
     "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
     "@lezer/highlight": "^1.2.3",
