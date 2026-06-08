@@ -701,10 +701,10 @@ export class ControlPanel {
     // confusing because the panel says they aren't part of B, but the
     // engine still knows them. The new env's datasets re-import below
     // through `openRecentFolder` / silent-import.
-    const duck = this.tabManager.getDuckDBService();
-    if (duck) {
+    const backend = this.tabManager.getBackend();
+    if (backend && backend.wipeUserState) {
       try {
-        await duck.wipeUserState();
+        await backend.wipeUserState();
       } catch (err) {
         console.warn("applyActiveEnvironment: wipeUserState failed", err);
       }

@@ -5,7 +5,7 @@ import { CommandBar } from "../CommandBar/CommandBar";
 import { SqlEditor } from "../SqlEditor/SqlEditor";
 import type { ChartVisualizer } from "../ChartVisualizer/ChartVisualizer";
 import { DataProvider, DatasetMetadata } from "../../data/types";
-import { DuckDBService } from "../../data/DuckDBService";
+import type { Backend } from "../../data/Backend";
 import { ColumnFilterManager } from "../../data/ColumnFilterManager";
 import { FilteredDuckDBDataProvider } from "../../data/FilteredDuckDBDataProvider";
 import { EventDispatcher } from "../BedevereApp/EventDispatcher";
@@ -73,7 +73,7 @@ export class TabManager {
   private commandBar: CommandBar | null = null;
   private sqlEditor: SqlEditor | null = null;
   private filterManager: ColumnFilterManager = new ColumnFilterManager();
-  private duckDBService: DuckDBService | null = null;
+  private backend: Backend | null = null;
   private eventDispatcher?: EventDispatcher;
   private onCellSelectionCallback?: (cellSelection?: ICellSelection) => void;
   private onCellInspectCallback?: (info: CellInspectInfo) => void;
@@ -158,9 +158,9 @@ export class TabManager {
     // start. Source table for a fresh add is the dataset's own name
     // (all callers pass an unfiltered DuckDBDataProvider).
     let effectiveProvider = dataProvider;
-    if (this.filterManager.hasAnyState(metadata.name) && this.duckDBService) {
+    if (this.filterManager.hasAnyState(metadata.name) && this.backend) {
       effectiveProvider = new FilteredDuckDBDataProvider(
-        this.duckDBService,
+        this.backend,
         metadata.name,
         this.filterManager,
         metadata.name,
@@ -619,18 +619,18 @@ export class TabManager {
   }
 
   /**
-   * Expose the DuckDB service so the panel can run the env-switch wipe
+   * Expose the active backend so the panel can run the env-switch wipe
    * through it. Returns null before `initSqlEditor` has been called.
    */
-  public getDuckDBService(): DuckDBService | null {
-    return this.duckDBService;
+  public getBackend(): Backend | null {
+    return this.backend;
   }
 
-  public initSqlEditor(duckDBService: DuckDBService): void {
+  public initSqlEditor(backend: Backend): void {
     if (this.sqlEditor) return;
 
-    this.duckDBService = duckDBService;
-    this.sqlEditor = new SqlEditor(this.sqlEditorContainer, duckDBService);
+    this.backend = backend;
+    this.sqlEditor = new SqlEditor(this.sqlEditorContainer, backend);
 
     // Register with event dispatcher
     if (this.eventDispatcher) {
@@ -658,7 +658,7 @@ export class TabManager {
     });
 
     // CommandBar shell submit is wired here because dispatch to SQL needs
-    // duckDBService; dot-only commands (.help etc.) would work earlier but
+    // a live backend; dot-only commands (.help etc.) would work earlier but
     // this keeps the wiring in one place.
     this.commandBar?.setOnSubmitCallback((input) => this.dispatchInput(input));
 
@@ -686,7 +686,7 @@ export class TabManager {
 
   private async handleFilterChange(datasetName: string): Promise<void> {
     const tab = this.tabs.find((t) => t.metadata.name === datasetName);
-    if (!tab || tab.kind !== "dataset" || !this.duckDBService) return;
+    if (!tab || tab.kind !== "dataset" || !this.backend) return;
 
     // Determine the source table name
     const currentProvider = tab.dataProvider;
@@ -701,7 +701,7 @@ export class TabManager {
       // Any of filter / sort / hidden columns active — route through the
       // filtered provider, which knows how to project + WHERE + ORDER BY.
       const filteredProvider = new FilteredDuckDBDataProvider(
-        this.duckDBService,
+        this.backend,
         sourceTableName,
         this.filterManager,
         datasetName,
@@ -710,8 +710,7 @@ export class TabManager {
       tab.dataProvider = filteredProvider;
       await tab.spreadsheetVisualizer.reinitialize(filteredProvider);
     } else {
-      const { DuckDBDataProvider } = await import("../../data/DuckDBDataProvider");
-      const originalProvider = new DuckDBDataProvider(this.duckDBService, sourceTableName, tab.metadata.fileName ?? "");
+      const originalProvider = this.backend.getDataProvider(sourceTableName, tab.metadata.fileName ?? "");
       tab.dataProvider = originalProvider;
       await tab.spreadsheetVisualizer.reinitialize(originalProvider);
     }
@@ -726,12 +725,12 @@ export class TabManager {
    * against by hand, and `.alias result_n <new>` (which calls DuckDB
    * ALTER TABLE … RENAME) lets the user rename the underlying table cleanly.
    */
-  public async addQueryResult(query: string, duckDBService: DuckDBService): Promise<void> {
+  public async addQueryResult(query: string, backend: Backend): Promise<void> {
     const start = performance.now();
     try {
       this.resultCounter += 1;
       const resultName = `result_${this.resultCounter}`;
-      const dataProvider = await duckDBService.executeQueryAsDataProvider(query, resultName);
+      const dataProvider = await backend.executeQueryAsDataProvider(query, resultName);
       const metadata = await dataProvider.getMetadata();
       await this.addDataset(metadata, dataProvider);
       await this.switchToDataset(metadata.name);
@@ -758,7 +757,7 @@ export class TabManager {
    * Supported directives (apply to the next statement, then reset):
    *   - `.no-output` — run the statement but suppress its tab/chart output.
    */
-  private async executeBareSQL(input: string, duckDBService: DuckDBService): Promise<void> {
+  private async executeBareSQL(input: string, backend: Backend): Promise<void> {
     const script = parseScript(input);
     if (script.length === 0) return;
 
@@ -775,20 +774,20 @@ export class TabManager {
     for (const { sql, directives } of script) {
       const noOutput = directives.some((d) => d.toLowerCase() === ".no-output");
       if (noOutput) {
-        await this.executeSideEffecting(sql, duckDBService);
+        await this.executeSideEffecting(sql, backend);
         continue;
       }
       const kind = classifyStatement(sql);
       if (kind === "visualize") {
-        await this.executeVisualize(sql, duckDBService);
+        await this.executeVisualize(sql, backend);
       } else if (kind === "query") {
-        await this.addQueryResult(sql, duckDBService);
+        await this.addQueryResult(sql, backend);
       } else {
-        await this.executeSideEffecting(sql, duckDBService);
+        await this.executeSideEffecting(sql, backend);
         // Auto-display the new relation when the side-effect was a CREATE
         // TABLE / CREATE VIEW. .no-output (handled above) skips this.
         const created = extractCreateTargetName(sql);
-        if (created) await this.openExistingTable(created, duckDBService);
+        if (created) await this.openExistingTable(created, backend);
       }
     }
   }
@@ -798,7 +797,7 @@ export class TabManager {
    * dispatcher to surface the relation a user just CREATEd; switches to an
    * existing tab when one already shows the same name.
    */
-  private async openExistingTable(name: string, duckDBService: DuckDBService): Promise<void> {
+  private async openExistingTable(name: string, backend: Backend): Promise<void> {
     // If the table already has an open tab, the DuckDB rows behind it
     // may have just been replaced by CREATE OR REPLACE — the existing
     // SpreadsheetVisualizer + DuckDBDataProvider hold cached metadata
@@ -811,17 +810,16 @@ export class TabManager {
     if (this.getDatasetIds().includes(name)) {
       this.closeDataset(name);
     }
-    const { DuckDBDataProvider } = await import("../../data/DuckDBDataProvider");
-    const provider = new DuckDBDataProvider(duckDBService, name, "");
+    const provider = backend.getDataProvider(name, "");
     const metadata = await provider.getMetadata();
     await this.addDataset(metadata, provider);
     await this.switchToDataset(metadata.name);
   }
 
-  private async executeSideEffecting(input: string, duckDBService: DuckDBService): Promise<void> {
+  private async executeSideEffecting(input: string, backend: Backend): Promise<void> {
     const start = performance.now();
     try {
-      await duckDBService.executeQuery(input);
+      await backend.executeQuery(input);
       this.onQueryCompletedCallback?.({ elapsedMs: performance.now() - start });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -836,10 +834,10 @@ export class TabManager {
    * unwrap Arrow rows + scale decimals) lives in {@link runVisualize}; this
    * method keeps the tab-mount logic (`new ChartVisualizer(...)`, `addChartResult`).
    */
-  private async executeVisualize(input: string, duckDBService: DuckDBService): Promise<void> {
+  private async executeVisualize(input: string, backend: Backend): Promise<void> {
     const start = performance.now();
     try {
-      const { spec, datasets } = await runVisualize(input, duckDBService);
+      const { spec, datasets } = await runVisualize(input, backend);
       await this.addChartResult(spec, datasets);
       this.onQueryCompletedCallback?.({ elapsedMs: performance.now() - start });
     } catch (error) {
@@ -980,12 +978,12 @@ export class TabManager {
       this.handleShellResult(result);
       return;
     }
-    if (!this.duckDBService) {
+    if (!this.backend) {
       this.onQueryErrorCallback?.(new Error("Database not initialized"));
       return;
     }
     try {
-      await this.executeBareSQL(input, this.duckDBService);
+      await this.executeBareSQL(input, this.backend);
     } catch (err) {
       this.onQueryErrorCallback?.(err instanceof Error ? err : new Error(String(err)));
     }

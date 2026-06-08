@@ -1,26 +1,19 @@
 import type { VisualizationSpec } from "vega-embed";
+import type { Backend } from "./Backend";
 import { unwrapArrowValue } from "./arrowUnwrap";
 import { getStatsDuckFailureReason } from "./statsDuckStatus";
 
 /**
- * SQL executor surface needed by {@link runVisualize}. {@link DuckDBService}
- * already satisfies this — the helper takes any executor so it stays
- * decoupled from DuckDB-WASM specifics (e.g. a native-process executor
- * in the desktop renderer can drive the same pipeline).
+ * @deprecated Pass a {@link Backend} directly. `SqlExecutor` was an
+ * earlier, narrower contract that only required `executeQuery` +
+ * `executeQueryWithSchema`. The Backend interface (introduced in
+ * v0.13) supersedes it — both methods are part of the Backend
+ * contract — and the rest of the codebase has standardized on
+ * Backend. Alias kept for one release so downstream
+ * `@caerbannogwhite/bedevere-wise/ui` consumers (the desktop
+ * renderer + any external embedders) don't break on upgrade.
  */
-export interface SqlExecutor {
-  /** Plain query — returns rows as JS objects (or Arrow-row proxies). */
-  executeQuery(sql: string): Promise<any[]>;
-  /**
-   * Query + Arrow schema. Returns rows alongside per-column DECIMAL scales
-   * lifted from the schema so callers can post-process Decimal columns
-   * back to scalar JS numbers. See {@link DuckDBService.executeQueryWithSchema}.
-   */
-  executeQueryWithSchema(sql: string): Promise<{
-    rows: any[];
-    decimalScales: Record<string, number>;
-  }>;
-}
+export type SqlExecutor = Pick<Backend, "executeQuery" | "executeQueryWithSchema">;
 
 /**
  * Result of running a `VISUALIZE … DRAW <mark>` script through stats_duck:
@@ -92,11 +85,11 @@ function patchVisualizeSpec(spec: Record<string, unknown>, datasets: Record<stri
  */
 export async function runVisualize(
   sql: string,
-  executor: SqlExecutor,
+  backend: SqlExecutor,
 ): Promise<VisualizeResult> {
   let rows: any[];
   try {
-    rows = await executor.executeQuery(sql);
+    rows = await backend.executeQuery(sql);
   } catch (parseErr) {
     const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
     if (/syntax error/i.test(msg) && /VISUALIZE/i.test(msg)) {
@@ -137,7 +130,7 @@ export async function runVisualize(
     // (`1.0` → DECIMAL(2,1)) and Arrow exports those as the raw integer
     // — without scaling, `1.0` lands in the chart at 10 and the whole
     // axis appears multiplied by 10^scale.
-    const { rows: layerRows, decimalScales } = await executor.executeQueryWithSchema(layerSql);
+    const { rows: layerRows, decimalScales } = await backend.executeQueryWithSchema(layerSql);
     // Apache Arrow's `Table.toArray()` returns Row proxies that delegate
     // property access to the underlying RecordBatch. Vega-Lite's data
     // ingestion iterates with `for…of` and reads fields via `row.x`,

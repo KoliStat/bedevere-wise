@@ -1,12 +1,12 @@
-import { DuckDBService } from "./DuckDBService";
+import type { Backend } from "./Backend";
 import { persistenceService } from "./PersistenceService";
 
 export class AliasManager {
   private aliases: Map<string, string> = new Map(); // tableName → alias
-  private duckDBService: DuckDBService;
+  private backend: Backend;
 
-  constructor(duckDBService: DuckDBService) {
-    this.duckDBService = duckDBService;
+  constructor(backend: Backend) {
+    this.backend = backend;
     this.load();
   }
 
@@ -21,8 +21,9 @@ export class AliasManager {
       }
     }
 
-    // Rename in DuckDB
-    await this.duckDBService.executeQuery(`ALTER TABLE "${tableName}" RENAME TO "${sanitized}"`);
+    // Rename in the underlying engine (any DuckDB-flavored backend
+    // accepts ALTER TABLE … RENAME).
+    await this.backend.executeQuery(`ALTER TABLE "${tableName}" RENAME TO "${sanitized}"`);
 
     // Update local state
     this.aliases.set(sanitized, sanitized);

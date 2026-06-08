@@ -30,8 +30,14 @@ async function initApplication() {
 
   const persistedSettings = persistenceService.loadAppSettings();
 
-  // Create the Bedevere Wise application
-  const app = new BedevereApp(appContainer, duckDBService, appVersion, {
+  // Create the Bedevere Wise application. The default in-browser
+  // DuckDB-WASM backend is constructed inside BedevereApp when
+  // `options.backend` is omitted — but we still initialize the singleton
+  // here so the window-level `duckDBService` debug handle below stays
+  // pointed at the same instance the app uses. We pass that instance
+  // via options.
+  const app = new BedevereApp(appContainer, appVersion, {
+    backend: duckDBService,
     theme: "auto", // Automatically detect user's preferred theme
     // theme: "light",
     showLeftPanel: true,

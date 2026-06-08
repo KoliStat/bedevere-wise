@@ -21,11 +21,21 @@ export type { SpreadsheetOptions } from "./components/SpreadsheetVisualizer/type
 
 export { ChartVisualizer } from "./components/ChartVisualizer/ChartVisualizer";
 
-// stats_duck VISUALIZE pipeline. Decoupled from DuckDB-WASM (takes any
-// SqlExecutor) so downstream consumers — bedevere-desktop's native
-// renderer, etc. — can drive the same pipeline against their own backend.
+// stats_duck VISUALIZE pipeline. Decoupled from DuckDB-WASM — takes any
+// Backend so downstream consumers (bedevere-desktop's native renderer,
+// any host process running an IpcBackend) can drive the same pipeline
+// against their own engine. `SqlExecutor` stays exported as a deprecated
+// structural alias for `Pick<Backend, "executeQuery" | "executeQueryWithSchema">`.
 export { runVisualize } from "./data/visualize";
 export type { SqlExecutor, VisualizeResult } from "./data/visualize";
+export type {
+  Backend,
+  BackendCapabilities,
+  FunctionInfo,
+  FunctionKind,
+  WipeUserStateSummary,
+  DropKind,
+} from "./data/Backend";
 
 export { EmbedSqlEditor } from "./embed/EmbedSqlEditor";
 export type { EmbedSqlEditorOptions } from "./embed/EmbedSqlEditor";

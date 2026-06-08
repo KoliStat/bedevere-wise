@@ -5,6 +5,7 @@ import coiWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?
 import coiPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
+import type { Backend, BackendCapabilities, FunctionInfo } from "./Backend";
 
 /**
  * Best-effort lift of a DECIMAL scale from an Apache Arrow schema field's
@@ -25,7 +26,21 @@ function inferDecimalScale(t: any): number | undefined {
   return undefined;
 }
 
-export class DuckDBService {
+export class DuckDBService implements Backend {
+  public readonly id = "duckdb-wasm";
+  public readonly displayName = "DuckDB (browser, WebAssembly)";
+  public readonly capabilities: BackendCapabilities = {
+    arrow: true,
+    visualize: false, // flipped on by DuckDBExtensionLoader after stats_duck loads
+    registerFileText: true,
+    registerFileBuffer: true,
+    wipeUserState: true,
+    dropByName: true,
+    sas: true,
+    spss: true,
+    stata: true,
+  };
+
   private db: duckdb.AsyncDuckDB | null = null;
   private worker: Worker | null = null;
   private isInitialized = false;
@@ -133,6 +148,24 @@ export class DuckDBService {
   public async getColumnInfo(tableName: string, columnName: string): Promise<any> {
     const columns = await this.executeQuery(`DESCRIBE ${quoteIdent(tableName)}`);
     return columns.find((column: any) => column.column_name === columnName);
+  }
+
+  public async listFunctions(): Promise<FunctionInfo[]> {
+    const rows = await this.executeQuery(
+      "SELECT DISTINCT function_name, function_type FROM duckdb_functions()",
+    );
+    return rows
+      .map((row: any) => {
+        const name = row.function_name;
+        const type = row.function_type;
+        if (typeof name !== "string" || typeof type !== "string") return null;
+        return { name, type: type as FunctionInfo["type"] };
+      })
+      .filter((info: FunctionInfo | null): info is FunctionInfo => info !== null);
+  }
+
+  public getDataProvider(tableName: string, fileName?: string): DuckDBDataProvider {
+    return new DuckDBDataProvider(this, tableName, fileName ?? "");
   }
 
   public async executeQueryAsDataProvider(query: string, resultName?: string): Promise<DuckDBDataProvider> {

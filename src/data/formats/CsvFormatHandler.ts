@@ -1,4 +1,4 @@
-import { DuckDBService } from "../DuckDBService";
+import type { Backend } from "../Backend";
 import { SupportedFileType } from "../FileTreeTypes";
 import { quoteIdent } from "../sqlIdent";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
@@ -33,13 +33,13 @@ function quoteLit(value: string): string {
  * and console-warn so the lost rows aren't silent.
  */
 export async function importCsvText(
-  duckDBService: DuckDBService,
+  backend: Backend,
   virtualFileName: string,
   csvText: string,
   tableName: string,
   opts?: { delimiter?: string; hasHeader?: boolean },
 ): Promise<void> {
-  await duckDBService.registerFileText(virtualFileName, csvText);
+  await backend.registerFileText(virtualFileName, csvText);
 
   const baseOptions: Record<string, string> = {
     header: opts?.hasHeader === false ? "false" : "true",
@@ -58,14 +58,14 @@ export async function importCsvText(
   };
 
   try {
-    await duckDBService.executeQuery(buildSql(baseOptions));
+    await backend.executeQuery(buildSql(baseOptions));
   } catch (firstError) {
     console.warn(
       `CSV import for ${virtualFileName} failed with strict mode; retrying with ignore_errors=true. ` +
         `Some rows may be skipped.`,
       firstError,
     );
-    await duckDBService.executeQuery(
+    await backend.executeQuery(
       buildSql({ ...baseOptions, ignore_errors: "true" }),
     );
   }
@@ -76,10 +76,10 @@ export class CsvFormatHandler implements FormatHandler {
     return fileType === "csv" || fileType === "tsv";
   }
 
-  async import(file: File, tableName: string, duckDBService: DuckDBService, options?: ImportFileOptions): Promise<void> {
+  async import(file: File, tableName: string, backend: Backend, options?: ImportFileOptions): Promise<void> {
     const text = await file.text();
     const delimiter = options?.delimiter ?? (file.name.endsWith(".tsv") ? "\t" : ",");
     const hasHeader = options?.hasHeader ?? true;
-    await importCsvText(duckDBService, file.name, text, tableName, { delimiter, hasHeader });
+    await importCsvText(backend, file.name, text, tableName, { delimiter, hasHeader });
   }
 }

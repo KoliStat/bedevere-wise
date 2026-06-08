@@ -7,7 +7,7 @@ import { searchKeymap } from "@codemirror/search";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { FocusableComponent } from "../BedevereApp/types";
-import { DuckDBService } from "../../data/DuckDBService";
+import type { Backend } from "../../data/Backend";
 import { keymapService } from "../../data/KeymapService";
 import { commandRegistry } from "../../data/CommandRegistry";
 import { persistenceService } from "../../data/PersistenceService";
@@ -152,9 +152,9 @@ export class SqlEditor implements FocusableComponent {
   private onToggleCallback?: (isExpanded: boolean) => void;
   private onResizeCallback?: (height: number) => void;
 
-  constructor(parent: HTMLElement, duckDBService: DuckDBService, componentId?: string) {
+  constructor(parent: HTMLElement, backend: Backend, componentId?: string) {
     this.componentId = componentId ?? "sql-editor";
-    this.autoComplete = new SqlAutoComplete(duckDBService);
+    this.autoComplete = new SqlAutoComplete(backend);
 
     // Bind resize-drag handlers once so add / removeEventListener pairs match.
     this.onResizeMove = this.handleResizeMove.bind(this);
