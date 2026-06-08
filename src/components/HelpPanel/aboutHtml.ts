@@ -1,7 +1,7 @@
 /**
  * Static HTML template for the About tab — version chip, "What's new"
  * highlights for the current release, shell intro, dependency list,
- * external links, lore, attribution. Pure data with a single
+ * external links, lore. Pure data with a single
  * `${version}` interpolation; kept here so the HelpPanel component
  * stays focused on lifecycle / tab switching and so release-day
  * "refresh About tab" edits don't churn the larger component file.
@@ -62,8 +62,5 @@ export function renderAboutBody(version: string): string {
           <a href="https://www.youtube.com/watch?v=yp_l5ntikaU" target="_blank" rel="noopener noreferrer">https://www.youtube.com/watch?v=yp_l5ntikaU</a>
         </p>
       </details>
-      <p class="help-panel__attribution">
-        Duck icons created by <a href="https://www.flaticon.com/free-icons/duck" target="_blank" rel="noopener noreferrer" title="duck icons">Marz Gallery &mdash; Flaticon</a>.
-      </p>
     `;
 }
