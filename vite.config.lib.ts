@@ -24,6 +24,9 @@ const external = [
   "codemirror",
   // Vega
   "vega-embed",
+  // Apache Arrow — used by /ipc (Arrow IPC streaming over WebSocket
+  // binary frames). Consumers install it themselves.
+  "apache-arrow",
 ];
 
 export default defineConfig({
@@ -46,16 +49,20 @@ export default defineConfig({
     emptyOutDir: false,
     cssCodeSplit: false, // single style.css for the whole library
     lib: {
-      // Three published sub-entries:
+      // Four published sub-entries:
       //   - index : combined (UI + DuckDB), back-compat
       //   - ui    : UI components + DataProvider interface + types,
       //             zero DuckDB dependency
       //   - duckdb: DuckDBService + DuckDBDataProvider only
+      //   - ipc   : Bridge + IpcBackend + wire types — for host
+      //             processes (desktop / python / R) that drive the
+      //             UI via the Backend Protocol over WebSocket.
       // See README "Embedding surface" + "Bundler compatibility".
       entry: {
         index: resolve(__dirname, "src/index.ts"),
         ui: resolve(__dirname, "src/ui.ts"),
         duckdb: resolve(__dirname, "src/duckdb.ts"),
+        ipc: resolve(__dirname, "src/ipc.ts"),
       },
       formats: ["es"],
       fileName: (_format, entryName) => `${entryName}.es.js`,
