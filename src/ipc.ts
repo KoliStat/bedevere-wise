@@ -25,7 +25,7 @@
  * Zero DuckDB-WASM dependency — only `apache-arrow` (a peer-dep).
  */
 
-export { Bridge } from "./data/ipc/bridge";
+export { Bridge, IpcRpcError } from "./data/ipc/bridge";
 export type { BridgeOptions } from "./data/ipc/bridge";
 
 export { IpcBackend } from "./data/IpcBackend";

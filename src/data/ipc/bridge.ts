@@ -36,6 +36,27 @@ export interface BridgeOptions {
   host?: string;
 }
 
+/**
+ * Typed error rejected by {@link Bridge.call} when the host returns
+ * `{ ok: false, error }`. Callers branch on `code` to react to specific
+ * failures (e.g. tolerate `UNKNOWN_METHOD` from old hosts, retry on
+ * `INTERNAL`). Unknown / missing codes surface as `"unknown"`.
+ *
+ * The protocol explicitly states (docs/backend-protocol.md §7) that
+ * unknown codes MUST be treated as generic failures, not rejected —
+ * which is why we carry `"unknown"` as a first-class value instead of
+ * crashing on an undeclared one.
+ */
+export class IpcRpcError extends Error {
+  public readonly code: IpcErrorCode | "unknown";
+
+  constructor(code: IpcErrorCode | "unknown", message: string) {
+    super(`[${code}] ${message}`);
+    this.name = "IpcRpcError";
+    this.code = code;
+  }
+}
+
 interface PendingRpc {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
@@ -212,7 +233,7 @@ export class Bridge {
     } else {
       const code = msg.error?.code ?? "unknown";
       const message = msg.error?.message ?? "host returned an error";
-      pending.reject(new Error(`[${code}] ${message}`));
+      pending.reject(new IpcRpcError(code, message));
     }
   }
 
