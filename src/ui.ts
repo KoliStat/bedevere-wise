@@ -44,6 +44,13 @@ export type {
 export type { PersistenceBackend } from "./data/persistence/PersistenceBackend";
 export { LocalStoragePersistenceBackend } from "./data/persistence/LocalStoragePersistenceBackend";
 
+// FileSource — host-agnostic file/folder picker + reader. FsaFileSource
+// is the web default (File System Access API); hosts that own a
+// native picker (the desktop's IpcFileSource) substitute it before
+// the file panel constructs.
+export type { FileSource, FileSourceFolder, FileSourceFile } from "./data/files/FileSource";
+export { FsaFileSource } from "./data/files/FsaFileSource";
+
 export { EmbedSqlEditor } from "./embed/EmbedSqlEditor";
 export type { EmbedSqlEditorOptions } from "./embed/EmbedSqlEditor";
 

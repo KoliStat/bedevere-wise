@@ -137,6 +137,10 @@ export type IpcMethod =
   // Persistence (kv snapshot — see IpcFilesystemPersistence)
   | "loadPersistence"
   | "savePersistence"
+  // File source (native OS picker — see IpcFileSource)
+  | "pickFolder"
+  | "pickFiles"
+  | "listFolderFiles"
   // Plugins
   | "getPluginCatalog"
   | "loadPlugin"
@@ -288,6 +292,43 @@ export interface SavePersistenceParams {
 }
 export type SavePersistenceResult = Record<string, never>;
 
+// ----- File source methods --------------------------------------------------
+
+export type PickFolderParams = Record<string, never>;
+/**
+ * Picked folder details. `id` is the host's opaque handle for the
+ * folder — typically the absolute filesystem path on desktop. `null`
+ * when the user cancelled the picker.
+ */
+export interface PickFolderResult {
+  folder: { id: string; name: string; displayPath?: string } | null;
+}
+
+export interface PickFilesParams {
+  /** Allow multi-select. Default false. */
+  multiple?: boolean;
+  /**
+   * Filter hint (comma-separated extensions or MIME types). Hosts may
+   * map this to platform-specific filter strings or ignore it.
+   */
+  accept?: string;
+}
+/**
+ * Picked files as host-readable paths. The renderer hands these to
+ * `backend.registerFileURL` / `registerFile`, which reads the bytes
+ * host-side without round-tripping them through the renderer.
+ */
+export interface PickFilesResult {
+  files: Array<{ name: string; path: string }> | null;
+}
+
+export interface ListFolderFilesParams {
+  folderId: string;
+}
+export interface ListFolderFilesResult {
+  files: Array<{ name: string; path: string }>;
+}
+
 // ----- Plugin methods -------------------------------------------------------
 
 export type GetPluginCatalogParams = Record<string, never>;
@@ -365,6 +406,9 @@ export interface IpcMethodMap {
   visualize: { params: VisualizeParams; result: VisualizeResult };
   loadPersistence: { params: LoadPersistenceParams; result: LoadPersistenceResult };
   savePersistence: { params: SavePersistenceParams; result: SavePersistenceResult };
+  pickFolder: { params: PickFolderParams; result: PickFolderResult };
+  pickFiles: { params: PickFilesParams; result: PickFilesResult };
+  listFolderFiles: { params: ListFolderFilesParams; result: ListFolderFilesResult };
   getPluginCatalog: {
     params: GetPluginCatalogParams;
     result: GetPluginCatalogResult;

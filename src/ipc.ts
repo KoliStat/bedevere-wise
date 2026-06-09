@@ -36,6 +36,9 @@ export { IpcDataProvider } from "./data/ipc/IpcDataProvider";
 export { IpcFilesystemPersistence } from "./data/persistence/IpcFilesystemPersistence";
 export type { IpcFilesystemPersistenceOptions } from "./data/persistence/IpcFilesystemPersistence";
 
+export { IpcFileSource } from "./data/files/IpcFileSource";
+export type { IpcFileSourceOptions } from "./data/files/IpcFileSource";
+
 // Wire types — re-exported so host implementations + tests can build
 // against the canonical protocol shape.
 export {
@@ -112,6 +115,12 @@ export type {
   LoadPersistenceResult,
   SavePersistenceParams,
   SavePersistenceResult,
+  PickFolderParams,
+  PickFolderResult,
+  PickFilesParams,
+  PickFilesResult,
+  ListFolderFilesParams,
+  ListFolderFilesResult,
   GetProtocolVersionParams,
   GetProtocolVersionResult,
 } from "./data/ipc/types";
