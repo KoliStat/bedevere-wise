@@ -4,6 +4,7 @@ import { PersistenceService, persistenceService } from "../../data/PersistenceSe
 import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
+import type { FileSource } from "../../data/files/FileSource";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
@@ -107,6 +108,12 @@ export class ControlPanel {
   private folderScanService?: FolderScanService;
   private treeRenderer?: FileTreeRenderer;
   private fileTree: FileTreeNode[] = [];
+  /**
+   * Folder + file picker source. Defaults to undefined; the IPC path
+   * below short-circuits when the source isn't `"fsa"`. The FSA path
+   * goes through {@link folderScanService} (no FileSource needed).
+   */
+  private fileSource?: FileSource;
 
   // Environment switcher (top of the panel, above the accordion)
   private envSwitcher: EnvironmentSwitcher | null = null;
@@ -473,11 +480,28 @@ export class ControlPanel {
     this.folderScanService = new FolderScanService(service);
   }
 
+  public setFileSource(source: FileSource): void {
+    this.fileSource = source;
+  }
+
   public setOnAliasChangeCallback(callback: (tableName: string, alias: string) => void): void {
     this.onAliasChangeCallback = callback;
   }
 
   public async openFolderPicker(): Promise<void> {
+    // Native-picker (IPC) path. When the embedder supplied a non-FSA
+    // FileSource (the desktop renderer's IpcFileSource) we route
+    // through the host instead of `showDirectoryPicker`: the host
+    // pops its OS-native dialog, enumerates the folder, and returns
+    // absolute paths the renderer attaches as `filePath` nodes.
+    // Importing those nodes uses `backend.registerFileURL`, which
+    // hits the host's `registerFile` RPC — the bytes never cross
+    // the WebSocket.
+    if (this.fileSource && this.fileSource.id !== "fsa") {
+      await this.openFolderViaFileSource();
+      return;
+    }
+
     if (!this.folderScanService) return;
 
     let tree: FileTreeNode | null = null;
@@ -519,6 +543,53 @@ export class ControlPanel {
     }
 
     this.attachFolderTree(tree, folderHandleId);
+  }
+
+  /**
+   * Folder-picker flow for non-FSA file sources (the desktop's
+   * IpcFileSource). The host runs the picker, returns the folder + a
+   * flat file list (each `{ name, path }`). We build a synthetic
+   * single-folder FileTreeNode where every leaf carries `filePath`
+   * instead of `fileHandle`, then hand the tree to attachFolderTree
+   * so the env binding + auto-import flow reuses the existing code.
+   */
+  private async openFolderViaFileSource(): Promise<void> {
+    if (!this.fileSource) return;
+    const folder = await this.fileSource.pickFolder();
+    if (!folder) return;
+    const files = await this.fileSource.listFolderFiles(folder);
+    const importableFiles = files.filter((f) => {
+      if (f.kind !== "path") return false;
+      // Only show files the import pipeline could conceivably handle.
+      // Hidden / unsupported extensions are dropped from the tree —
+      // they'd show as greyed-out rows otherwise and clutter the panel.
+      return detectFileType(f.name) !== null;
+    });
+    const children: FileTreeNode[] = importableFiles.map((f) => {
+      // The discriminant said "path", so the union narrowing on `f`
+      // surfaces `name` + `path` directly.
+      const file = f as Extract<typeof f, { kind: "path" }>;
+      return {
+        id: `ipc/${folder.id}/${file.name}`,
+        name: file.name,
+        kind: "file" as const,
+        filePath: file.path,
+        fileType: detectFileType(file.name) ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      };
+    });
+    const tree: FileTreeNode = {
+      id: `ipc/${folder.id}`,
+      name: folder.name,
+      kind: "folder",
+      children,
+      isImported: false,
+      isExpanded: true,
+    };
+    // Use the folder path as the stable handle id — re-opening the
+    // same folder later will hit the same env via name-or-id match.
+    this.attachFolderTree(tree, folder.id);
   }
 
   /** Re-open a folder picked earlier (recent-folders shortcut). */
@@ -985,6 +1056,35 @@ export class ControlPanel {
     options: { silent?: boolean } = {},
   ): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
     if (!this.fileImportService) return { ok: false, error: { message: "File import service unavailable" } };
+
+    // Native-path mode: the host owns the bytes. Skip the format-handler
+    // dispatch entirely — backend.registerFileURL hits the host's
+    // registerFile RPC which dispatches read_csv_auto / read_parquet /
+    // read_json_auto based on the extension. Sheet picking (Excel) +
+    // multi-table HTML aren't supported on this path yet; they need
+    // host-side support that doesn't exist in the v1.0 protocol.
+    if (node.filePath) {
+      try {
+        const baseName = node.alias || stripExt(node.name);
+        const result = await this.fileImportService.importPath(node.filePath, baseName);
+        const metadata = await result.getMetadata();
+        node.isImported = true;
+        node.tableName = metadata.name;
+        if (!options.silent) {
+          node.isOpenAsTab = true;
+        }
+        this.treeRenderer?.updateNode(node.id, { isOpenAsTab: node.isOpenAsTab });
+        this.datasets.push({ metadata, dataset: result, isLoaded: true });
+        if (!options.silent) {
+          await this.tabManager.addDataset(metadata, result);
+          await this.tabManager.switchToDataset(metadata.name);
+          this.onSelectCallback?.(result);
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: formatError(err) };
+      }
+    }
 
     try {
       let file: File;

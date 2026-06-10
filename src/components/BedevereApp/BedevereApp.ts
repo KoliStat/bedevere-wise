@@ -14,6 +14,8 @@ import penguinsCsv from "@/assets/samples/penguins.csv?raw";
 import { SpreadsheetOptions } from "../SpreadsheetVisualizer/types";
 import { DataProvider } from "../../data/types";
 import type { Backend } from "../../data/Backend";
+import type { FileSource } from "../../data/files/FileSource";
+import { FsaFileSource } from "../../data/files/FsaFileSource";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
@@ -82,6 +84,14 @@ export interface BedevereAppOptions {
    * UI at a native DuckDB sitting in another process.
    */
   backend?: Backend;
+  /**
+   * File picker source — folder + file dialogs, recent-folders
+   * enumeration. Defaults to {@link FsaFileSource} (the File System
+   * Access API). The desktop renderer passes {@link IpcFileSource} so
+   * the picker uses the OS native dialog and the bytes never cross
+   * the WebSocket.
+   */
+  fileSource?: FileSource;
   spreadsheetOptions?: SpreadsheetOptions;
   theme?: BedevereAppTheme;
   showLeftPanel?: boolean;
@@ -96,6 +106,7 @@ export class BedevereApp implements EventHandler {
   private spreadsheetContainer!: HTMLElement;
 
   private backend!: Backend;
+  private fileSource!: FileSource;
   private leftPanel!: ControlPanel;
   private tabManager!: TabManager;
   private statusBar!: StatusBar;
@@ -131,6 +142,10 @@ export class BedevereApp implements EventHandler {
     // a backend. Hosts that bring their own (bedevere-desktop's
     // IpcBackend, future remote backends) pass it via options.
     this.backend = options.backend ?? new DuckDBService();
+    // Default to the browser File System Access API. Desktop / future
+    // remote hosts substitute an IpcFileSource so picks go through
+    // the native OS dialog.
+    this.fileSource = options.fileSource ?? new FsaFileSource();
     this.version = version;
 
     // Initialize persistence, view management, and import service.
@@ -538,6 +553,7 @@ export class BedevereApp implements EventHandler {
 
       // Wire services to panel
       this.leftPanel.setFileImportService(this.fileImportService);
+      this.leftPanel.setFileSource(this.fileSource);
       this.leftPanel.setOnAliasChangeCallback(async (tableName, alias) => {
         try {
           await this.aliasManager.setAlias(tableName, alias);

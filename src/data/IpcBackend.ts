@@ -204,18 +204,26 @@ export class IpcBackend implements Backend {
   }
 
   async registerFileText(_name: string, _text: string): Promise<void> {
-    // v1.0 of the protocol doesn't expose an in-memory text ingest path.
-    // Hosts that support it advertise the capability via
-    // `capabilities.registerFileText`; today the desktop shell does
-    // path-based ingestion only. Will land in a follow-up alongside the
-    // host-side binary-upload RPC.
-    throw new Error("IpcBackend: registerFileText is not yet implemented on the wire");
+    throw new Error(IPC_NO_INMEMORY_INGEST);
   }
 
   async registerFileBuffer(_name: string, _buffer: Uint8Array): Promise<void> {
-    throw new Error("IpcBackend: registerFileBuffer is not yet implemented on the wire");
+    throw new Error(IPC_NO_INMEMORY_INGEST);
   }
 }
+
+// Surfaced when a format handler tries to push browser-side bytes
+// (drag-drop, browser file picker) at the host. v1.0 of the wire
+// protocol has no upload channel — the host can only read files it
+// can open by path. The UX answer for desktop is to use the native
+// folder picker (`Open Folder` → IpcFileSource.pickFolder), which
+// returns OS paths the host reads directly. The error text guides
+// the user toward that path instead of leaking the wire-internal
+// "not yet implemented" framing.
+const IPC_NO_INMEMORY_INGEST =
+  "Browser drag-drop / paste isn't supported when the engine runs in a separate process " +
+  "(the wire has no upload channel). Use 'Open Folder' to pick the file via the OS dialog " +
+  "— the host opens it by path.";
 
 /** Local DuckDB identifier quoter — mirrors sqlIdent.quoteIdent. */
 function quoteIdent(name: string): string {

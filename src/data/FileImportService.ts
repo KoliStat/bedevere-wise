@@ -51,6 +51,27 @@ export class FileImportService {
   }
 
   /**
+   * Path-mode import. Used when the host already has the bytes (the
+   * desktop renderer's native-picker flow) and just needs to route a
+   * filesystem path through `backend.registerFileURL`. The backend
+   * dispatches `read_csv_auto` / `read_parquet` / `read_json_auto` /
+   * `read_xlsx` etc. based on the path's extension; the renderer-side
+   * format handlers are skipped because the bytes never reach JS.
+   *
+   * Customisation knobs the WASM path exposes (`sample_size`,
+   * `ignore_errors`, sheet picker, multi-table HTML) aren't available
+   * here yet — they need host-side support that v1.0 of the wire
+   * protocol doesn't expose. Filed as v0.14 follow-up.
+   */
+  public async importPath(path: string, tableName?: string): Promise<DataProvider> {
+    const fileName = path.split(/[\\/]/).pop() ?? path;
+    const preferred = tableName ?? fileName.replace(/\.[^/.]+$/, "");
+    const name = await this.resolveUniqueTableName(preferred);
+    await this.backend.registerFileURL(name, path);
+    return this.backend.getDataProvider(name, fileName);
+  }
+
+  /**
    * Pick a DuckDB table name that doesn't clash with anything already
    * registered. Same-named files in different sub-folders (a common
    * shape in clinical-data trees) used to collide on the basename and
