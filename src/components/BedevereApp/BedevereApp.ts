@@ -985,20 +985,13 @@ export class BedevereApp implements EventHandler {
       category: "Dataset",
       execute: async (params) => {
         if (params?.folder || params?.d) {
-          this.leftPanel?.openFolderPicker();
+          await this.leftPanel?.openFolderPicker();
           return;
         }
-        const picker = document.createElement("input");
-        picker.type = "file";
-        picker.multiple = true;
-        const exts = this.fileImportService.getSupportedExtensions();
-        picker.accept = exts.map((e) => (e.startsWith(".") ? e : "." + e)).join(",");
-        picker.addEventListener("change", async () => {
-          if (picker.files && picker.files.length > 0) {
-            await this.leftPanel?.addFilesFromDrop(Array.from(picker.files), true);
-          }
-        });
-        picker.click();
+        // Delegate the file picker to the panel — it branches on the
+        // active FileSource (FSA: browser `<input type="file">`; IPC:
+        // host's native dialog returning paths the host opens directly).
+        await this.leftPanel?.openFilePicker();
       },
     });
 

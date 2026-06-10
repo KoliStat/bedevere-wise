@@ -4,7 +4,7 @@ import { PersistenceService, persistenceService } from "../../data/PersistenceSe
 import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
-import type { FileSource } from "../../data/files/FileSource";
+import type { FileSource, FileSourceFile, FileSourceFolder } from "../../data/files/FileSource";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
@@ -558,16 +558,48 @@ export class ControlPanel {
     const folder = await this.fileSource.pickFolder();
     if (!folder) return;
     const files = await this.fileSource.listFolderFiles(folder);
-    const importableFiles = files.filter((f) => {
+    const tree = this.buildIpcFolderTree(folder, files);
+    // Prefix the folderHandleId with "ipc:" so `applyActiveEnvironment`
+    // can tell it apart from FSA's `folder_<ts>_<rand>` ids on restore.
+    // Without the marker, env-restore would route through
+    // openRecentFolder (the FSA path) and fail with "no longer
+    // accessible" because the id is an OS path, not an IDB key.
+    this.attachFolderTree(tree, "ipc:" + folder.id);
+  }
+
+  /**
+   * Re-open an IPC-mode folder from the saved path. Called by
+   * applyActiveEnvironment on boot when the active env's folderHandleId
+   * has the "ipc:" prefix. Shape is symmetric to openRecentFolder but
+   * routes through the host instead of FSA's IDB store.
+   */
+  private async restoreIpcFolder(folderPath: string): Promise<void> {
+    if (!this.fileSource) return;
+    const folder = await this.fileSource.openFolder(folderPath);
+    if (!folder) {
+      this.onShowMessageCallback?.(
+        `Couldn't re-open "${folderPath}" — folder may have moved or been deleted.`,
+        "warning",
+      );
+      return;
+    }
+    const files = await this.fileSource.listFolderFiles(folder);
+    const tree = this.buildIpcFolderTree(folder, files);
+    this.attachFolderTree(tree, "ipc:" + folder.id);
+  }
+
+  /**
+   * Synthetic file tree for a folder picked via IpcFileSource. Each
+   * leaf carries `filePath` so importNode routes through importPath
+   * (host-side `registerFile`) instead of the byte-based format
+   * handlers.
+   */
+  private buildIpcFolderTree(folder: FileSourceFolder, files: FileSourceFile[]): FileTreeNode {
+    const importable = files.filter((f) => {
       if (f.kind !== "path") return false;
-      // Only show files the import pipeline could conceivably handle.
-      // Hidden / unsupported extensions are dropped from the tree —
-      // they'd show as greyed-out rows otherwise and clutter the panel.
       return detectFileType(f.name) !== null;
     });
-    const children: FileTreeNode[] = importableFiles.map((f) => {
-      // The discriminant said "path", so the union narrowing on `f`
-      // surfaces `name` + `path` directly.
+    const children: FileTreeNode[] = importable.map((f) => {
       const file = f as Extract<typeof f, { kind: "path" }>;
       return {
         id: `ipc/${folder.id}/${file.name}`,
@@ -579,7 +611,7 @@ export class ControlPanel {
         isExpanded: false,
       };
     });
-    const tree: FileTreeNode = {
+    return {
       id: `ipc/${folder.id}`,
       name: folder.name,
       kind: "folder",
@@ -587,9 +619,89 @@ export class ControlPanel {
       isImported: false,
       isExpanded: true,
     };
-    // Use the folder path as the stable handle id — re-opening the
-    // same folder later will hit the same env via name-or-id match.
-    this.attachFolderTree(tree, folder.id);
+  }
+
+  /**
+   * Single-file picker, branching on the active FileSource. Browser
+   * (FSA) hosts get an `<input type="file">`; desktop / IPC hosts get
+   * the host's native dialog returning OS paths.
+   *
+   * Picked files become drop-style FileTreeNodes (one per file, no
+   * folder grouping) and route through the same auto-import + env
+   * binding the drag-drop flow uses.
+   */
+  public async openFilePicker(): Promise<void> {
+    if (!this.fileImportService) return;
+
+    if (this.fileSource && this.fileSource.id !== "fsa") {
+      const accept = this.fileImportService
+        .getSupportedExtensions()
+        .map((e) => (e.startsWith(".") ? e : "." + e))
+        .join(",");
+      const picked = await this.fileSource.pickFiles({ multiple: true, accept });
+      if (!picked || picked.length === 0) return;
+      const pathFiles = picked.filter((p) => p.kind === "path") as Extract<
+        (typeof picked)[number],
+        { kind: "path" }
+      >[];
+      if (pathFiles.length === 0) return;
+
+      // Mint drop-style nodes carrying `filePath`. autoImportBatch
+      // dispatches on filePath via importNode, so the single-file
+      // picker and the folder picker share the rest of the pipeline.
+      const newNodes: FileTreeNode[] = pathFiles.map((f) => ({
+        id: `ipc/file/${f.path}/${Date.now()}/${Math.random().toString(36).slice(2, 8)}`,
+        name: f.name,
+        kind: "file" as const,
+        filePath: f.path,
+        fileType: detectFileType(f.name) ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      }));
+      this.fileTree.push(...newNodes);
+
+      const activeEnvId = environmentService.getActiveId();
+      if (activeEnvId) {
+        for (const node of newNodes) {
+          environmentService.addDataset(activeEnvId, {
+            nodeId: node.id,
+            name: node.name,
+            relativePath: node.name,
+          });
+        }
+      }
+      this.renderTree();
+      this.expandSection("datasets");
+
+      // Open as visible tabs (no `silent: true`) so the user actually
+      // sees the data after picking, matching the drag-drop UX.
+      for (const node of newNodes) {
+        const result = await this.importNode(node);
+        if (!result.ok) {
+          this.onShowMessageCallback?.(
+            `Failed to import "${node.name}": ${result.error.message}`,
+            "error",
+          );
+        }
+      }
+      return;
+    }
+
+    // FSA / web fallback: same shape as BedevereApp's previous inline
+    // picker. The selected File objects route through addFilesFromDrop
+    // because the byte-based ingest path is the only thing that works
+    // for browser-handed Files.
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.multiple = true;
+    const exts = this.fileImportService.getSupportedExtensions();
+    picker.accept = exts.map((e) => (e.startsWith(".") ? e : "." + e)).join(",");
+    picker.addEventListener("change", async () => {
+      if (picker.files && picker.files.length > 0) {
+        await this.addFilesFromDrop(Array.from(picker.files), true);
+      }
+    });
+    picker.click();
   }
 
   /** Re-open a folder picked earlier (recent-folders shortcut). */
@@ -790,9 +902,22 @@ export class ControlPanel {
     const env = environmentService.get(envId);
     if (!env) return;
     if (env.kind === "folder" && env.folderHandleId) {
-      // Re-scan via the recent-folder pathway: it already handles
-      // permission prompts and stale-handle cleanup.
-      await this.openRecentFolder(env.folderHandleId);
+      if (env.folderHandleId.startsWith("ipc:")) {
+        // Desktop / IPC env: re-acquire by path via the host.
+        await this.restoreIpcFolder(env.folderHandleId.slice("ipc:".length));
+      } else if (this.fileSource && this.fileSource.id !== "fsa") {
+        // Non-FSA runtime + an env saved before the "ipc:" prefix
+        // landed. The id is a raw OS path; route it through the host.
+        // (FSA envs viewed under a non-FSA fileSource will fail the
+        // openFolder check inside restoreIpcFolder and surface the
+        // standard "no longer accessible" toast — acceptable; the
+        // user re-picks via Open Folder.)
+        await this.restoreIpcFolder(env.folderHandleId);
+      } else {
+        // FSA env: re-scan via the recent-folder pathway. It already
+        // handles permission prompts and stale-handle cleanup.
+        await this.openRecentFolder(env.folderHandleId);
+      }
     }
   }
 
