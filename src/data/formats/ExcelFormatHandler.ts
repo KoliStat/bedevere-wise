@@ -16,10 +16,10 @@ export class ExcelFormatHandler implements FormatHandler {
 
   async import(file: File, tableName: string, backend: Backend, options?: ImportFileOptions): Promise<void> {
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await backend.registerFileBuffer(file.name, buffer);
+    const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
 
     const sheet = options?.sheetName ? `, sheet = '${options.sheetName.replace(/'/g, "''")}'` : "";
-    const fname = file.name.replace(/'/g, "''");
+    const fname = effectiveName.replace(/'/g, "''");
 
     // Try several read paths, widening tolerance each time. The order
     // matters: each step preserves more correctness than the next.
@@ -97,11 +97,12 @@ export class ExcelFormatHandler implements FormatHandler {
     // Fallback: DuckDB-side probes in case the ZIP parse fails (e.g. .xls
     // binary-format files, which are not ZIPs and have no workbook.xml).
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await backend.registerFileBuffer(file.name, buffer);
+    const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
+    const fname = effectiveName.replace(/'/g, "''");
 
     const queries = [
-      `SELECT name FROM read_xlsx_names('${file.name}')`,
-      `SELECT DISTINCT sheet_name as name FROM read_xlsx('${file.name}', all_varchar=true, sheet='*') LIMIT 0`,
+      `SELECT name FROM read_xlsx_names('${fname}')`,
+      `SELECT DISTINCT sheet_name as name FROM read_xlsx('${fname}', all_varchar=true, sheet='*') LIMIT 0`,
     ];
 
     for (const query of queries) {

@@ -18,11 +18,10 @@
  * the call sites are the same; only the implementation type changes.
  */
 
-import type { Backend, BackendCapabilities, FunctionInfo } from "./Backend";
+import type { Backend, BackendCapabilities, BackendVisualizeResult, FunctionInfo } from "./Backend";
 import type { DataProvider } from "./types";
 import type { Bridge } from "./ipc/bridge";
 import { IpcDataProvider } from "./ipc/IpcDataProvider";
-import { arrowTableToRowArrays } from "./ipc/arrow";
 
 export interface IpcBackendOptions {
   /**
@@ -111,14 +110,20 @@ export class IpcBackend implements Backend {
 
   async executeQuery(sql: string): Promise<any[]> {
     const result = await this.bridge.call("executeQuery", { sql });
-    if (result.streamId === undefined) {
-      // Non-row-returning statement (DDL/DML); the UI mostly ignores
-      // the return value but a few callers check it for `.length`, so
-      // hand back an empty array rather than `undefined`.
+    // The host replies streamId: null (not absent) for non-row-returning
+    // statements (DDL/DML) — a strict undefined check would fall through
+    // and await a stream that never starts. The UI mostly ignores the
+    // return value but a few callers check `.length`, so hand back an
+    // empty array.
+    if (result.streamId == null) {
       return [];
     }
     const table = await this.bridge.awaitArrowStream(result.streamId);
-    return arrowTableToRowArrays(table);
+    // Match DuckDBService.executeQuery's shape: an array of Arrow row
+    // proxies whose named-field access (`row.column_name`) the call
+    // sites rely on. Positional arrays live in IpcDataProvider only —
+    // that's what the spreadsheet consumes.
+    return table.toArray();
   }
 
   async executeQueryWithSchema(sql: string): Promise<{
@@ -126,11 +131,11 @@ export class IpcBackend implements Backend {
     decimalScales: Record<string, number>;
   }> {
     const result = await this.bridge.call("executeQuery", { sql });
-    if (result.streamId === undefined) {
+    if (result.streamId == null) {
       return { rows: [], decimalScales: {} };
     }
     const table = await this.bridge.awaitArrowStream(result.streamId);
-    const rows = arrowTableToRowArrays(table);
+    const rows = table.toArray();
     // Lift per-column DECIMAL scales off the Arrow schema. Used by
     // runVisualize to scale Decimal values back to plain numbers. Other
     // column types contribute nothing to this map.
@@ -181,8 +186,8 @@ export class IpcBackend implements Backend {
     const rows = await this.executeQuery(
       "SELECT DISTINCT function_name AS name, function_type AS type FROM duckdb_functions()",
     );
-    // The DESCRIBE-style query above returns Arrow rows as arrays; the
-    // SELECT path returns row objects. Be permissive about shape.
+    // Arrow row proxies expose the aliased names; stay permissive about
+    // the un-aliased fallbacks for older hosts.
     return rows
       .map((row: any) => {
         const name = (row.name ?? row.function_name ?? "") as string;
@@ -203,27 +208,60 @@ export class IpcBackend implements Backend {
     await this.bridge.call("registerFile", { path: url, tableName: name });
   }
 
-  async registerFileText(_name: string, _text: string): Promise<void> {
-    throw new Error(IPC_NO_INMEMORY_INGEST);
+  async registerFileText(name: string, text: string): Promise<string> {
+    if (text.length > MAX_UPLOAD_BYTES) {
+      throw new Error(uploadTooLargeMessage(name, text.length));
+    }
+    const { path } = await this.bridge.call("registerFileText", { name, text });
+    return path;
   }
 
-  async registerFileBuffer(_name: string, _buffer: Uint8Array): Promise<void> {
-    throw new Error(IPC_NO_INMEMORY_INGEST);
+  async registerFileBuffer(name: string, buffer: Uint8Array): Promise<string> {
+    if (buffer.byteLength > MAX_UPLOAD_BYTES) {
+      throw new Error(uploadTooLargeMessage(name, buffer.byteLength));
+    }
+    const { path } = await this.bridge.call("registerFileBuffer", {
+      name,
+      contentBase64: bytesToBase64(buffer),
+    });
+    return path;
+  }
+
+  // ─── charts ─────────────────────────────────────────────────────────
+
+  async visualize(sql: string): Promise<BackendVisualizeResult> {
+    // The host runs the VISUALIZE statement, peels the spec + layer_sqls
+    // MAP server-side, executes each layer SQL, and replies with plain
+    // JSON — no Arrow round-trip, no MAP-over-the-wire concerns.
+    const result = await this.bridge.call("visualize", { sql });
+    return { spec: result.spec, datasets: result.datasets ?? {} };
   }
 }
 
-// Surfaced when a format handler tries to push browser-side bytes
-// (drag-drop, browser file picker) at the host. v1.0 of the wire
-// protocol has no upload channel — the host can only read files it
-// can open by path. The UX answer for desktop is to use the native
-// folder picker (`Open Folder` → IpcFileSource.pickFolder), which
-// returns OS paths the host reads directly. The error text guides
-// the user toward that path instead of leaking the wire-internal
-// "not yet implemented" framing.
-const IPC_NO_INMEMORY_INGEST =
-  "Browser drag-drop / paste isn't supported when the engine runs in a separate process " +
-  "(the wire has no upload channel). Use 'Open Folder' to pick the file via the OS dialog " +
-  "— the host opens it by path.";
+// In-memory uploads travel inside a JSON frame (text verbatim, buffers
+// base64). websocketpp's inbound frame cap is 32 MB, so refuse anything
+// that would blow past it after encoding overhead and point the user at
+// the by-path flow instead.
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+function uploadTooLargeMessage(name: string, size: number): string {
+  const mb = (size / (1024 * 1024)).toFixed(1);
+  return (
+    `${name} is ${mb} MB — too large to ship to the engine process over the wire ` +
+    `(limit ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB). Use 'Open Folder' to pick it via ` +
+    `the OS dialog — the host opens it by path, no size limit.`
+  );
+}
+
+/** Uint8Array → base64, chunked so large buffers don't overflow the arg list. */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
 
 /** Local DuckDB identifier quoter — mirrors sqlIdent.quoteIdent. */
 function quoteIdent(name: string): string {

@@ -131,6 +131,8 @@ export type IpcMethod =
   | "setLabel"
   // Session
   | "registerFile"
+  | "registerFileText"
+  | "registerFileBuffer"
   | "executeQuery"
   | "listTables"
   | "visualize"
@@ -235,16 +237,39 @@ export interface RegisterFileResult {
   totalColumns: number;
 }
 
+/**
+ * In-memory upload: the host writes the payload to a session temp file
+ * and returns its absolute path, which the renderer must reference in
+ * subsequent SQL (`read_csv_auto('<path>')`). Re-registering the same
+ * `name` overwrites the same temp file — matching DuckDB-WASM's
+ * registerFileText semantics. Payloads ride the JSON frame (text
+ * verbatim, buffers base64), so callers cap sizes well under the
+ * transport's 32 MB inbound frame limit.
+ */
+export interface RegisterFileTextParams {
+  name: string;
+  text: string;
+}
+export interface RegisterFileBufferParams {
+  name: string;
+  contentBase64: string;
+}
+export interface RegisterUploadResult {
+  path: string;
+}
+
 export interface ExecuteQueryParams {
   sql: string;
 }
 /**
  * `executeQuery` distinguishes row-returning SQL (SELECT, WITH ... SELECT)
- * from DDL/DML by the presence of `streamId`. Rows ship over the binary
- * channel; non-row statements report `affectedRows`.
+ * from DDL/DML by `streamId`: a number for row streams, `null` for
+ * side-effecting statements (the host sends an explicit null, not an
+ * absent field). Rows ship over the binary channel; non-row statements
+ * report `affectedRows`.
  */
 export interface ExecuteQueryResult {
-  streamId?: number;
+  streamId?: number | null;
   totalRows?: number;
   affectedRows?: number;
 }
@@ -401,6 +426,8 @@ export interface IpcMethodMap {
   setDescription: { params: SetDescriptionParams; result: SetMutatorResult };
   setLabel: { params: SetLabelParams; result: SetMutatorResult };
   registerFile: { params: RegisterFileParams; result: RegisterFileResult };
+  registerFileText: { params: RegisterFileTextParams; result: RegisterUploadResult };
+  registerFileBuffer: { params: RegisterFileBufferParams; result: RegisterUploadResult };
   executeQuery: { params: ExecuteQueryParams; result: ExecuteQueryResult };
   listTables: { params: ListTablesParams; result: ListTablesResult };
   visualize: { params: VisualizeParams; result: VisualizeResult };

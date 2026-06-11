@@ -9,9 +9,9 @@ export class ParquetFormatHandler implements FormatHandler {
 
   async import(file: File, tableName: string, backend: Backend, _options?: ImportFileOptions): Promise<void> {
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await backend.registerFileBuffer(file.name, buffer);
+    const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
     await backend.executeQuery(
-      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_parquet('${file.name}')`
+      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_parquet('${effectiveName.replace(/'/g, "''")}')`
     );
   }
 }

@@ -85,8 +85,20 @@ function patchVisualizeSpec(spec: Record<string, unknown>, datasets: Record<stri
  */
 export async function runVisualize(
   sql: string,
-  backend: SqlExecutor,
+  backend: SqlExecutor & Pick<Backend, "visualize">,
 ): Promise<VisualizeResult> {
+  // Backends with a dedicated visualize entry point (IPC: the host
+  // extracts spec + layer rows server-side) skip the SQL round-trip
+  // entirely. The faceted-spec patch still applies — it fixes a
+  // stats_duck output bug, not a transport one.
+  if (backend.visualize) {
+    const result = await backend.visualize(sql);
+    const spec = result.spec as VisualizationSpec;
+    const datasets = result.datasets;
+    patchVisualizeSpec(spec as Record<string, unknown>, datasets);
+    return { spec, datasets };
+  }
+
   let rows: any[];
   try {
     rows = await backend.executeQuery(sql);

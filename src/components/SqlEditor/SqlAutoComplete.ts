@@ -92,7 +92,15 @@ export class SqlAutoComplete {
 
       for (const table of tables) {
         const columns = await this.backend.getTableInfo(table);
-        newSchema.set(table, columns.map((col: any) => col.column_name));
+        // Drop anything that isn't a string — a backend handing back an
+        // unexpected row shape must degrade to "no column suggestions",
+        // not crash the completion source on undefined.toUpperCase().
+        newSchema.set(
+          table,
+          columns
+            .map((col: any) => col?.column_name)
+            .filter((name: unknown): name is string => typeof name === "string"),
+        );
       }
 
       this.schema = { tables: newSchema, lastRefresh: Date.now() };

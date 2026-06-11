@@ -39,7 +39,11 @@ export async function importCsvText(
   tableName: string,
   opts?: { delimiter?: string; hasHeader?: boolean },
 ): Promise<void> {
-  await backend.registerFileText(virtualFileName, csvText);
+  // registerFileText returns the effective name to reference in SQL —
+  // the virtual name itself for in-process backends, a host-side temp
+  // path for IPC (see the Backend contract).
+  const effectiveName =
+    (await backend.registerFileText(virtualFileName, csvText)) ?? virtualFileName;
 
   const baseOptions: Record<string, string> = {
     header: opts?.hasHeader === false ? "false" : "true",
@@ -53,7 +57,7 @@ export async function importCsvText(
       .join(", ");
     return (
       `CREATE TABLE ${quoteIdent(tableName)} AS ` +
-      `SELECT * FROM read_csv_auto(${quoteLit(virtualFileName)}, ${optsSql})`
+      `SELECT * FROM read_csv_auto(${quoteLit(effectiveName)}, ${optsSql})`
     );
   };
 

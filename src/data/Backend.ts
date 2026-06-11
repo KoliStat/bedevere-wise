@@ -169,14 +169,22 @@ export interface Backend {
    * truly can't accept in-memory data (e.g. a remote read-only connection)
    * should throw a NOT_SUPPORTED-style error. The `capabilities.registerFileText`
    * flag lets the UI hide affordances that would trigger that error.
+   *
+   * Returns the effective name/path the caller must reference in
+   * subsequent SQL (`read_csv_auto('<effective>')`). A `void` return
+   * means "use the `name` you passed" — the in-process WASM backend
+   * registers the blob under that virtual name. The IPC backend ships
+   * the bytes to the host, which writes a real temp file and returns
+   * its absolute path; the virtual name wouldn't resolve there.
    */
-  registerFileText(name: string, text: string): Promise<void>;
+  registerFileText(name: string, text: string): Promise<string | void>;
 
   /**
    * Register an in-memory byte buffer as a virtual file. See
-   * `registerFileText` for the throw-on-unsupported convention.
+   * `registerFileText` for the throw-on-unsupported convention and the
+   * effective-name return contract.
    */
-  registerFileBuffer(name: string, buffer: Uint8Array): Promise<void>;
+  registerFileBuffer(name: string, buffer: Uint8Array): Promise<string | void>;
 
   // ─── workspace management ─────────────────────────────────────────
 
@@ -196,6 +204,31 @@ export interface Backend {
    * existed.
    */
   dropByName?(name: string): Promise<DropKind | null>;
+
+  // ─── charts ───────────────────────────────────────────────────────
+
+  /**
+   * Optional: run a stats_duck `VISUALIZE … DRAW <mark>` script
+   * end-to-end and return the Vega-Lite spec plus the per-layer row
+   * objects. When present, `runVisualize` delegates here instead of
+   * driving the statement through `executeQuery` — the IPC backend
+   * implements it via the host's dedicated `visualize` RPC, which
+   * extracts the spec + layer_sqls MAP server-side (the MAP column
+   * doesn't round-trip the generic Arrow streaming path today).
+   * Backends whose `executeQuery` returns the VISUALIZE row directly
+   * (DuckDB-WASM) leave this undefined.
+   */
+  visualize?(sql: string): Promise<BackendVisualizeResult>;
+}
+
+/**
+ * Result shape of {@link Backend.visualize}: the parsed Vega-Lite spec
+ * (`unknown` here — vega-embed's `VisualizationSpec` at the call site)
+ * plus `layer_n` → row-object arrays matching the spec's data names.
+ */
+export interface BackendVisualizeResult {
+  spec: unknown;
+  datasets: Record<string, unknown[]>;
 }
 
 export interface BackendCapabilities {
