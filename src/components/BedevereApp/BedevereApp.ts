@@ -95,6 +95,7 @@ export interface BedevereAppOptions {
   spreadsheetOptions?: SpreadsheetOptions;
   theme?: BedevereAppTheme;
   showLeftPanel?: boolean;
+  showPanelTitle?: boolean;
   statusBarVisible?: boolean;
   debugMode?: boolean;
 }
@@ -537,7 +538,9 @@ export class BedevereApp implements EventHandler {
 
     // Dataset panel
     if (this.options.showLeftPanel) {
-      this.leftPanel = new ControlPanel(this.leftPanelContainer, this.tabManager);
+      this.leftPanel = new ControlPanel(this.leftPanelContainer, this.tabManager, {
+        hideAppTitle: !(this.options.showPanelTitle ?? true),
+      });
       this.setOnSelectDatasetCallback();
 
       // Move column stats into left panel

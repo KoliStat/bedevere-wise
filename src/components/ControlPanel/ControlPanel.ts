@@ -92,6 +92,7 @@ export class ControlPanel {
   private datasets: DatasetInfo[] = [];
   private tabManager: TabManager;
   private isMinimized: boolean = false;
+  private hideAppTitle: boolean = false;
   private panelWidth: number = 320;
   private onToggleCallback?: (isMinimized: boolean) => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
@@ -139,7 +140,12 @@ export class ControlPanel {
   private readonly onResizeMove: (e: MouseEvent) => void;
   private readonly onResizeEnd: (e: MouseEvent) => void;
 
-  constructor(parent: HTMLElement, tabManager: TabManager) {
+  constructor(
+    parent: HTMLElement,
+    tabManager: TabManager,
+    options: { hideAppTitle?: boolean } = {},
+  ) {
+    this.hideAppTitle = options.hideAppTitle ?? false;
     this.tabManager = tabManager;
 
     // Bind resize handlers once
@@ -159,16 +165,18 @@ export class ControlPanel {
     this.headerElement = document.createElement("div");
     this.headerElement.className = "control-panel__header";
 
-    const appTitle = document.createElement("span");
-    appTitle.className = "control-panel__app-title";
-    appTitle.innerHTML = `<img class="control-panel__app-icon" src="${duckPng}" alt="" /> Bedevere Wise`;
+    if (!this.hideAppTitle) {
+      const appTitle = document.createElement("span");
+      appTitle.className = "control-panel__app-title";
+      appTitle.innerHTML = `<img class="control-panel__app-icon" src="${duckPng}" alt="" /> Bedevere Wise`;
+      this.headerElement.appendChild(appTitle);
+    }
 
     this.toggleButton = document.createElement("button");
     this.toggleButton.className = "control-panel__toggle";
     this.toggleButton.innerHTML = "−";
     this.toggleButton.title = "Minimize panel";
 
-    this.headerElement.appendChild(appTitle);
     this.headerElement.appendChild(this.toggleButton);
 
     // Create content area
@@ -1400,10 +1408,9 @@ export class ControlPanel {
     if (this.isMinimized) {
       this.panelElement.classList.add("control-panel__panel--minimized");
       this.panelElement.style.width = "48px";
-      // Show the duck as the affordance to expand — clearer than a "+" and
-      // matches the brand mark in the header when the panel is open.
-      this.toggleButton.innerHTML =
-        `<img class="control-panel__app-icon control-panel__toggle-icon" src="${duckPng}" alt="" />`;
+      this.toggleButton.innerHTML = this.hideAppTitle
+        ? "+"
+        : `<img class="control-panel__app-icon control-panel__toggle-icon" src="${duckPng}" alt="" />`;
       this.toggleButton.title = "Expand panel";
     } else {
       this.panelElement.classList.remove("control-panel__panel--minimized");
