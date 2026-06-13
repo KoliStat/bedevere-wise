@@ -5,7 +5,7 @@
  *
  *   - DuckDBService — DuckDB-WASM in the browser (the default, ships
  *     with the web app at bedeverewise.app and any consumer importing
- *     `@caerbannogwhite/bedevere-wise` and constructing BedevereApp
+ *     `@kolistat/bedevere-wise` and constructing BedevereApp
  *     without specifying a backend).
  *   - IpcBackend — talks to a native DuckDB sitting in a separate
  *     process over a localhost WebSocket. Used by bedevere-desktop

@@ -11,7 +11,7 @@
  * native process) and skip this entry entirely.
  *
  *   import { DuckDBService, DuckDBDataProvider } from
- *     "@caerbannogwhite/bedevere-wise/duckdb";
+ *     "@kolistat/bedevere-wise/duckdb";
  */
 
 export { DuckDBService } from "./data/DuckDBService";

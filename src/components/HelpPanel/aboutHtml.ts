@@ -17,7 +17,7 @@ export function renderAboutBody(version: string): string {
         <h3 class="help-panel__about-section-title">What's new in 0.13</h3>
         <ul class="help-panel__about-list">
           <li><strong>Charts in <code>/embed</code>.</strong> The embed route now renders <code>VISUALIZE … DRAW</code> charts in addition to tables — same URL prefill protocol (<code>?dataset=…&amp;query=…</code>), same iframe height-report contract; chart data flows through the lazy-loaded <code>vega-embed</code> chunk so non-chart embeds stay slim.</li>
-          <li><strong>NPM package split.</strong> <code>@caerbannogwhite/bedevere-wise</code> now exposes <code>/ui</code> and <code>/duckdb</code> sub-entries. UI consumers (spreadsheet, column stats, chart, slim SQL editor) can import without dragging in the DuckDB-WASM worker URL chain — works in any browser bundler, not just Vite. The root entry still re-exports both for back-compat.</li>
+          <li><strong>NPM package split.</strong> <code>@kolistat/bedevere-wise</code> now exposes <code>/ui</code> and <code>/duckdb</code> sub-entries. UI consumers (spreadsheet, column stats, chart, slim SQL editor) can import without dragging in the DuckDB-WASM worker URL chain — works in any browser bundler, not just Vite. The root entry still re-exports both for back-compat.</li>
           <li><strong>Extractable <code>runVisualize</code> helper.</strong> The full <code>VISUALIZE … DRAW</code> pipeline (spec + layer SQL run + dataset materialization) is now a standalone helper exported from <code>/ui</code>. <code>TabManager</code> consumes it; embed consumes it; downstream tools (desktop, tflier) can drive it against their own SQL executor.</li>
         </ul>
       </div>
@@ -33,19 +33,19 @@ export function renderAboutBody(version: string): string {
         <h3 class="help-panel__about-section-title">Dependencies</h3>
         <ul class="help-panel__about-list">
           <li><a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a> &mdash; in-browser SQL engine.</li>
-          <li><a href="https://github.com/caerbannogwhite/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> &mdash; DuckDB extension that adds <code>VISUALIZE … DRAW</code> and stats helpers.</li>
+          <li><a href="https://github.com/KoliStat/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> &mdash; DuckDB extension that adds <code>VISUALIZE … DRAW</code> and stats helpers.</li>
           <li><a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a> &mdash; SQL editor with autocomplete and tokyonight highlighting.</li>
           <li><a href="https://vega.github.io/vega-lite/" target="_blank" rel="noopener noreferrer">Vega-Lite</a> + <a href="https://github.com/vega/vega-embed" target="_blank" rel="noopener noreferrer">vega-embed</a> &mdash; chart rendering. Code-split: only loaded on first <code>VISUALIZE</code>.</li>
         </ul>
       </div>
       <div class="help-panel__about-links">
-        <a href="https://github.com/caerbannogwhite/bedevere-wise" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/KoliStat/bedevere-wise" target="_blank" rel="noopener noreferrer">GitHub</a>
         <span class="help-panel__about-separator">·</span>
-        <a href="https://github.com/caerbannogwhite/bedevere-wise/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+        <a href="https://github.com/KoliStat/bedevere-wise/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
         <span class="help-panel__about-separator">·</span>
-        <a href="https://github.com/caerbannogwhite/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+        <a href="https://github.com/KoliStat/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
       </div>
-      <p class="help-panel__about-author">Made by <a href="https://github.com/caerbannogwhite" target="_blank" rel="noopener noreferrer">caerbannogwhite</a></p>
+      <p class="help-panel__about-author">Made by <a href="https://github.com/KoliStat" target="_blank" rel="noopener noreferrer">KoliStat</a></p>
       <details class="help-panel__lore">
         <summary class="help-panel__lore-summary">Why a duck?</summary>
         <p class="help-panel__lore-body">

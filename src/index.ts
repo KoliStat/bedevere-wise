@@ -4,11 +4,11 @@
  * New code should prefer the sub-entry imports so non-Vite bundlers
  * and non-DuckDB consumers don't drag in the worker URL chain:
  *
- *   import { SpreadsheetVisualizer } from "@caerbannogwhite/bedevere-wise/ui";
- *   import { DuckDBService }         from "@caerbannogwhite/bedevere-wise/duckdb";
+ *   import { SpreadsheetVisualizer } from "@kolistat/bedevere-wise/ui";
+ *   import { DuckDBService }         from "@kolistat/bedevere-wise/duckdb";
  *
  * The root entry stays around so `import { ... } from
- * "@caerbannogwhite/bedevere-wise"` keeps working. The UI tier
+ * "@kolistat/bedevere-wise"` keeps working. The UI tier
  * carries the SCSS import; importing only the root or `/ui` brings
  * the stylesheet, importing only `/duckdb` does not.
  */

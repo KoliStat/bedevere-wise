@@ -192,7 +192,7 @@ export class BedevereApp implements EventHandler {
       // DuckDB-WASM's INSTALL FROM requires an absolute URL.
       const rawStatsDuckUrl =
         (import.meta.env.VITE_STATS_DUCK_URL as string | undefined) ||
-        "https://caerbannogwhite.github.io/the-stats-duck";
+        "https://kolistat.github.io/the-stats-duck";
       const statsDuckUrl = rawStatsDuckUrl.startsWith("/")
         ? `${window.location.origin}${rawStatsDuckUrl}`
         : rawStatsDuckUrl;

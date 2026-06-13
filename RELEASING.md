@@ -85,7 +85,7 @@ git push origin "v0.X-codename"
 npm publish              # publishes as @latest because 0.X.0 is clean semver
 ```
 
-After this, `npm view @caerbannogwhite/bedevere-wise dist-tags` should show `latest: 0.X.0`.
+After this, `npm view @kolistat/bedevere-wise dist-tags` should show `latest: 0.X.0`.
 
 ### 3. Desktop: bump wise pin + tag
 
@@ -95,7 +95,7 @@ git checkout dev-0.X && git pull
 
 # Pin the wise dependency to the just-published version
 # renderer/package.json:
-#   "@caerbannogwhite/bedevere-wise": "0.X.0"
+#   "@kolistat/bedevere-wise": "0.X.0"
 cd renderer && bun install     # locks the new pin into bun.lock
 cd ..
 
@@ -166,7 +166,7 @@ Per [[feedback-release-branches]] in memory: the moment a release is tagged + me
 
 - **npm version is clean semver**: `0.13.0`, not `0.13.0-i-am`. Anything after a `-` is a pre-release per semver, and npm refuses to assign `@latest` to pre-release versions automatically. Keeping the codename out of `package.json` means `npm publish` Just Works.
 - **The codename is the release identity** for humans: git tag, CHANGELOG heading, About tab, blog post, GitHub Release page. All those carry `v0.X-codename`.
-- **`@next` during active dev**: bedevere-desktop's renderer pins `@caerbannogwhite/bedevere-wise` to `"next"` while `dev-0.X` is in flight. Wise pre-release builds can be published via `npm publish --tag next` from a `dev-0.X` branch without affecting `@latest`. The release ritual above bumps the pin to the exact version `"0.X.0"` so the tagged desktop release is reproducible.
+- **`@next` during active dev**: bedevere-desktop's renderer pins `@kolistat/bedevere-wise` to `"next"` while `dev-0.X` is in flight. Wise pre-release builds can be published via `npm publish --tag next` from a `dev-0.X` branch without affecting `@latest`. The release ritual above bumps the pin to the exact version `"0.X.0"` so the tagged desktop release is reproducible.
 - **Patch releases**: same ritual, patch level only. Bump to `0.X.1` on both, codename stays the same (e.g. `v0.X.1-i-am` git tag if you want to be explicit, or just `v0.X.1` — both work, pick one).
 - **Desktop-only fix between wise releases**: bump both repos' patch level. Wise's publish is essentially a no-op (same code, new version) but preserves the version invariant. For now this is rare and tolerable; if it becomes frequent, revisit the lockstep model.
 

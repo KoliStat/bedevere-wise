@@ -10,7 +10,7 @@ import { getStatsDuckFailureReason } from "./statsDuckStatus";
  * v0.13) supersedes it — both methods are part of the Backend
  * contract — and the rest of the codebase has standardized on
  * Backend. Alias kept for one release so downstream
- * `@caerbannogwhite/bedevere-wise/ui` consumers (the desktop
+ * `@kolistat/bedevere-wise/ui` consumers (the desktop
  * renderer + any external embedders) don't break on upgrade.
  */
 export type SqlExecutor = Pick<Backend, "executeQuery" | "executeQueryWithSchema">;

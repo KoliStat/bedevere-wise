@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import { resolve } from "path";
 
 /**
- * Library-build config for `@caerbannogwhite/bedevere`.
+ * Library-build config for `@kolistat/bedevere`.
  *
  * This is separate from `vite.config.ts` (which builds the *standalone
  * app* with `index.html` + `embed.html` as MPA entries). Running

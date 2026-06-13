@@ -9,8 +9,8 @@
  *   import {
  *     SpreadsheetVisualizer,
  *     ColumnStatsVisualizerFocusable,
- *   } from "@caerbannogwhite/bedevere-wise/ui";
- *   import "@caerbannogwhite/bedevere-wise/style.css";
+ *   } from "@kolistat/bedevere-wise/ui";
+ *   import "@kolistat/bedevere-wise/style.css";
  */
 
 // UI components.

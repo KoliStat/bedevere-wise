@@ -1,4 +1,4 @@
-# @caerbannogwhite/bedevere-wise
+# @kolistat/bedevere-wise
 
 Embeddable browser components for DuckDB-WASM-backed data exploration:
 
@@ -15,7 +15,7 @@ These are the same components that compose the standalone web app at [bedeverewi
 ## Install
 
 ```sh
-bun add @caerbannogwhite/bedevere-wise@next
+bun add @kolistat/bedevere-wise@next
 
 # Peer dependencies — install one shared copy of each in your tree:
 bun add @duckdb/duckdb-wasm \
@@ -35,8 +35,8 @@ import {
   DuckDBDataProvider,
   SpreadsheetVisualizer,
   ColumnStatsVisualizerFocusable,
-} from "@caerbannogwhite/bedevere-wise";
-import "@caerbannogwhite/bedevere-wise/style.css";
+} from "@kolistat/bedevere-wise";
+import "@kolistat/bedevere-wise/style.css";
 
 const duck = new DuckDBService();
 await duck.initialize();
@@ -120,22 +120,22 @@ If your stack can't handle `?url` and you only need the UI surfaces, the workaro
 
 ## Local development against this package
 
-The package's source lives in [bedevere-wise](https://github.com/caerbannogwhite/bedevere-wise) on the `dev-0.12` branch. To hack on both this and a consumer at once:
+The package's source lives in [bedevere-wise](https://github.com/KoliStat/bedevere-wise) on the `dev-0.12` branch. To hack on both this and a consumer at once:
 
 ```sh
 # in bedevere-wise/
 bun run build:lib    # produces dist/
-bun link             # registers @caerbannogwhite/bedevere-wise locally
+bun link             # registers @kolistat/bedevere-wise locally
 
 # in your consumer app/
-bun link @caerbannogwhite/bedevere-wise
+bun link @kolistat/bedevere-wise
 ```
 
 After source changes in `bedevere-wise`, re-run `bun run build:lib` to refresh the linked `dist/`. The consumer's Vite dev server picks up the new code on next reload.
 
 ## Source + standalone app
 
-Source code: [github.com/caerbannogwhite/bedevere-wise](https://github.com/caerbannogwhite/bedevere-wise). The standalone web app at [bedeverewise.app](https://bedeverewise.app) is built from the same source. End-user docs and screenshots live on the [Bedevere Wise app site](https://bedeverewise.app) (it's a desktop-only browser app; mobile isn't supported yet).
+Source code: [github.com/KoliStat/bedevere-wise](https://github.com/KoliStat/bedevere-wise). The standalone web app at [bedeverewise.app](https://bedeverewise.app) is built from the same source. End-user docs and screenshots live on the [Bedevere Wise app site](https://bedeverewise.app) (it's a desktop-only browser app; mobile isn't supported yet).
 
 ## License
 

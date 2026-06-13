@@ -447,7 +447,7 @@ plus a dict of layer-name → row arrays. The shell executes each layer SQL
 internally before responding; the renderer hands the result directly to
 `ChartVisualizer.setSpec(spec, datasets)`.
 
-This shape matches `runVisualize` from `@caerbannogwhite/bedevere-wise/ui`,
+This shape matches `runVisualize` from `@kolistat/bedevere-wise/ui`,
 so a renderer with the package's `ChartVisualizer` mounted needs zero
 translation.
 
@@ -491,7 +491,7 @@ Mirrors `PluginManager::describe_catalog()` in
       "licenseRequired": false,
       "dependsOn": [],
       "vendor": "Bedevere",
-      "homepage": "https://github.com/caerbannogwhite/the-stats-duck"
+      "homepage": "https://github.com/KoliStat/the-stats-duck"
     },
     "status": "loaded"
   }
@@ -772,7 +772,7 @@ JSON-optional (absent when empty).
   "licenseRequired": false,
   "dependsOn": [],
   "vendor": "Bedevere",
-  "homepage": "https://github.com/caerbannogwhite/the-stats-duck"
+  "homepage": "https://github.com/KoliStat/the-stats-duck"
 }
 ```
 
@@ -958,7 +958,7 @@ agent knows the shape of the future work.
 - Renderer DataProvider impl: [`src/data/ipc/IpcDataProvider.ts`](../src/data/ipc/IpcDataProvider.ts)
 - Renderer Backend impl: [`src/data/IpcBackend.ts`](../src/data/IpcBackend.ts)
 - NPM sub-entry (host implementations import this): [`src/ipc.ts`](../src/ipc.ts) →
-  published as `@caerbannogwhite/bedevere-wise/ipc`
+  published as `@kolistat/bedevere-wise/ipc`
 
 **bedevere-desktop (reference host implementation):**
 

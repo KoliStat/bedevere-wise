@@ -1,5 +1,5 @@
 /**
- * IPC sub-entry — `@caerbannogwhite/bedevere-wise/ipc`.
+ * IPC sub-entry — `@kolistat/bedevere-wise/ipc`.
  *
  * The Bedevere Backend Protocol: a Bridge that speaks JSON RPC + Arrow
  * IPC streaming over a localhost WebSocket, an IpcBackend that
@@ -13,7 +13,7 @@
  *   import {
  *     Bridge,
  *     IpcBackend,
- *   } from "@caerbannogwhite/bedevere-wise/ipc";
+ *   } from "@kolistat/bedevere-wise/ipc";
  *
  *   const bridge = new Bridge({ port, token });
  *   await bridge.connect();

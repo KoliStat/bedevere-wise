@@ -1,13 +1,13 @@
 {
-  "name": "@caerbannogwhite/bedevere-wise",
+  "name": "@kolistat/bedevere-wise",
   "version": "0.13.0",
   "author": "Massimo Meneghello",
   "repository": {
     "type": "git",
-    "url": "https://github.com/caerbannogwhite/bedevere-wise"
+    "url": "https://github.com/KoliStat/bedevere-wise"
   },
   "bugs": {
-    "url": "https://github.com/caerbannogwhite/bedevere-wise/issues"
+    "url": "https://github.com/KoliStat/bedevere-wise/issues"
   },
   "engines": {
     "node": ">=18"
@@ -116,7 +116,7 @@
     "README.md",
     "CHANGELOG.md"
   ],
-  "homepage": "https://github.com/caerbannogwhite/bedevere-wise",
+  "homepage": "https://github.com/KoliStat/bedevere-wise",
   "keywords": [
     "sas",
     "sas7bdat",
@@ -158,3 +158,4 @@
   "type": "module",
   "types": "dist/index.d.ts"
 }
+
