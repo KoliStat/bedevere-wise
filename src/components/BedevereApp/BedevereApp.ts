@@ -19,7 +19,13 @@ import { FsaFileSource } from "../../data/files/FsaFileSource";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
-import { exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
+import { downloadBinaryFile, exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
+import {
+  EXPORT_FORMATS,
+  EXPORT_FORMAT_ORDER,
+  isExportFormat,
+  type ExportFormat,
+} from "@/data/exportFormats";
 import { DuckDBService } from "@/data/DuckDBService";
 // NOTE: DuckDBService stays imported for the no-options default — when a
 // host doesn't pass `options.backend` we construct one for them. Hosts
@@ -1306,21 +1312,24 @@ export class BedevereApp implements EventHandler {
       shellName: "export",
       title: "Export Selection / Chart",
       description:
-        "Export the active dataset's selection (csv | tsv | html | markdown — clipboard + downloads) " +
-        "or the active chart (png | svg — downloads only)",
+        "Export the active dataset — selection as csv | tsv | html | markdown (clipboard + download), " +
+        "or the whole table to a file as parquet | json | xpt | sav | por | sas7bdat. " +
+        "The active chart exports as png | svg.",
       category: "Dataset",
       parameters: [
         {
           name: "format",
           type: "string",
           required: true,
-          description: "csv | tsv | html | markdown (datasets); png | svg (charts)",
+          description:
+            "csv | tsv | html | markdown (selection); parquet | json | xpt | sav | por | sas7bdat (whole table); png | svg (charts)",
           // Argument-completion is per-active-tab so the user only sees the
-          // formats that apply right now.
+          // formats that apply right now — and only the file-export formats
+          // the current engine can actually write.
           options: () =>
             this.tabManager.getActiveChartTab() !== null
               ? ["png", "svg"]
-              : ["csv", "tsv", "html", "markdown"],
+              : ["csv", "tsv", "html", "markdown", ...this.availableFileExportFormats()],
         },
         { name: "includeHeader", type: "boolean", required: false, default: "true" },
         { name: "includeIndex",  type: "boolean", required: false, default: "true" },
@@ -1337,6 +1346,14 @@ export class BedevereApp implements EventHandler {
           }
           const filename = await this.tabManager.exportActiveChart(fmt);
           this.showMessage(`Exported ${filename} to downloads`, "success");
+          return;
+        }
+        // File-export formats (parquet/json/xpt/sav/por/sas7bdat) write the
+        // whole table via the backend's COPY path; the text formats fall
+        // through to the selection-based, client-side export.
+        const fmt = String(params?.format ?? "").toLowerCase();
+        if (isExportFormat(fmt)) {
+          await this.exportDatasetToFile(fmt);
           return;
         }
         await this.exportSelection(params);
@@ -1582,6 +1599,64 @@ export class BedevereApp implements EventHandler {
       this.showMessage("Demo loaded \u2014 press Ctrl+Enter to run", "info");
     } catch (error) {
       // loadSampleDataset already surfaced its own error; nothing to add.
+    }
+  }
+
+  /**
+   * The file-export formats the current engine can write right now.
+   * Filtered by whether the backend implements `exportTable` at all and —
+   * for the stat formats — whether stats_duck is loaded
+   * (`capabilities.visualize`). Drives `.export` argument completion.
+   */
+  private availableFileExportFormats(): ExportFormat[] {
+    if (!this.backend.exportTable) return [];
+    const statsDuck = this.backend.capabilities.visualize;
+    return EXPORT_FORMAT_ORDER.filter(
+      (f) => !EXPORT_FORMATS[f].requiresStatsDuck || statsDuck,
+    );
+  }
+
+  /**
+   * Export the active dataset's whole backing table to a file via the
+   * backend's COPY path. The in-process WASM engine hands back bytes we
+   * download in the browser; the desktop host writes the file itself
+   * after a native Save dialog. Active filters / sorts / hidden columns
+   * are NOT applied — this is the full table. (The selection-based
+   * csv / tsv / html / markdown export is the filter-aware path.)
+   */
+  private async exportDatasetToFile(format: ExportFormat): Promise<void> {
+    const activeDataset = this.tabManager.getActiveDatasetTab();
+    if (!activeDataset) {
+      this.showMessage("No active dataset to export", "warning");
+      return;
+    }
+    if (!this.backend.exportTable) {
+      this.showMessage("This engine can't export files", "warning");
+      return;
+    }
+    const meta = EXPORT_FORMATS[format];
+    if (meta.requiresStatsDuck && !this.backend.capabilities.visualize) {
+      this.showMessage(`${meta.label} export needs the stats_duck extension loaded`, "warning");
+      return;
+    }
+    const table = activeDataset.dataProvider.getSourceTable?.() ?? activeDataset.metadata.name;
+    const filenameHint = activeDataset.metadata.name;
+    try {
+      const result = await this.backend.exportTable({ table, format, filenameHint });
+      switch (result.kind) {
+        case "cancelled":
+          return;
+        case "bytes":
+          downloadBinaryFile(result.data, result.filename, result.mime);
+          this.showMessage(`Exported ${result.filename} to downloads (whole table)`, "success");
+          return;
+        case "saved":
+          this.showMessage(`Exported ${meta.label} to ${result.path}`, "success");
+          return;
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "unknown error";
+      this.showMessage(`Export failed: ${msg}`, "error");
     }
   }
 

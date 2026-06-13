@@ -136,6 +136,7 @@ export type IpcMethod =
   | "executeQuery"
   | "listTables"
   | "visualize"
+  | "exportTable"
   // Persistence (kv snapshot — see IpcFilesystemPersistence)
   | "loadPersistence"
   | "savePersistence"
@@ -299,6 +300,32 @@ export interface VisualizeResult {
   datasets: Record<string, unknown[]>;
 }
 
+/**
+ * Export a whole table to a file, host-side. The host pops a native
+ * Save dialog (so the user picks the destination + sees the OS overwrite
+ * prompt), then runs `COPY <table> TO '<path>' (FORMAT <format>)` on its
+ * native DuckDB. `format` is one of the file-export formats (parquet /
+ * json / xpt / sav / por / sas7bdat); the host allowlists it before
+ * interpolating into SQL. Bytes never cross the wire — only the result.
+ */
+export interface ExportTableParams {
+  table: string;
+  format: string;
+  /** Suggested base filename (no extension) for the Save dialog default. */
+  filenameHint?: string;
+}
+/**
+ * `cancelled: true` ⇒ the user dismissed the Save dialog (a no-op, not an
+ * error). Otherwise `exported: true` and `path` is where the host wrote
+ * the file; `rowsExported` mirrors DuckDB's COPY rowcount when available.
+ */
+export interface ExportTableResult {
+  exported: boolean;
+  cancelled?: boolean;
+  path?: string;
+  rowsExported?: number;
+}
+
 // ----- Persistence methods --------------------------------------------------
 
 export type LoadPersistenceParams = Record<string, never>;
@@ -431,6 +458,7 @@ export interface IpcMethodMap {
   executeQuery: { params: ExecuteQueryParams; result: ExecuteQueryResult };
   listTables: { params: ListTablesParams; result: ListTablesResult };
   visualize: { params: VisualizeParams; result: VisualizeResult };
+  exportTable: { params: ExportTableParams; result: ExportTableResult };
   loadPersistence: { params: LoadPersistenceParams; result: LoadPersistenceResult };
   savePersistence: { params: SavePersistenceParams; result: SavePersistenceResult };
   pickFolder: { params: PickFolderParams; result: PickFolderResult };

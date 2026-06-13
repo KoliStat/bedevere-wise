@@ -351,4 +351,15 @@ export interface DataProvider {
   setName(name: string): void;
   setDescription(description: string): void;
   setLabel(label: string): void;
+
+  /**
+   * The backing relation this provider reads from — the DuckDB
+   * table/view name on whichever engine sits behind it. Used by the
+   * file-export path (`COPY <name> TO …`) to address the data
+   * server-side. Optional: providers that don't wrap a single named
+   * relation omit it, and callers fall back to the dataset's display
+   * name. For the filtered provider this is the *source* table (export
+   * writes the full table, not the filtered view).
+   */
+  getSourceTable?(): string;
 }

@@ -18,7 +18,7 @@
  * the call sites are the same; only the implementation type changes.
  */
 
-import type { Backend, BackendCapabilities, BackendVisualizeResult, FunctionInfo } from "./Backend";
+import type { Backend, BackendCapabilities, BackendVisualizeResult, ExportResult, ExportTableOptions, FunctionInfo } from "./Backend";
 import type { DataProvider } from "./types";
 import type { Bridge } from "./ipc/bridge";
 import { IpcDataProvider } from "./ipc/IpcDataProvider";
@@ -235,6 +235,22 @@ export class IpcBackend implements Backend {
     // JSON — no Arrow round-trip, no MAP-over-the-wire concerns.
     const result = await this.bridge.call("visualize", { sql });
     return { spec: result.spec, datasets: result.datasets ?? {} };
+  }
+
+  // ─── export path ────────────────────────────────────────────────────
+
+  async exportTable(opts: ExportTableOptions): Promise<ExportResult> {
+    // The host pops a native Save dialog and runs the COPY itself; the
+    // bytes stay on the host. We get back either a path or a cancel.
+    const res = await this.bridge.call("exportTable", {
+      table: opts.table,
+      format: opts.format,
+      filenameHint: opts.filenameHint,
+    });
+    if (res.cancelled || !res.exported || !res.path) {
+      return { kind: "cancelled" };
+    }
+    return { kind: "saved", path: res.path, rows: res.rowsExported };
   }
 }
 

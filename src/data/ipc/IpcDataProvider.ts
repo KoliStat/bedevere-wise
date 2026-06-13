@@ -28,6 +28,11 @@ export class IpcDataProvider implements DataProvider {
     private fileName: string,
   ) {}
 
+  /** The host-side relation this provider addresses in every RPC. */
+  getSourceTable(): string {
+    return this.table;
+  }
+
   // ------------------------------------------------------------------------
   // Metadata
   // ------------------------------------------------------------------------

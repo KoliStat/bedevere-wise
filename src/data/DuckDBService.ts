@@ -5,7 +5,8 @@ import coiWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?
 import coiPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
-import type { Backend, BackendCapabilities, FunctionInfo } from "./Backend";
+import type { Backend, BackendCapabilities, ExportResult, ExportTableOptions, FunctionInfo } from "./Backend";
+import { EXPORT_FORMATS } from "./exportFormats";
 
 /**
  * Best-effort lift of a DECIMAL scale from an Apache Arrow schema field's
@@ -203,6 +204,40 @@ export class DuckDBService implements Backend {
   public async registerFileURL(name: string, url: string): Promise<void> {
     if (!this.db) throw new Error("DuckDB not initialized");
     await this.db.registerFileURL(name, url, duckdb.DuckDBDataProtocol.HTTP, false);
+  }
+
+  /**
+   * Export a whole table to a file via `COPY … TO` and hand the bytes
+   * back for download. DuckDB-WASM writes into its in-memory virtual FS,
+   * so we COPY to a throwaway virtual filename, read it out with
+   * `copyFileToBuffer`, then drop it. The stat formats (xpt/sav/por/
+   * sas7bdat) only resolve if the loaded stats_duck WASM build registers
+   * their COPY functions; if it doesn't, DuckDB throws "Copy Function
+   * with name … does not exist" and the caller surfaces it.
+   */
+  public async exportTable(opts: ExportTableOptions): Promise<ExportResult> {
+    if (!this.db) throw new Error("DuckDB not initialized");
+    const meta = EXPORT_FORMATS[opts.format];
+    // Internally-generated name (no user input) — escape the literal
+    // defensively all the same.
+    const vname = `__bedevere_export_${Date.now().toString(36)}.${meta.ext}`;
+    const conn = await this.getConnection();
+    try {
+      await conn.query(
+        `COPY ${quoteIdent(opts.table)} TO '${vname.replace(/'/g, "''")}' (FORMAT ${meta.duckFormat})`,
+      );
+    } finally {
+      await conn.close();
+    }
+    const data = await this.db.copyFileToBuffer(vname);
+    try {
+      await this.db.dropFile(vname);
+    } catch {
+      // best-effort cleanup; an orphan virtual file is harmless and
+      // vanishes when the worker is torn down.
+    }
+    const base = opts.filenameHint && opts.filenameHint.length > 0 ? opts.filenameHint : opts.table;
+    return { kind: "bytes", data, filename: `${base}.${meta.ext}`, mime: meta.mime };
   }
 
   public isReady(): boolean {

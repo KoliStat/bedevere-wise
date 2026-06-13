@@ -1,7 +1,6 @@
 import { ICellSelection } from "../SpreadsheetVisualizer/types";
 
-function downloadFile(content: string, filename: string, mime: string): void {
-  const blob = new Blob([content], { type: mime });
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -11,6 +10,25 @@ function downloadFile(content: string, filename: string, mime: string): void {
   a.remove();
   // Defer revoke so the click has time to start the download.
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadFile(content: string, filename: string, mime: string): void {
+  triggerDownload(new Blob([content], { type: mime }), filename);
+}
+
+/**
+ * Download raw bytes (e.g. a Parquet / SAS / SPSS file produced by
+ * `backend.exportTable` on the in-process WASM engine). Mirrors
+ * downloadFile but takes a binary payload — no clipboard step, since
+ * these formats aren't text.
+ */
+export function downloadBinaryFile(data: Uint8Array, filename: string, mime: string): void {
+  // Copy into a fresh ArrayBuffer-backed view so the Blob doesn't alias
+  // a SharedArrayBuffer (duckdb-wasm COI builds hand back SAB-backed
+  // buffers, which the Blob constructor rejects).
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  triggerDownload(new Blob([copy], { type: mime }), filename);
 }
 
 export const exportAsText = async (

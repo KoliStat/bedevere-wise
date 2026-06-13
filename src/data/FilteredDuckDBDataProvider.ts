@@ -246,4 +246,13 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   public getSourceTableName(): string {
     return this.sourceTableName;
   }
+
+  /**
+   * DataProvider hook for file export. Returns the *source* table, not
+   * the filtered view — binary export writes the full table (filters
+   * are a selection-export concern).
+   */
+  public getSourceTable(): string {
+    return this.sourceTableName;
+  }
 }

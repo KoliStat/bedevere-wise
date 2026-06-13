@@ -29,6 +29,7 @@
  */
 
 import type { DataProvider } from "./types";
+import type { ExportFormat } from "./exportFormats";
 
 export interface Backend {
   /**
@@ -219,7 +220,54 @@ export interface Backend {
    * (DuckDB-WASM) leave this undefined.
    */
   visualize?(sql: string): Promise<BackendVisualizeResult>;
+
+  // ─── export path ──────────────────────────────────────────────────
+
+  /**
+   * Optional: write a whole table to a file in a binary/columnar format
+   * via DuckDB `COPY <table> TO '<file>' (FORMAT …)`. Drives the
+   * `.export` command's parquet / json / xpt / sav / por / sas7bdat
+   * options (the stat formats require stats_duck — see
+   * {@link BackendCapabilities.visualize}). The text formats
+   * (csv / tsv / html / markdown) do NOT come here; they serialize the
+   * spreadsheet selection client-side in ExportHub.
+   *
+   * The result is engine-shaped on purpose:
+   *   - In-process WASM (DuckDBService) writes to its virtual FS, reads
+   *     the bytes back, and returns them as `{ kind: "bytes" }` for the
+   *     UI to download via a Blob.
+   *   - Out-of-process hosts (IpcBackend) pop a native Save dialog and
+   *     run the COPY host-side, returning `{ kind: "saved", path }` —
+   *     the bytes never cross the wire — or `{ kind: "cancelled" }` if
+   *     the user dismissed the dialog.
+   *
+   * Backends that can't write files leave this undefined; the UI hides
+   * the binary-format options when `backend.exportTable` is absent.
+   */
+  exportTable?(opts: ExportTableOptions): Promise<ExportResult>;
 }
+
+export interface ExportTableOptions {
+  /** The relation to export (a DuckDB table/view name on the engine). */
+  table: string;
+  format: ExportFormat;
+  /**
+   * Suggested base filename (no extension) — the dataset's display name.
+   * Used for the web download name and the desktop Save-dialog default.
+   */
+  filenameHint?: string;
+}
+
+/**
+ * Outcome of {@link Backend.exportTable}, discriminated by `kind`:
+ *   - `"bytes"`     — the caller downloads `data` (web / in-process engine).
+ *   - `"saved"`     — the engine already wrote the file at `path` (host engine).
+ *   - `"cancelled"` — the user dismissed the host's Save dialog; no-op.
+ */
+export type ExportResult =
+  | { kind: "bytes"; data: Uint8Array; filename: string; mime: string }
+  | { kind: "saved"; path: string; rows?: number }
+  | { kind: "cancelled" };
 
 /**
  * Result shape of {@link Backend.visualize}: the parsed Vega-Lite spec
