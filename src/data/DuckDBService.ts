@@ -32,7 +32,7 @@ export class DuckDBService implements Backend {
   public readonly displayName = "DuckDB (browser, WebAssembly)";
   public readonly capabilities: BackendCapabilities = {
     arrow: true,
-    visualize: false, // flipped on by DuckDBExtensionLoader after stats_duck loads
+    visualize: false, // flipped true by BedevereApp.initAsync once stats_duck loads + its parser hooks attach
     registerFileText: true,
     registerFileBuffer: true,
     wipeUserState: true,

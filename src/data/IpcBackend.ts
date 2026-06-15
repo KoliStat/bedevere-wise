@@ -94,6 +94,23 @@ export class IpcBackend implements Backend {
     // Round-trip the version probe so we catch mismatched hosts up
     // front instead of on the first user-triggered query.
     await this.bridge.call("getProtocolVersion", {});
+    // Detect stats_duck host-side so VISUALIZE + stat-format export
+    // (xpt/sav/por/sas7bdat) light up. The protocol has no capability
+    // handshake yet, so probe the function catalog directly — the host
+    // loads stats_duck at startup, before it accepts connections. A
+    // caller that already pinned `visualize` via options is respected;
+    // a probe failure just leaves the flag as-is.
+    if (!this.capabilities.visualize) {
+      try {
+        const rows = await this.executeQuery(
+          "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'ggsql_mark_v1_%'",
+        );
+        const n = Number((rows?.[0] as { n?: unknown })?.n ?? 0);
+        if (n > 0) this.capabilities.visualize = true;
+      } catch {
+        // Older host without duckdb_functions() access — leave visualize off.
+      }
+    }
     this.ready = true;
   }
 

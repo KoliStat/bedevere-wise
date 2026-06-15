@@ -228,6 +228,13 @@ export class BedevereApp implements EventHandler {
               "functions — parser hooks didn't attach. Likely a DuckDB-WASM version " +
               "mismatch; run `SELECT version()` and rebuild the extension against it.",
           );
+        } else {
+          // stats_duck is loaded and its parser hooks attached. Make the
+          // `visualize` capability honest — it gates both VISUALIZE
+          // affordances and the stat-format file export (xpt/sav/por/
+          // sas7bdat COPY functions ship in the same extension). Inner
+          // field is mutable even though `capabilities` is readonly.
+          this.backend.capabilities.visualize = true;
         }
       }
 
