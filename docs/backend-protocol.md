@@ -470,6 +470,37 @@ translation.
 Errors: `SQL_ERROR`, `DUCKDB_ERROR`, `UNLICENSED` (if a future commercial
 extension provides the DRAW kind).
 
+#### 5.3.5 `exportTable`
+
+Write an entire table to a file in a binary/columnar format the renderer
+can't serialize itself. The host pops a **native Save dialog** (so the
+user picks the destination and gets the OS overwrite prompt), then runs
+`COPY <table> TO '<path>' (FORMAT <format>)` against its DuckDB and
+replies with the path it wrote — the bytes never travel the wire. (The
+in-process WASM backend implements the same `Backend.exportTable` method
+without this RPC: it COPYs to its virtual FS and hands the bytes to the
+browser for download.)
+
+`format` is one of `parquet` / `json` (DuckDB-native) or `xpt` / `sav` /
+`por` / `sas7bdat` (the `stats_duck` COPY functions). The host MUST
+allowlist `format` against a fixed set before interpolating it into SQL,
+and quote the table + path. `filenameHint` is the dataset's display name,
+used as the Save dialog's default filename. Dismissing the dialog yields
+`{ "exported": false, "cancelled": true }` — a no-op, not an error.
+
+```jsonc
+// params
+{ "table": "penguins", "format": "parquet", "filenameHint": "penguins" }
+// result (saved)
+{ "exported": true, "path": "C:\\Users\\me\\penguins.parquet", "rowsExported": 344 }
+// result (user cancelled the Save dialog)
+{ "exported": false, "cancelled": true }
+```
+
+Errors: `INVALID_PARAMS` (missing params / unknown format), `SQL_ERROR`,
+`DUCKDB_ERROR` (e.g. a stat-format COPY function isn't registered because
+`stats_duck` isn't loaded).
+
 ### 5.4 Plugin methods
 
 #### 5.4.1 `getPluginCatalog`

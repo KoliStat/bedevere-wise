@@ -31,11 +31,21 @@ export type { SqlExecutor, VisualizeResult } from "./data/visualize";
 export type {
   Backend,
   BackendCapabilities,
+  BackendVisualizeResult,
+  ExportTableOptions,
+  ExportResult,
   FunctionInfo,
   FunctionKind,
   WipeUserStateSummary,
   DropKind,
 } from "./data/Backend";
+
+// File-export format catalog. `ExportFormat` is referenced by
+// `Backend.exportTable`, so it must be nameable by anyone implementing
+// or calling the interface; the const map + helper let consumers build
+// their own export menu off the same metadata the `.export` command uses.
+export type { ExportFormat, ExportFormatMeta } from "./data/exportFormats";
+export { EXPORT_FORMATS, EXPORT_FORMAT_ORDER, isExportFormat } from "./data/exportFormats";
 
 // PersistenceBackend — the kv substrate PersistenceService writes into.
 // Hosts that want to persist user state outside localStorage (the desktop

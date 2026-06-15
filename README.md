@@ -77,7 +77,8 @@ Components in this tier accept their dependencies via constructor; no module-lev
 | --- | --- |
 | `DuckDBService` | DuckDB-WASM runtime wrapper. One instance per app. |
 | `DuckDBDataProvider` | Implements `DataProvider` over a DuckDB table. |
-| `DataProvider` (interface) | **The integration boundary.** Implement your own to feed data from anywhere — HTTP, IPC, a server. |
+| `DataProvider` (interface) | **The per-dataset integration boundary.** Implement your own to feed rows from anywhere — HTTP, IPC, a server. |
+| `Backend` (interface) | **The SQL-engine boundary.** Implement to point `BedevereApp` at a non-WASM engine (native IPC, remote relay). Optional `exportTable(opts)` writes a whole table to Parquet / JSON / SAS / SPSS — `ExportFormat`, `ExportTableOptions`, `ExportResult`, and `EXPORT_FORMATS` are exported for it. |
 | `SpreadsheetVisualizer` | Canvas-rendered spreadsheet. |
 | `ColumnStatsVisualizer` / `ColumnStatsVisualizerFocusable` | Column stats + filter panel; share one across many spreadsheets. |
 | `ChartVisualizer` | Renders Vega-Lite specs produced by `stats_duck`'s `VISUALIZE … DRAW`. |
