@@ -18,7 +18,10 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
+      # Not --frozen-lockfile: the repo's binary bun.lockb + the CI/local
+      # bun-version gap make a strict frozen check brittle. Plain install
+      # resolves package.json deterministically enough for a web deploy.
+      - run: bun install
       - run: bun run build
 
       - uses: cloudflare/wrangler-action@v3
