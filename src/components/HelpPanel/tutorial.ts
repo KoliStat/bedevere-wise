@@ -82,7 +82,7 @@ export const PENGUINS_TUTORIAL: TutorialNode[] = [
     kind: "prose",
     html:
       `Bedevere auto-loads the ` +
-      `<a href="https://github.com/caerbannogwhite/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> ` +
+      `<a href="https://github.com/KoliStat/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> ` +
       `DuckDB extension. Its <code>summary_stats()</code> aggregate returns a STRUCT with count, mean, sd, quartiles, ` +
       `min/max, skewness, and kurtosis.`,
   },

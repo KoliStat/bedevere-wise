@@ -9,6 +9,14 @@ export interface FileTreeNode {
   kind: FileNodeKind;
   children?: FileTreeNode[];
   fileHandle?: File | FileSystemFileHandle;
+  /**
+   * Host-readable filesystem path. Set when the node came from a
+   * native picker (desktop IpcFileSource) where the host owns the
+   * bytes. Mutually exclusive with `fileHandle`: nodes with a `filePath`
+   * import via `backend.registerFileURL(tableName, filePath)` so the
+   * host opens + reads the file directly, with no browser-side bytes.
+   */
+  filePath?: string;
   fileType?: SupportedFileType;
   isImported: boolean;
   isExpanded: boolean;

@@ -1,4 +1,4 @@
-import { DuckDBService } from "../DuckDBService";
+import type { Backend } from "../Backend";
 import { DuckDBExtensionLoader } from "../DuckDBExtensionLoader";
 import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
@@ -14,12 +14,12 @@ export class ExcelFormatHandler implements FormatHandler {
     return (fileType === "xlsx" || fileType === "xls") && this.extensionLoader.isLoaded("excel");
   }
 
-  async import(file: File, tableName: string, duckDBService: DuckDBService, options?: ImportFileOptions): Promise<void> {
+  async import(file: File, tableName: string, backend: Backend, options?: ImportFileOptions): Promise<void> {
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await duckDBService.registerFileBuffer(file.name, buffer);
+    const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
 
     const sheet = options?.sheetName ? `, sheet = '${options.sheetName.replace(/'/g, "''")}'` : "";
-    const fname = file.name.replace(/'/g, "''");
+    const fname = effectiveName.replace(/'/g, "''");
 
     // Try several read paths, widening tolerance each time. The order
     // matters: each step preserves more correctness than the next.
@@ -58,7 +58,7 @@ export class ExcelFormatHandler implements FormatHandler {
     const failures: Array<{ label: string; message: string }> = [];
     for (const attempt of attempts) {
       try {
-        await duckDBService.executeQuery(attempt.sql);
+        await backend.executeQuery(attempt.sql);
         if (failures.length > 0) {
           console.warn(
             `Excel import for ${file.name} succeeded via ${attempt.label}; earlier attempts failed:`,
@@ -83,7 +83,7 @@ export class ExcelFormatHandler implements FormatHandler {
     throw new Error(`Failed to import Excel file ${file.name}.\n${detail}`);
   }
 
-  async getSheetNames(file: File, duckDBService: DuckDBService): Promise<string[]> {
+  async getSheetNames(file: File, backend: Backend): Promise<string[]> {
     // Primary: parse the XLSX workbook.xml directly — reliable across DuckDB
     // extension versions. XLSX is a ZIP containing xl/workbook.xml which lists
     // every sheet with its real name.
@@ -97,16 +97,17 @@ export class ExcelFormatHandler implements FormatHandler {
     // Fallback: DuckDB-side probes in case the ZIP parse fails (e.g. .xls
     // binary-format files, which are not ZIPs and have no workbook.xml).
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await duckDBService.registerFileBuffer(file.name, buffer);
+    const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
+    const fname = effectiveName.replace(/'/g, "''");
 
     const queries = [
-      `SELECT name FROM read_xlsx_names('${file.name}')`,
-      `SELECT DISTINCT sheet_name as name FROM read_xlsx('${file.name}', all_varchar=true, sheet='*') LIMIT 0`,
+      `SELECT name FROM read_xlsx_names('${fname}')`,
+      `SELECT DISTINCT sheet_name as name FROM read_xlsx('${fname}', all_varchar=true, sheet='*') LIMIT 0`,
     ];
 
     for (const query of queries) {
       try {
-        const result = await duckDBService.executeQuery(query);
+        const result = await backend.executeQuery(query);
         const names = result.map((row: any) => row.name).filter(Boolean);
         if (names.length > 0) return names;
       } catch {

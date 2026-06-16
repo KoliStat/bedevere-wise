@@ -53,6 +53,11 @@ export class DuckDBDataProvider implements DataProvider {
     this.label = label;
   }
 
+  /** The DuckDB table this provider reads (kept in sync by setName's ALTER TABLE). */
+  public getSourceTable(): string {
+    return this.name;
+  }
+
   public async getMetadata(): Promise<DatasetMetadata> {
     const totalRows = (await this.duckDBService.executeQuery(`SELECT COUNT(*) FROM ${quoteIdent(this.name)}`))[0].toArray()[0] as BigInt;
     const columns = await this.duckDBService.getTableInfo(this.name);

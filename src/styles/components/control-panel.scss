@@ -24,6 +24,9 @@
       .control-panel__header  { justify-content: center; padding: 6px 8px; }
       .control-panel__toggle  { margin: 0; }
       .control-panel__resize-handle { display: none; }
+      // The env switcher sits between the header and content; collapse it
+      // entirely in the 48px strip (same treatment as the app title).
+      .env-switcher { display: none; }
     }
   }
 

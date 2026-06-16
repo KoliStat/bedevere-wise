@@ -1,5 +1,7 @@
 import type { KeyBinding } from "./KeymapService";
 import type { EnvironmentsFile } from "./environments/types";
+import type { PersistenceBackend } from "./persistence/PersistenceBackend";
+import { LocalStoragePersistenceBackend } from "./persistence/LocalStoragePersistenceBackend";
 
 export interface QueryBookmark {
   name: string;
@@ -127,7 +129,28 @@ const FOLDER_HANDLE_STORE = "folder_handles";
 const RECENT_FOLDERS_CAP = 5;
 
 export class PersistenceService {
-  // --- Query Bookmarks (localStorage) ---
+  /**
+   * The substrate every `*Item` call routes through. Defaults to
+   * `window.localStorage`; the desktop renderer swaps it for an
+   * IPC-backed implementation via {@link setBackend} during boot,
+   * before any other code calls `loadAppSettings` etc.
+   *
+   * IDB-backed paths (`saveTableSnapshot`, recent-folder handles)
+   * are NOT routed through this — they're FSA / binary-blob specific
+   * and have their own host story (the FileSource abstraction).
+   */
+  private backend: PersistenceBackend = new LocalStoragePersistenceBackend();
+
+  /**
+   * Swap the kv substrate. Hosts call this before {@link loadAppSettings}
+   * etc. fire. The substitute MUST be initialized (any async hydration
+   * complete) before this call returns — callers don't `await` reads.
+   */
+  public setBackend(backend: PersistenceBackend): void {
+    this.backend = backend;
+  }
+
+  // --- Query Bookmarks ---
 
   public saveQueryBookmark(name: string, sqlStr: string): void {
     const queries = this.loadQueryBookmarks();
@@ -140,11 +163,11 @@ export class PersistenceService {
       queries.push(bookmark);
     }
 
-    localStorage.setItem(STORAGE_KEYS.queries, JSON.stringify(queries));
+    this.backend.setItem(STORAGE_KEYS.queries, JSON.stringify(queries));
   }
 
   public loadQueryBookmarks(): QueryBookmark[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.queries);
+    const raw = this.backend.getItem(STORAGE_KEYS.queries);
     if (!raw) return [];
     try {
       return JSON.parse(raw);
@@ -155,17 +178,17 @@ export class PersistenceService {
 
   public deleteQueryBookmark(name: string): void {
     const queries = this.loadQueryBookmarks().filter((q) => q.name !== name);
-    localStorage.setItem(STORAGE_KEYS.queries, JSON.stringify(queries));
+    this.backend.setItem(STORAGE_KEYS.queries, JSON.stringify(queries));
   }
 
   // --- App Settings (localStorage) ---
 
   public saveAppSettings(settings: AppSettings): void {
-    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+    this.backend.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
   }
 
   public loadAppSettings(): AppSettings {
-    const raw = localStorage.getItem(STORAGE_KEYS.settings);
+    const raw = this.backend.getItem(STORAGE_KEYS.settings);
     if (!raw) return {};
     try {
       return JSON.parse(raw);
@@ -202,7 +225,7 @@ export class PersistenceService {
   // storage boundary.
 
   public loadAliases(): Record<string, string> {
-    const raw = localStorage.getItem(STORAGE_KEYS.aliases);
+    const raw = this.backend.getItem(STORAGE_KEYS.aliases);
     if (!raw) return {};
     try {
       return JSON.parse(raw) as Record<string, string>;
@@ -212,7 +235,7 @@ export class PersistenceService {
   }
 
   public saveAliases(aliases: Record<string, string>): void {
-    localStorage.setItem(STORAGE_KEYS.aliases, JSON.stringify(aliases));
+    this.backend.setItem(STORAGE_KEYS.aliases, JSON.stringify(aliases));
   }
 
   // --- Keymap overrides (localStorage) ----------------------------------
@@ -223,7 +246,7 @@ export class PersistenceService {
   // key entirely so a clean state never carries a stray empty object.
 
   public loadKeymapOverrides(): Record<string, KeyBinding> {
-    const raw = localStorage.getItem(STORAGE_KEYS.keymap);
+    const raw = this.backend.getItem(STORAGE_KEYS.keymap);
     if (!raw) return {};
     try {
       return JSON.parse(raw) as Record<string, KeyBinding>;
@@ -234,9 +257,9 @@ export class PersistenceService {
 
   public saveKeymapOverrides(overrides: Record<string, KeyBinding>): void {
     if (Object.keys(overrides).length === 0) {
-      localStorage.removeItem(STORAGE_KEYS.keymap);
+      this.backend.removeItem(STORAGE_KEYS.keymap);
     } else {
-      localStorage.setItem(STORAGE_KEYS.keymap, JSON.stringify(overrides));
+      this.backend.setItem(STORAGE_KEYS.keymap, JSON.stringify(overrides));
     }
   }
 
@@ -247,7 +270,7 @@ export class PersistenceService {
   // owns the in-memory list + mutations; this is just the storage hop.
 
   public loadEnvironmentsFile(): EnvironmentsFile | null {
-    const raw = localStorage.getItem(STORAGE_KEYS.environments);
+    const raw = this.backend.getItem(STORAGE_KEYS.environments);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as EnvironmentsFile;
@@ -257,7 +280,7 @@ export class PersistenceService {
   }
 
   public saveEnvironmentsFile(file: EnvironmentsFile): void {
-    localStorage.setItem(STORAGE_KEYS.environments, JSON.stringify(file));
+    this.backend.setItem(STORAGE_KEYS.environments, JSON.stringify(file));
   }
 
   // --- Table Snapshots (IndexedDB) ---
@@ -432,16 +455,13 @@ export class PersistenceService {
    * the other to proceed.
    */
   public async clearAll(): Promise<void> {
-    // localStorage
+    // KV backend (defaults to localStorage; IPC variant clears its
+    // in-memory cache + flushes the empty state to disk).
     try {
-      const toRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith("bedevere_")) toRemove.push(key);
-      }
-      for (const key of toRemove) localStorage.removeItem(key);
+      const toRemove = this.backend.keys().filter((k) => k.startsWith("bedevere_"));
+      for (const key of toRemove) this.backend.removeItem(key);
     } catch (err) {
-      console.error("clearAll: failed to clear localStorage", err);
+      console.error("clearAll: failed to clear KV backend", err);
     }
 
     // IndexedDB

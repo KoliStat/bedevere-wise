@@ -4,6 +4,7 @@ import { PersistenceService, persistenceService } from "../../data/PersistenceSe
 import { FileImportService } from "../../data/FileImportService";
 import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
+import type { FileSource, FileSourceFile, FileSourceFolder } from "../../data/files/FileSource";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
@@ -91,6 +92,7 @@ export class ControlPanel {
   private datasets: DatasetInfo[] = [];
   private tabManager: TabManager;
   private isMinimized: boolean = false;
+  private hideAppTitle: boolean = false;
   private panelWidth: number = 320;
   private onToggleCallback?: (isMinimized: boolean) => void;
   private onSelectCallback?: (dataset: DataProvider) => void;
@@ -107,6 +109,12 @@ export class ControlPanel {
   private folderScanService?: FolderScanService;
   private treeRenderer?: FileTreeRenderer;
   private fileTree: FileTreeNode[] = [];
+  /**
+   * Folder + file picker source. Defaults to undefined; the IPC path
+   * below short-circuits when the source isn't `"fsa"`. The FSA path
+   * goes through {@link folderScanService} (no FileSource needed).
+   */
+  private fileSource?: FileSource;
 
   // Environment switcher (top of the panel, above the accordion)
   private envSwitcher: EnvironmentSwitcher | null = null;
@@ -132,7 +140,12 @@ export class ControlPanel {
   private readonly onResizeMove: (e: MouseEvent) => void;
   private readonly onResizeEnd: (e: MouseEvent) => void;
 
-  constructor(parent: HTMLElement, tabManager: TabManager) {
+  constructor(
+    parent: HTMLElement,
+    tabManager: TabManager,
+    options: { hideAppTitle?: boolean } = {},
+  ) {
+    this.hideAppTitle = options.hideAppTitle ?? false;
     this.tabManager = tabManager;
 
     // Bind resize handlers once
@@ -152,16 +165,18 @@ export class ControlPanel {
     this.headerElement = document.createElement("div");
     this.headerElement.className = "control-panel__header";
 
-    const appTitle = document.createElement("span");
-    appTitle.className = "control-panel__app-title";
-    appTitle.innerHTML = `<img class="control-panel__app-icon" src="${duckPng}" alt="" /> Bedevere Wise`;
+    if (!this.hideAppTitle) {
+      const appTitle = document.createElement("span");
+      appTitle.className = "control-panel__app-title";
+      appTitle.innerHTML = `<img class="control-panel__app-icon" src="${duckPng}" alt="" /> Bedevere Wise`;
+      this.headerElement.appendChild(appTitle);
+    }
 
     this.toggleButton = document.createElement("button");
     this.toggleButton.className = "control-panel__toggle";
     this.toggleButton.innerHTML = "−";
     this.toggleButton.title = "Minimize panel";
 
-    this.headerElement.appendChild(appTitle);
     this.headerElement.appendChild(this.toggleButton);
 
     // Create content area
@@ -473,11 +488,28 @@ export class ControlPanel {
     this.folderScanService = new FolderScanService(service);
   }
 
+  public setFileSource(source: FileSource): void {
+    this.fileSource = source;
+  }
+
   public setOnAliasChangeCallback(callback: (tableName: string, alias: string) => void): void {
     this.onAliasChangeCallback = callback;
   }
 
   public async openFolderPicker(): Promise<void> {
+    // Native-picker (IPC) path. When the embedder supplied a non-FSA
+    // FileSource (the desktop renderer's IpcFileSource) we route
+    // through the host instead of `showDirectoryPicker`: the host
+    // pops its OS-native dialog, enumerates the folder, and returns
+    // absolute paths the renderer attaches as `filePath` nodes.
+    // Importing those nodes uses `backend.registerFileURL`, which
+    // hits the host's `registerFile` RPC — the bytes never cross
+    // the WebSocket.
+    if (this.fileSource && this.fileSource.id !== "fsa") {
+      await this.openFolderViaFileSource();
+      return;
+    }
+
     if (!this.folderScanService) return;
 
     let tree: FileTreeNode | null = null;
@@ -519,6 +551,165 @@ export class ControlPanel {
     }
 
     this.attachFolderTree(tree, folderHandleId);
+  }
+
+  /**
+   * Folder-picker flow for non-FSA file sources (the desktop's
+   * IpcFileSource). The host runs the picker, returns the folder + a
+   * flat file list (each `{ name, path }`). We build a synthetic
+   * single-folder FileTreeNode where every leaf carries `filePath`
+   * instead of `fileHandle`, then hand the tree to attachFolderTree
+   * so the env binding + auto-import flow reuses the existing code.
+   */
+  private async openFolderViaFileSource(): Promise<void> {
+    if (!this.fileSource) return;
+    const folder = await this.fileSource.pickFolder();
+    if (!folder) return;
+    const files = await this.fileSource.listFolderFiles(folder);
+    const tree = this.buildIpcFolderTree(folder, files);
+    // Prefix the folderHandleId with "ipc:" so `applyActiveEnvironment`
+    // can tell it apart from FSA's `folder_<ts>_<rand>` ids on restore.
+    // Without the marker, env-restore would route through
+    // openRecentFolder (the FSA path) and fail with "no longer
+    // accessible" because the id is an OS path, not an IDB key.
+    this.attachFolderTree(tree, "ipc:" + folder.id);
+  }
+
+  /**
+   * Re-open an IPC-mode folder from the saved path. Called by
+   * applyActiveEnvironment on boot when the active env's folderHandleId
+   * has the "ipc:" prefix. Shape is symmetric to openRecentFolder but
+   * routes through the host instead of FSA's IDB store.
+   */
+  private async restoreIpcFolder(folderPath: string): Promise<void> {
+    if (!this.fileSource) return;
+    const folder = await this.fileSource.openFolder(folderPath);
+    if (!folder) {
+      this.onShowMessageCallback?.(
+        `Couldn't re-open "${folderPath}" — folder may have moved or been deleted.`,
+        "warning",
+      );
+      return;
+    }
+    const files = await this.fileSource.listFolderFiles(folder);
+    const tree = this.buildIpcFolderTree(folder, files);
+    this.attachFolderTree(tree, "ipc:" + folder.id);
+  }
+
+  /**
+   * Synthetic file tree for a folder picked via IpcFileSource. Each
+   * leaf carries `filePath` so importNode routes through importPath
+   * (host-side `registerFile`) instead of the byte-based format
+   * handlers.
+   */
+  private buildIpcFolderTree(folder: FileSourceFolder, files: FileSourceFile[]): FileTreeNode {
+    const importable = files.filter((f) => {
+      if (f.kind !== "path") return false;
+      return detectFileType(f.name) !== null;
+    });
+    const children: FileTreeNode[] = importable.map((f) => {
+      const file = f as Extract<typeof f, { kind: "path" }>;
+      return {
+        id: `ipc/${folder.id}/${file.name}`,
+        name: file.name,
+        kind: "file" as const,
+        filePath: file.path,
+        fileType: detectFileType(file.name) ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      };
+    });
+    return {
+      id: `ipc/${folder.id}`,
+      name: folder.name,
+      kind: "folder",
+      children,
+      isImported: false,
+      isExpanded: true,
+    };
+  }
+
+  /**
+   * Single-file picker, branching on the active FileSource. Browser
+   * (FSA) hosts get an `<input type="file">`; desktop / IPC hosts get
+   * the host's native dialog returning OS paths.
+   *
+   * Picked files become drop-style FileTreeNodes (one per file, no
+   * folder grouping) and route through the same auto-import + env
+   * binding the drag-drop flow uses.
+   */
+  public async openFilePicker(): Promise<void> {
+    if (!this.fileImportService) return;
+
+    if (this.fileSource && this.fileSource.id !== "fsa") {
+      const accept = this.fileImportService
+        .getSupportedExtensions()
+        .map((e) => (e.startsWith(".") ? e : "." + e))
+        .join(",");
+      const picked = await this.fileSource.pickFiles({ multiple: true, accept });
+      if (!picked || picked.length === 0) return;
+      const pathFiles = picked.filter((p) => p.kind === "path") as Extract<
+        (typeof picked)[number],
+        { kind: "path" }
+      >[];
+      if (pathFiles.length === 0) return;
+
+      // Mint drop-style nodes carrying `filePath`. autoImportBatch
+      // dispatches on filePath via importNode, so the single-file
+      // picker and the folder picker share the rest of the pipeline.
+      const newNodes: FileTreeNode[] = pathFiles.map((f) => ({
+        id: `ipc/file/${f.path}/${Date.now()}/${Math.random().toString(36).slice(2, 8)}`,
+        name: f.name,
+        kind: "file" as const,
+        filePath: f.path,
+        fileType: detectFileType(f.name) ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      }));
+      this.fileTree.push(...newNodes);
+
+      const activeEnvId = environmentService.getActiveId();
+      if (activeEnvId) {
+        for (const node of newNodes) {
+          environmentService.addDataset(activeEnvId, {
+            nodeId: node.id,
+            name: node.name,
+            relativePath: node.name,
+          });
+        }
+      }
+      this.renderTree();
+      this.expandSection("datasets");
+
+      // Open as visible tabs (no `silent: true`) so the user actually
+      // sees the data after picking, matching the drag-drop UX.
+      for (const node of newNodes) {
+        const result = await this.importNode(node);
+        if (!result.ok) {
+          this.onShowMessageCallback?.(
+            `Failed to import "${node.name}": ${result.error.message}`,
+            "error",
+          );
+        }
+      }
+      return;
+    }
+
+    // FSA / web fallback: same shape as BedevereApp's previous inline
+    // picker. The selected File objects route through addFilesFromDrop
+    // because the byte-based ingest path is the only thing that works
+    // for browser-handed Files.
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.multiple = true;
+    const exts = this.fileImportService.getSupportedExtensions();
+    picker.accept = exts.map((e) => (e.startsWith(".") ? e : "." + e)).join(",");
+    picker.addEventListener("change", async () => {
+      if (picker.files && picker.files.length > 0) {
+        await this.addFilesFromDrop(Array.from(picker.files), true);
+      }
+    });
+    picker.click();
   }
 
   /** Re-open a folder picked earlier (recent-folders shortcut). */
@@ -701,10 +892,10 @@ export class ControlPanel {
     // confusing because the panel says they aren't part of B, but the
     // engine still knows them. The new env's datasets re-import below
     // through `openRecentFolder` / silent-import.
-    const duck = this.tabManager.getDuckDBService();
-    if (duck) {
+    const backend = this.tabManager.getBackend();
+    if (backend && backend.wipeUserState) {
       try {
-        await duck.wipeUserState();
+        await backend.wipeUserState();
       } catch (err) {
         console.warn("applyActiveEnvironment: wipeUserState failed", err);
       }
@@ -719,9 +910,22 @@ export class ControlPanel {
     const env = environmentService.get(envId);
     if (!env) return;
     if (env.kind === "folder" && env.folderHandleId) {
-      // Re-scan via the recent-folder pathway: it already handles
-      // permission prompts and stale-handle cleanup.
-      await this.openRecentFolder(env.folderHandleId);
+      if (env.folderHandleId.startsWith("ipc:")) {
+        // Desktop / IPC env: re-acquire by path via the host.
+        await this.restoreIpcFolder(env.folderHandleId.slice("ipc:".length));
+      } else if (this.fileSource && this.fileSource.id !== "fsa") {
+        // Non-FSA runtime + an env saved before the "ipc:" prefix
+        // landed. The id is a raw OS path; route it through the host.
+        // (FSA envs viewed under a non-FSA fileSource will fail the
+        // openFolder check inside restoreIpcFolder and surface the
+        // standard "no longer accessible" toast — acceptable; the
+        // user re-picks via Open Folder.)
+        await this.restoreIpcFolder(env.folderHandleId);
+      } else {
+        // FSA env: re-scan via the recent-folder pathway. It already
+        // handles permission prompts and stale-handle cleanup.
+        await this.openRecentFolder(env.folderHandleId);
+      }
     }
   }
 
@@ -986,6 +1190,35 @@ export class ControlPanel {
   ): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
     if (!this.fileImportService) return { ok: false, error: { message: "File import service unavailable" } };
 
+    // Native-path mode: the host owns the bytes. Skip the format-handler
+    // dispatch entirely — backend.registerFileURL hits the host's
+    // registerFile RPC which dispatches read_csv_auto / read_parquet /
+    // read_json_auto based on the extension. Sheet picking (Excel) +
+    // multi-table HTML aren't supported on this path yet; they need
+    // host-side support that doesn't exist in the v1.0 protocol.
+    if (node.filePath) {
+      try {
+        const baseName = node.alias || stripExt(node.name);
+        const result = await this.fileImportService.importPath(node.filePath, baseName);
+        const metadata = await result.getMetadata();
+        node.isImported = true;
+        node.tableName = metadata.name;
+        if (!options.silent) {
+          node.isOpenAsTab = true;
+        }
+        this.treeRenderer?.updateNode(node.id, { isOpenAsTab: node.isOpenAsTab });
+        this.datasets.push({ metadata, dataset: result, isLoaded: true });
+        if (!options.silent) {
+          await this.tabManager.addDataset(metadata, result);
+          await this.tabManager.switchToDataset(metadata.name);
+          this.onSelectCallback?.(result);
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: formatError(err) };
+      }
+    }
+
     try {
       let file: File;
       if (node.fileHandle instanceof File) {
@@ -1175,10 +1408,9 @@ export class ControlPanel {
     if (this.isMinimized) {
       this.panelElement.classList.add("control-panel__panel--minimized");
       this.panelElement.style.width = "48px";
-      // Show the duck as the affordance to expand — clearer than a "+" and
-      // matches the brand mark in the header when the panel is open.
-      this.toggleButton.innerHTML =
-        `<img class="control-panel__app-icon control-panel__toggle-icon" src="${duckPng}" alt="" />`;
+      this.toggleButton.innerHTML = this.hideAppTitle
+        ? "+"
+        : `<img class="control-panel__app-icon control-panel__toggle-icon" src="${duckPng}" alt="" />`;
       this.toggleButton.title = "Expand panel";
     } else {
       this.panelElement.classList.remove("control-panel__panel--minimized");

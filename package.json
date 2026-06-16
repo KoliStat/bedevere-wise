@@ -1,27 +1,112 @@
 {
-  "name": "bedevere-wise",
-  "version": "0.12.0-pull-the-other-one",
+  "name": "@kolistat/bedevere-wise",
+  "version": "0.13.1",
   "author": "Massimo Meneghello",
   "repository": {
     "type": "git",
-    "url": "https://github.com/caerbannogwhite/bedevere-wise"
+    "url": "https://github.com/KoliStat/bedevere-wise"
   },
-  "main": "dist/index.js",
+  "bugs": {
+    "url": "https://github.com/KoliStat/bedevere-wise/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/index.es.js",
   "module": "dist/index.es.js",
+  "sideEffects": [
+    "**/*.scss",
+    "**/*.css",
+    "./dist/style.css"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.1",
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/search": "^6.7.0",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0",
+    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@lezer/highlight": "^1.2.3",
     "@types/node": "^20.11.19",
     "@vitest/ui": "^3.2.4",
+    "codemirror": "^6.0.2",
     "jsdom": "^26.1.0",
     "sass": "^1.89.2",
     "typescript": "^5.3.3",
+    "vega-embed": "^7.1.0",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "@codemirror/autocomplete": "^6.20.0",
+    "@codemirror/commands": "^6.10.0",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.12.0",
+    "@codemirror/search": "^6.7.0",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0",
+    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@lezer/highlight": "^1.2.0",
+    "apache-arrow": "^17.0.0",
+    "codemirror": "^6.0.0",
+    "vega-embed": "^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@duckdb/duckdb-wasm": {
+      "optional": true
+    },
+    "vega-embed": {
+      "optional": true
+    },
+    "@codemirror/autocomplete": {
+      "optional": true
+    },
+    "@codemirror/commands": {
+      "optional": true
+    },
+    "@codemirror/lang-sql": {
+      "optional": true
+    },
+    "@codemirror/language": {
+      "optional": true
+    },
+    "@codemirror/search": {
+      "optional": true
+    },
+    "@codemirror/state": {
+      "optional": true
+    },
+    "@codemirror/view": {
+      "optional": true
+    },
+    "@lezer/highlight": {
+      "optional": true
+    },
+    "codemirror": {
+      "optional": true
+    }
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.es.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.es.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.es.js"
+    },
+    "./duckdb": {
+      "types": "./dist/duckdb.d.ts",
+      "import": "./dist/duckdb.es.js"
+    },
+    "./ipc": {
+      "types": "./dist/ipc.d.ts",
+      "import": "./dist/ipc.es.js"
     },
     "./style.css": "./dist/style.css"
   },
@@ -29,9 +114,9 @@
   "files": [
     "dist",
     "README.md",
-    "CHANGELOG"
+    "CHANGELOG.md"
   ],
-  "homepage": "https://github.com/caerbannogwhite/bedevere-wise",
+  "homepage": "https://github.com/KoliStat/bedevere-wise",
   "keywords": [
     "sas",
     "sas7bdat",
@@ -62,7 +147,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && node scripts/verify-build.mjs",
-    "build:lib": "vite build --config vite.config.ts",
+    "build:lib": "rm -rf dist && vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
+    "prepublishOnly": "bun run build:lib",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -70,19 +156,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@codemirror/autocomplete": "^6.20.1",
-    "@codemirror/commands": "^6.10.3",
-    "@codemirror/lang-sql": "^6.10.0",
-    "@codemirror/language": "^6.12.3",
-    "@codemirror/search": "^6.7.0",
-    "@codemirror/state": "^6.6.0",
-    "@codemirror/theme-one-dark": "^6.1.3",
-    "@codemirror/view": "^6.41.0",
-    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
-    "@lezer/highlight": "^1.2.3",
-    "codemirror": "^6.0.2",
-    "vega-embed": "^7.1.0"
-  }
+  "types": "dist/index.d.ts"
 }
+

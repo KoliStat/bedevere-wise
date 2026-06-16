@@ -1,5 +1,5 @@
 import { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
-import { DuckDBService } from "../../data/DuckDBService";
+import type { Backend } from "../../data/Backend";
 import { KNOWN_DIRECTIVES } from "../../data/sqlScript";
 import { STATS_DUCK_FUNCTIONS } from "./sqlDialect";
 
@@ -70,28 +70,37 @@ function staticFunctionSeed(): string[] {
 }
 
 export class SqlAutoComplete {
-  private duckDBService: DuckDBService;
+  private backend: Backend;
   private schema: SchemaInfo = { tables: new Map(), lastRefresh: 0 };
   // Seeded with the static lists (DuckDB built-ins + the stats_duck names we
   // explicitly know about) so suggestions still work before the first refresh
   // completes or when introspection fails. Replaced with the union of static
-  // + dynamic names whenever `duckdb_functions()` succeeds — that's how any
-  // extension-contributed functions we didn't pre-list end up in the dropdown.
+  // + dynamic names whenever `backend.listFunctions()` succeeds — that's how
+  // any extension-contributed functions we didn't pre-list end up in the
+  // dropdown.
   private functions: string[] = staticFunctionSeed();
   private refreshInterval = 10000; // 10 seconds
 
-  constructor(duckDBService: DuckDBService) {
-    this.duckDBService = duckDBService;
+  constructor(backend: Backend) {
+    this.backend = backend;
   }
 
   public async refreshSchema(): Promise<void> {
     try {
-      const tables = await this.duckDBService.listTables();
+      const tables = await this.backend.listTables();
       const newSchema: Map<string, string[]> = new Map();
 
       for (const table of tables) {
-        const columns = await this.duckDBService.getTableInfo(table);
-        newSchema.set(table, columns.map((col: any) => col.column_name));
+        const columns = await this.backend.getTableInfo(table);
+        // Drop anything that isn't a string — a backend handing back an
+        // unexpected row shape must degrade to "no column suggestions",
+        // not crash the completion source on undefined.toUpperCase().
+        newSchema.set(
+          table,
+          columns
+            .map((col: any) => col?.column_name)
+            .filter((name: unknown): name is string => typeof name === "string"),
+        );
       }
 
       this.schema = { tables: newSchema, lastRefresh: Date.now() };
@@ -103,13 +112,10 @@ export class SqlAutoComplete {
     // etc.) round-trip into autocomplete without us hand-maintaining a list.
     // Failure leaves the seeded static list in place.
     try {
-      const rows = await this.duckDBService.executeQuery(
-        "SELECT DISTINCT function_name FROM duckdb_functions()",
-      );
+      const infos = await this.backend.listFunctions();
       const merged = new Set<string>(staticFunctionSeed());
-      for (const row of rows) {
-        const name = (row as { function_name?: unknown }).function_name;
-        if (typeof name === "string" && name.length > 0) merged.add(name.toUpperCase());
+      for (const info of infos) {
+        if (info.name.length > 0) merged.add(info.name.toUpperCase());
       }
       this.functions = [...merged].sort();
     } catch (e) {

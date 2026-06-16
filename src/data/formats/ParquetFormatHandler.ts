@@ -1,4 +1,4 @@
-import { DuckDBService } from "../DuckDBService";
+import type { Backend } from "../Backend";
 import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
 
@@ -7,11 +7,11 @@ export class ParquetFormatHandler implements FormatHandler {
     return fileType === "parquet";
   }
 
-  async import(file: File, tableName: string, duckDBService: DuckDBService, _options?: ImportFileOptions): Promise<void> {
+  async import(file: File, tableName: string, backend: Backend, _options?: ImportFileOptions): Promise<void> {
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await duckDBService.registerFileBuffer(file.name, buffer);
-    await duckDBService.executeQuery(
-      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_parquet('${file.name}')`
+    const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
+    await backend.executeQuery(
+      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_parquet('${effectiveName.replace(/'/g, "''")}')`
     );
   }
 }

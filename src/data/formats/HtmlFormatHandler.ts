@@ -1,4 +1,4 @@
-import { DuckDBService } from "../DuckDBService";
+import type { Backend } from "../Backend";
 import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
 import { importCsvText } from "./CsvFormatHandler";
@@ -12,7 +12,7 @@ export class HtmlFormatHandler implements FormatHandler {
   async import(
     file: File,
     tableName: string,
-    duckDBService: DuckDBService,
+    backend: Backend,
     _options?: ImportFileOptions,
   ): Promise<void> {
     const html = await file.text();
@@ -31,7 +31,7 @@ export class HtmlFormatHandler implements FormatHandler {
     // Mark the registered file `.csv` so the read_csv_auto path is the
     // natural fit; the name only matters as a key inside DuckDB-WASM's
     // virtual FS, never user-visible.
-    await importCsvText(duckDBService, `${file.name}.csv`, csvText, tableName, {
+    await importCsvText(backend, `${file.name}.csv`, csvText, tableName, {
       delimiter: ",",
       hasHeader: true,
     });

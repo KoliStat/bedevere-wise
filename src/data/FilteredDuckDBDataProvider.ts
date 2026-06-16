@@ -1,4 +1,4 @@
-import { DuckDBService } from "./DuckDBService";
+import type { Backend } from "./Backend";
 import { Column, ColumnStats, DataProvider, DatasetMetadata, normalizeDuckDBType } from "./types";
 import { ColumnFilterManager } from "./ColumnFilterManager";
 import { unwrapArrowValue } from "./arrowUnwrap";
@@ -10,7 +10,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   private fileName: string;
   private description: string = "";
   private label: string = "";
-  private duckDBService: DuckDBService;
+  private backend: Backend;
   private filterManager: ColumnFilterManager;
   private sourceTableName: string;
   private parsedColumnTypes: Array<TypeNode | undefined> | null = null;
@@ -24,7 +24,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
 
   private async ensureSourceColumns(): Promise<Array<any>> {
     if (this.sourceColumnsCache) return this.sourceColumnsCache;
-    this.sourceColumnsCache = await this.duckDBService.getTableInfo(this.sourceTableName);
+    this.sourceColumnsCache = await this.backend.getTableInfo(this.sourceTableName);
     return this.sourceColumnsCache;
   }
 
@@ -36,13 +36,13 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   }
 
   constructor(
-    duckDBService: DuckDBService,
+    backend: Backend,
     sourceTableName: string,
     filterManager: ColumnFilterManager,
     name: string,
     fileName: string
   ) {
-    this.duckDBService = duckDBService;
+    this.backend = backend;
     this.sourceTableName = sourceTableName;
     this.filterManager = filterManager;
     this.name = name;
@@ -95,7 +95,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   public async getMetadata(): Promise<DatasetMetadata> {
     const baseQuery = this.buildBaseQuery();
     const countQuery = `SELECT COUNT(*) FROM (${baseQuery}) AS _filtered`;
-    const totalRows = (await this.duckDBService.executeQuery(countQuery))[0].toArray()[0] as bigint;
+    const totalRows = (await this.backend.executeQuery(countQuery))[0].toArray()[0] as bigint;
 
     const columns = await this.getVisibleColumns();
 
@@ -131,7 +131,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       `SELECT ${projection} FROM "${this.sourceTableName}" ${where} ${orderBy} ` +
       `LIMIT ${endRow - startRow} OFFSET ${startRow}`;
     const [rows, allTypes, sourceColumns] = await Promise.all([
-      this.duckDBService.executeQuery(query),
+      this.backend.executeQuery(query),
       this.ensureColumnTypes(),
       this.ensureSourceColumns(),
     ]);
@@ -161,7 +161,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
 
     const query = `SELECT ${columnNamesString} FROM "${this.sourceTableName}" ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
     const [rows, allTypes, sourceColumns] = await Promise.all([
-      this.duckDBService.executeQuery(query),
+      this.backend.executeQuery(query),
       this.ensureColumnTypes(),
       this.ensureSourceColumns(),
     ]);
@@ -183,8 +183,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
    * outer bounds for the same reason.
    */
   public async getColumnStats(column: string | Column): Promise<ColumnStats | null> {
-    const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
-    const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
+    const sourceProvider = this.backend.getDataProvider(this.sourceTableName, this.fileName);
     return sourceProvider.getColumnStats(column);
   }
 
@@ -195,8 +194,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     // Search runs against the unfiltered source — same rationale as
     // getColumnStats above: the filter UI needs to be able to find
     // values the current filter is hiding.
-    const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
-    const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
+    const sourceProvider = this.backend.getDataProvider(this.sourceTableName, this.fileName);
     return sourceProvider.searchColumnValues(column, options);
   }
 
@@ -213,11 +211,10 @@ export class FilteredDuckDBDataProvider implements DataProvider {
    * `finally`; orphan temp views auto-clear on session end.
    */
   public async getColumnStatsFiltered(column: string | Column): Promise<ColumnStats | null> {
-    const { DuckDBDataProvider } = await import("./DuckDBDataProvider");
     const whereClause = this.filterManager.buildWhereClause(this.name);
 
     if (!whereClause) {
-      const sourceProvider = new DuckDBDataProvider(this.duckDBService, this.sourceTableName, this.fileName);
+      const sourceProvider = this.backend.getDataProvider(this.sourceTableName, this.fileName);
       return sourceProvider.getColumnStats(column);
     }
 
@@ -230,15 +227,15 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     // tripping over each other.
     const viewName = `__bedevere_stats_${this.name}_${Math.random().toString(36).slice(2, 10)}`;
     try {
-      await this.duckDBService.executeQuery(
+      await this.backend.executeQuery(
         `CREATE OR REPLACE VIEW ${quoteIdent(viewName)} AS ` +
           `SELECT * FROM ${quoteIdent(this.sourceTableName)} ${whereClause}`,
       );
-      const tempProvider = new DuckDBDataProvider(this.duckDBService, viewName, this.fileName);
+      const tempProvider = this.backend.getDataProvider(viewName, this.fileName);
       return await tempProvider.getColumnStats(column);
     } finally {
       try {
-        await this.duckDBService.executeQuery(`DROP VIEW IF EXISTS ${quoteIdent(viewName)}`);
+        await this.backend.executeQuery(`DROP VIEW IF EXISTS ${quoteIdent(viewName)}`);
       } catch {
         // best-effort cleanup; an orphan view is harmless beyond
         // showing up once in SHOW TABLES until the page reloads
@@ -247,6 +244,15 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   }
 
   public getSourceTableName(): string {
+    return this.sourceTableName;
+  }
+
+  /**
+   * DataProvider hook for file export. Returns the *source* table, not
+   * the filtered view — binary export writes the full table (filters
+   * are a selection-export concern).
+   */
+  public getSourceTable(): string {
     return this.sourceTableName;
   }
 }

@@ -1,5 +1,5 @@
-import { DuckDBService } from "./DuckDBService";
-import { DuckDBDataProvider } from "./DuckDBDataProvider";
+import type { Backend } from "./Backend";
+import { DataProvider } from "./types";
 import { detectFileType, getAllSupportedExtensions, SupportedFileType } from "./FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./formats/FormatHandler";
 import { CsvFormatHandler } from "./formats/CsvFormatHandler";
@@ -8,10 +8,10 @@ import { ParquetFormatHandler } from "./formats/ParquetFormatHandler";
 
 export class FileImportService {
   private handlers: FormatHandler[] = [];
-  private duckDBService: DuckDBService;
+  private backend: Backend;
 
-  constructor(duckDBService: DuckDBService) {
-    this.duckDBService = duckDBService;
+  constructor(backend: Backend) {
+    this.backend = backend;
 
     // Register built-in handlers
     this.register(new CsvFormatHandler());
@@ -32,7 +32,7 @@ export class FileImportService {
     return this.handlers.find((h) => h.canHandle(fileType)) ?? null;
   }
 
-  public async importFile(file: File, tableName?: string, options?: ImportFileOptions): Promise<DuckDBDataProvider> {
+  public async importFile(file: File, tableName?: string, options?: ImportFileOptions): Promise<DataProvider> {
     const fileType = detectFileType(file.name);
     if (!fileType) {
       throw new Error(`Unsupported file type: ${file.name}`);
@@ -46,8 +46,29 @@ export class FileImportService {
     const preferred = tableName ?? file.name.replace(/\.[^/.]+$/, "");
     const name = await this.resolveUniqueTableName(preferred);
 
-    await handler.import(file, name, this.duckDBService, options);
-    return new DuckDBDataProvider(this.duckDBService, name, file.name);
+    await handler.import(file, name, this.backend, options);
+    return this.backend.getDataProvider(name, file.name);
+  }
+
+  /**
+   * Path-mode import. Used when the host already has the bytes (the
+   * desktop renderer's native-picker flow) and just needs to route a
+   * filesystem path through `backend.registerFileURL`. The backend
+   * dispatches `read_csv_auto` / `read_parquet` / `read_json_auto` /
+   * `read_xlsx` etc. based on the path's extension; the renderer-side
+   * format handlers are skipped because the bytes never reach JS.
+   *
+   * Customisation knobs the WASM path exposes (`sample_size`,
+   * `ignore_errors`, sheet picker, multi-table HTML) aren't available
+   * here yet — they need host-side support that v1.0 of the wire
+   * protocol doesn't expose. Filed as v0.14 follow-up.
+   */
+  public async importPath(path: string, tableName?: string): Promise<DataProvider> {
+    const fileName = path.split(/[\\/]/).pop() ?? path;
+    const preferred = tableName ?? fileName.replace(/\.[^/.]+$/, "");
+    const name = await this.resolveUniqueTableName(preferred);
+    await this.backend.registerFileURL(name, path);
+    return this.backend.getDataProvider(name, fileName);
   }
 
   /**
@@ -62,7 +83,7 @@ export class FileImportService {
    * SQL keeps working).
    */
   private async resolveUniqueTableName(preferred: string): Promise<string> {
-    const taken = new Set(await this.duckDBService.listTables());
+    const taken = new Set(await this.backend.listTables());
     if (!taken.has(preferred)) return preferred;
     let i = 2;
     while (taken.has(`${preferred}__${i}`)) i++;
@@ -76,7 +97,7 @@ export class FileImportService {
     const handler = this.getHandler(fileType);
     if (!handler?.getSheetNames) return [];
 
-    return handler.getSheetNames(file, this.duckDBService);
+    return handler.getSheetNames(file, this.backend);
   }
 
   public getSupportedExtensions(): string[] {

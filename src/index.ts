@@ -1,29 +1,39 @@
-// Public re-export surface. Components are imported by file path —
-// the previous per-component `index.ts` barrels each re-exported a
-// single sibling, which just added an indirection layer without
-// grouping anything. The exception is `./data` which actively
-// aggregates a dozen sibling files.
+/**
+ * Combined entry — re-exports `./ui` and `./duckdb` for back-compat.
+ *
+ * New code should prefer the sub-entry imports so non-Vite bundlers
+ * and non-DuckDB consumers don't drag in the worker URL chain:
+ *
+ *   import { SpreadsheetVisualizer } from "@kolistat/bedevere-wise/ui";
+ *   import { DuckDBService }         from "@kolistat/bedevere-wise/duckdb";
+ *
+ * The root entry stays around so `import { ... } from
+ * "@kolistat/bedevere-wise"` keeps working. The UI tier
+ * carries the SCSS import; importing only the root or `/ui` brings
+ * the stylesheet, importing only `/duckdb` does not.
+ */
 
-// Main components
+export * from "./ui";
+export * from "./duckdb";
+
+// App-shell surface (top-level components composing the standalone
+// web app). Kept for completeness; the embedding contract is the
+// `./ui` + `./duckdb` tiers above. See README.
 export { BedevereApp } from "./components/BedevereApp/BedevereApp";
 export { TabManager } from "./components/TabManager/TabManager";
 export { ControlPanel } from "./components/ControlPanel/ControlPanel";
-export { SpreadsheetVisualizer } from "./components/SpreadsheetVisualizer/SpreadsheetVisualizer";
-export { ColumnStatsVisualizer } from "./components/ColumnStatsVisualizer/ColumnStatsVisualizer";
 export { StatusBar } from "./components/StatusBar/StatusBar";
 export { CommandBar } from "./components/CommandBar/CommandBar";
 
-// Data types and utilities
-export type { DataProvider } from "./data/types";
-
-// Component-side types
 export type { BedevereAppOptions } from "./components/BedevereApp/BedevereApp";
 export type { StatusBarItem } from "./components/StatusBar/StatusBar";
 export type { Command } from "./data/CommandRegistry";
 export type { CommandBarOptions, CellInfo } from "./components/CommandBar/CommandBar";
 
-// SpreadsheetVisualizer types
-export type { SpreadsheetOptions } from "./components/SpreadsheetVisualizer/types";
-
-// Import styles
-import "./styles/main.scss";
+// PersistenceService singleton — the kv store that backs settings,
+// environments, query bookmarks, and the editor autosave draft. Hosts
+// that want to swap its substrate (the desktop's IpcFilesystemPersistence,
+// a future server-synced backend) call `persistenceService.setBackend(...)`
+// before constructing BedevereApp.
+export { PersistenceService, persistenceService } from "./data/PersistenceService";
+export type { AppSettings, QueryBookmark, RecentFolderEntry } from "./data/PersistenceService";

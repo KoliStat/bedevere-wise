@@ -540,7 +540,7 @@ export class StatusBar {
         `<span class="status-bar__version-codename">${escapeHtml(codename)}</span>`
       : `<span class="status-bar__version-num">v${escapeHtml(versionNum)}</span>`;
     versionElement.addEventListener("click", () => {
-      window.open("https://github.com/caerbannogwhite/bedevere-wise/blob/main/CHANGELOG.md", "_blank", "noopener,noreferrer");
+      window.open("https://github.com/KoliStat/bedevere-wise/blob/main/CHANGELOG.md", "_blank", "noopener,noreferrer");
     });
     this.rightSection.appendChild(versionElement);
 
@@ -554,13 +554,13 @@ export class StatusBar {
 
     const createdByElement = document.createElement("div");
     createdByElement.className = "status-bar__item status-bar__item--created-by";
-    createdByElement.title = "Visit the creator's GitHub profile";
+    createdByElement.title = "Visit KoliStat on GitHub";
     createdByElement.innerHTML = `
       <span class="created-by__text">Made with</span>
       <span class="created-by__heart">❤️</span>
       <span class="created-by__text">by</span>
-      <a href="https://github.com/caerbannogwhite" target="_blank" rel="noopener noreferrer" class="created-by__link">
-        caerbannogwhite
+      <a href="https://github.com/KoliStat" target="_blank" rel="noopener noreferrer" class="created-by__link">
+        KoliStat
       </a>
     `;
     this.rightSection.appendChild(createdByElement);

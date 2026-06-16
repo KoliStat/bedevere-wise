@@ -5,6 +5,8 @@ import coiWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?
 import coiPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
+import type { Backend, BackendCapabilities, ExportResult, ExportTableOptions, FunctionInfo } from "./Backend";
+import { EXPORT_FORMATS } from "./exportFormats";
 
 /**
  * Best-effort lift of a DECIMAL scale from an Apache Arrow schema field's
@@ -25,7 +27,21 @@ function inferDecimalScale(t: any): number | undefined {
   return undefined;
 }
 
-export class DuckDBService {
+export class DuckDBService implements Backend {
+  public readonly id = "duckdb-wasm";
+  public readonly displayName = "DuckDB (browser, WebAssembly)";
+  public readonly capabilities: BackendCapabilities = {
+    arrow: true,
+    visualize: false, // flipped true by BedevereApp.initAsync once stats_duck loads + its parser hooks attach
+    registerFileText: true,
+    registerFileBuffer: true,
+    wipeUserState: true,
+    dropByName: true,
+    sas: true,
+    spss: true,
+    stata: true,
+  };
+
   private db: duckdb.AsyncDuckDB | null = null;
   private worker: Worker | null = null;
   private isInitialized = false;
@@ -135,6 +151,24 @@ export class DuckDBService {
     return columns.find((column: any) => column.column_name === columnName);
   }
 
+  public async listFunctions(): Promise<FunctionInfo[]> {
+    const rows = await this.executeQuery(
+      "SELECT DISTINCT function_name, function_type FROM duckdb_functions()",
+    );
+    return rows
+      .map((row: any) => {
+        const name = row.function_name;
+        const type = row.function_type;
+        if (typeof name !== "string" || typeof type !== "string") return null;
+        return { name, type: type as FunctionInfo["type"] };
+      })
+      .filter((info: FunctionInfo | null): info is FunctionInfo => info !== null);
+  }
+
+  public getDataProvider(tableName: string, fileName?: string): DuckDBDataProvider {
+    return new DuckDBDataProvider(this, tableName, fileName ?? "");
+  }
+
   public async executeQueryAsDataProvider(query: string, resultName?: string): Promise<DuckDBDataProvider> {
     const tempName = resultName || `query_result_${Date.now()}`;
     // Strip a single trailing semicolon — wrapping it inside `( … ;)` is a
@@ -170,6 +204,40 @@ export class DuckDBService {
   public async registerFileURL(name: string, url: string): Promise<void> {
     if (!this.db) throw new Error("DuckDB not initialized");
     await this.db.registerFileURL(name, url, duckdb.DuckDBDataProtocol.HTTP, false);
+  }
+
+  /**
+   * Export a whole table to a file via `COPY … TO` and hand the bytes
+   * back for download. DuckDB-WASM writes into its in-memory virtual FS,
+   * so we COPY to a throwaway virtual filename, read it out with
+   * `copyFileToBuffer`, then drop it. The stat formats (xpt/sav/por/
+   * sas7bdat) only resolve if the loaded stats_duck WASM build registers
+   * their COPY functions; if it doesn't, DuckDB throws "Copy Function
+   * with name … does not exist" and the caller surfaces it.
+   */
+  public async exportTable(opts: ExportTableOptions): Promise<ExportResult> {
+    if (!this.db) throw new Error("DuckDB not initialized");
+    const meta = EXPORT_FORMATS[opts.format];
+    // Internally-generated name (no user input) — escape the literal
+    // defensively all the same.
+    const vname = `__bedevere_export_${Date.now().toString(36)}.${meta.ext}`;
+    const conn = await this.getConnection();
+    try {
+      await conn.query(
+        `COPY ${quoteIdent(opts.table)} TO '${vname.replace(/'/g, "''")}' (FORMAT ${meta.duckFormat})`,
+      );
+    } finally {
+      await conn.close();
+    }
+    const data = await this.db.copyFileToBuffer(vname);
+    try {
+      await this.db.dropFile(vname);
+    } catch {
+      // best-effort cleanup; an orphan virtual file is harmless and
+      // vanishes when the worker is torn down.
+    }
+    const base = opts.filenameHint && opts.filenameHint.length > 0 ? opts.filenameHint : opts.table;
+    return { kind: "bytes", data, filename: `${base}.${meta.ext}`, mime: meta.mime };
   }
 
   public isReady(): boolean {

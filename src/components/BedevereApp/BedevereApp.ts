@@ -13,11 +13,24 @@ import {
 import penguinsCsv from "@/assets/samples/penguins.csv?raw";
 import { SpreadsheetOptions } from "../SpreadsheetVisualizer/types";
 import { DataProvider } from "../../data/types";
+import type { Backend } from "../../data/Backend";
+import type { FileSource } from "../../data/files/FileSource";
+import { FsaFileSource } from "../../data/files/FsaFileSource";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
-import { exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
+import { downloadBinaryFile, exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
+import {
+  EXPORT_FORMATS,
+  EXPORT_FORMAT_ORDER,
+  isExportFormat,
+  type ExportFormat,
+} from "@/data/exportFormats";
 import { DuckDBService } from "@/data/DuckDBService";
+// NOTE: DuckDBService stays imported for the no-options default — when a
+// host doesn't pass `options.backend` we construct one for them. Hosts
+// that bring their own (IpcBackend in bedevere-desktop, future remote
+// backends) pass it via options and the DuckDB-WASM tree-shakes out.
 import { PersistenceService, persistenceService } from "@/data/PersistenceService";
 import { keymapService } from "@/data/KeymapService";
 import { commandRegistry } from "@/data/CommandRegistry";
@@ -70,9 +83,25 @@ export type BedevereAppTheme = "light" | "dark" | "auto";
 export type BedevereAppMessageType = "info" | "warning" | "error" | "success";
 
 export interface BedevereAppOptions {
+  /**
+   * Engine that runs SQL on behalf of the app. Defaults to a fresh
+   * `DuckDBService` (in-browser DuckDB-WASM) so the standalone web app
+   * keeps working with zero config. Pass an `IpcBackend` to point the
+   * UI at a native DuckDB sitting in another process.
+   */
+  backend?: Backend;
+  /**
+   * File picker source — folder + file dialogs, recent-folders
+   * enumeration. Defaults to {@link FsaFileSource} (the File System
+   * Access API). The desktop renderer passes {@link IpcFileSource} so
+   * the picker uses the OS native dialog and the bytes never cross
+   * the WebSocket.
+   */
+  fileSource?: FileSource;
   spreadsheetOptions?: SpreadsheetOptions;
   theme?: BedevereAppTheme;
   showLeftPanel?: boolean;
+  showPanelTitle?: boolean;
   statusBarVisible?: boolean;
   debugMode?: boolean;
 }
@@ -83,7 +112,8 @@ export class BedevereApp implements EventHandler {
   private leftPanelContainer!: HTMLElement;
   private spreadsheetContainer!: HTMLElement;
 
-  private duckDBService!: DuckDBService;
+  private backend!: Backend;
+  private fileSource!: FileSource;
   private leftPanel!: ControlPanel;
   private tabManager!: TabManager;
   private statusBar!: StatusBar;
@@ -96,14 +126,14 @@ export class BedevereApp implements EventHandler {
   // Persistence, views, and import
   private persistenceService: PersistenceService;
   private fileImportService: FileImportService;
-  private extensionLoader: DuckDBExtensionLoader;
+  private extensionLoader: DuckDBExtensionLoader | null;
   private aliasManager: AliasManager;
 
   // Event system
   private focusManager: FocusManager;
   private eventDispatcher: EventDispatcher;
 
-  constructor(parent: HTMLElement, duckDBService: DuckDBService, version: string, options: BedevereAppOptions = {}) {
+  constructor(parent: HTMLElement, version: string, options: BedevereAppOptions = {}) {
     this.options = {
       theme: "dark",
       showLeftPanel: true,
@@ -115,14 +145,28 @@ export class BedevereApp implements EventHandler {
     this.container.className = "bedevere-app";
     this.setupTheme();
 
-    this.duckDBService = duckDBService;
+    // Default to in-browser DuckDB-WASM when the embedder didn't supply
+    // a backend. Hosts that bring their own (bedevere-desktop's
+    // IpcBackend, future remote backends) pass it via options.
+    this.backend = options.backend ?? new DuckDBService();
+    // Default to the browser File System Access API. Desktop / future
+    // remote hosts substitute an IpcFileSource so picks go through
+    // the native OS dialog.
+    this.fileSource = options.fileSource ?? new FsaFileSource();
     this.version = version;
 
-    // Initialize persistence, view management, and import service
+    // Initialize persistence, view management, and import service.
+    // DuckDBExtensionLoader is DuckDB-WASM-specific (INSTALL FROM URL is
+    // a WASM-only concept) and only runs when the backend is the
+    // bundled DuckDBService. Other backends (IpcBackend, …) are
+    // responsible for loading their own extensions on the host side
+    // before BedevereApp constructs; `initAsync` skips the WASM
+    // extension probe when the backend isn't DuckDBService.
     this.persistenceService = persistenceService;
-    this.extensionLoader = new DuckDBExtensionLoader(duckDBService);
-    this.fileImportService = new FileImportService(duckDBService);
-    this.aliasManager = new AliasManager(duckDBService);
+    this.extensionLoader =
+      this.backend instanceof DuckDBService ? new DuckDBExtensionLoader(this.backend) : null;
+    this.fileImportService = new FileImportService(this.backend);
+    this.aliasManager = new AliasManager(this.backend);
 
     // Initialize event system
     this.focusManager = new FocusManager({ debugMode: options.debugMode || false });
@@ -137,53 +181,67 @@ export class BedevereApp implements EventHandler {
   }
 
   public async initAsync(): Promise<void> {
-    // Try loading DuckDB extensions for additional file format support.
-    // Probe queries verify the function actually works in WASM (catches runtime crashes).
-    await this.extensionLoader.tryLoad("excel", undefined, [
-      "SELECT * FROM read_xlsx('__probe_nonexistent__.xlsx') LIMIT 0",
-    ]);
+    // Extension load + capability probing is DuckDB-WASM-specific. Other
+    // backends (IpcBackend, …) load extensions on the host side before
+    // BedevereApp constructs and surface what they got via
+    // `backend.capabilities.visualize` etc. — there's nothing to install
+    // from the renderer.
+    if (this.extensionLoader) {
+      // Try loading DuckDB extensions for additional file format support.
+      // Probe queries verify the function actually works in WASM (catches runtime crashes).
+      await this.extensionLoader.tryLoad("excel", undefined, [
+        "SELECT * FROM read_xlsx('__probe_nonexistent__.xlsx') LIMIT 0",
+      ]);
 
-    // stats_duck (ggsql VISUALIZE parser). Source URL is env-configurable
-    // via VITE_STATS_DUCK_URL — see .env.example for the local-build setup.
-    // Page-relative paths (starting with `/`) get the origin prefixed because
-    // DuckDB-WASM's INSTALL FROM requires an absolute URL.
-    const rawStatsDuckUrl =
-      (import.meta.env.VITE_STATS_DUCK_URL as string | undefined) ||
-      "https://caerbannogwhite.github.io/the-stats-duck";
-    const statsDuckUrl = rawStatsDuckUrl.startsWith("/")
-      ? `${window.location.origin}${rawStatsDuckUrl}`
-      : rawStatsDuckUrl;
-    const installOk = await this.extensionLoader.tryLoad("stats_duck", statsDuckUrl);
-    if (!installOk) {
-      const reason = `INSTALL FROM '${statsDuckUrl}' rejected by DuckDB`;
-      setStatsDuckFailureReason(reason);
-      console.warn(`stats_duck install failed (URL: ${statsDuckUrl}). VISUALIZE / ggsql disabled.`);
-    } else {
-      // tryLoad's probe doesn't catch "INSTALL succeeded but parser hooks
-      // didn't attach" — that path returns 0 rows from a SELECT, not an
-      // error. An explicit count check is the only way to surface it,
-      // and it's a real failure mode (DuckDB-WASM version mismatch with
-      // the published extension build).
-      const ggsqlFns = await this.duckDBService.executeQuery(
-        "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'ggsql_mark_v1_%'",
-      );
-      const n = Number((ggsqlFns?.[0] as { n?: unknown })?.n ?? 0);
-      if (n === 0) {
-        const reason =
-          `loaded from ${statsDuckUrl} but registered 0 ggsql_mark_v1_* functions ` +
-          "(likely a DuckDB-WASM version mismatch with @duckdb/duckdb-wasm)";
+      // stats_duck (ggsql VISUALIZE parser). Source URL is env-configurable
+      // via VITE_STATS_DUCK_URL — see .env.example for the local-build setup.
+      // Page-relative paths (starting with `/`) get the origin prefixed because
+      // DuckDB-WASM's INSTALL FROM requires an absolute URL.
+      const rawStatsDuckUrl =
+        (import.meta.env.VITE_STATS_DUCK_URL as string | undefined) ||
+        "https://kolistat.github.io/the-stats-duck";
+      const statsDuckUrl = rawStatsDuckUrl.startsWith("/")
+        ? `${window.location.origin}${rawStatsDuckUrl}`
+        : rawStatsDuckUrl;
+      const installOk = await this.extensionLoader.tryLoad("stats_duck", statsDuckUrl);
+      if (!installOk) {
+        const reason = `INSTALL FROM '${statsDuckUrl}' rejected by DuckDB`;
         setStatsDuckFailureReason(reason);
-        console.warn(
-          `stats_duck loaded from ${statsDuckUrl} but registered no ggsql_mark_v1_* ` +
-            "functions — parser hooks didn't attach. Likely a DuckDB-WASM version " +
-            "mismatch; run `SELECT version()` and rebuild the extension against it.",
+        console.warn(`stats_duck install failed (URL: ${statsDuckUrl}). VISUALIZE / ggsql disabled.`);
+      } else {
+        // tryLoad's probe doesn't catch "INSTALL succeeded but parser hooks
+        // didn't attach" — that path returns 0 rows from a SELECT, not an
+        // error. An explicit count check is the only way to surface it,
+        // and it's a real failure mode (DuckDB-WASM version mismatch with
+        // the published extension build).
+        const ggsqlFns = await this.backend.executeQuery(
+          "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'ggsql_mark_v1_%'",
         );
+        const n = Number((ggsqlFns?.[0] as { n?: unknown })?.n ?? 0);
+        if (n === 0) {
+          const reason =
+            `loaded from ${statsDuckUrl} but registered 0 ggsql_mark_v1_* functions ` +
+            "(likely a DuckDB-WASM version mismatch with @duckdb/duckdb-wasm)";
+          setStatsDuckFailureReason(reason);
+          console.warn(
+            `stats_duck loaded from ${statsDuckUrl} but registered no ggsql_mark_v1_* ` +
+              "functions — parser hooks didn't attach. Likely a DuckDB-WASM version " +
+              "mismatch; run `SELECT version()` and rebuild the extension against it.",
+          );
+        } else {
+          // stats_duck is loaded and its parser hooks attached. Make the
+          // `visualize` capability honest — it gates both VISUALIZE
+          // affordances and the stat-format file export (xpt/sav/por/
+          // sas7bdat COPY functions ship in the same extension). Inner
+          // field is mutable even though `capabilities` is readonly.
+          this.backend.capabilities.visualize = true;
+        }
       }
-    }
 
-    // Register extension-based handlers (they self-check if extension loaded)
-    this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
-    this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
+      // Register extension-based handlers (they self-check if extension loaded)
+      this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
+      this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
+    }
     // HTML import is pure DOM parsing in the main thread — no extension required.
     this.fileImportService.register(new HtmlFormatHandler());
 
@@ -411,7 +469,7 @@ export class BedevereApp implements EventHandler {
     this.tabManager = new TabManager(this.spreadsheetContainer, this.options.spreadsheetOptions);
 
     // Initialize SQL editor within the multi-dataset visualizer
-    this.tabManager.initSqlEditor(this.duckDBService);
+    this.tabManager.initSqlEditor(this.backend);
 
     // Set event dispatcher on multi-dataset visualizer
     this.tabManager.setEventDispatcher(this.eventDispatcher);
@@ -493,7 +551,9 @@ export class BedevereApp implements EventHandler {
 
     // Dataset panel
     if (this.options.showLeftPanel) {
-      this.leftPanel = new ControlPanel(this.leftPanelContainer, this.tabManager);
+      this.leftPanel = new ControlPanel(this.leftPanelContainer, this.tabManager, {
+        hideAppTitle: !(this.options.showPanelTitle ?? true),
+      });
       this.setOnSelectDatasetCallback();
 
       // Move column stats into left panel
@@ -509,6 +569,7 @@ export class BedevereApp implements EventHandler {
 
       // Wire services to panel
       this.leftPanel.setFileImportService(this.fileImportService);
+      this.leftPanel.setFileSource(this.fileSource);
       this.leftPanel.setOnAliasChangeCallback(async (tableName, alias) => {
         try {
           await this.aliasManager.setAlias(tableName, alias);
@@ -854,10 +915,10 @@ export class BedevereApp implements EventHandler {
       description: "Open a new tab listing every table in the current database",
       category: "Dataset",
       execute: async () => {
-        if (!this.duckDBService) throw new Error("Database not initialized");
+        if (!this.backend) throw new Error("Database not initialized");
         await this.tabManager.addQueryResult(
           "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name",
-          this.duckDBService,
+          this.backend,
         );
       },
     });
@@ -882,14 +943,14 @@ export class BedevereApp implements EventHandler {
           (params?.table as string | undefined) ??
           this.tabManager.getActiveDatasetTab()?.metadata.name;
         if (!table) throw new Error(".columns needs a table name (or an active dataset tab)");
-        if (!this.duckDBService) throw new Error("Database not initialized");
+        if (!this.backend) throw new Error("Database not initialized");
         // information_schema.columns rather than DESCRIBE — addQueryResult
         // wraps in CREATE TABLE … AS (…) which DuckDB's DESCRIBE statement
         // can't appear inside (it's not a SELECT).
         const tableLiteral = String(table).replace(/'/g, "''");
         await this.tabManager.addQueryResult(
           `SELECT column_name, data_type, is_nullable, column_default, ordinal_position FROM information_schema.columns WHERE table_schema = 'main' AND table_name = '${tableLiteral}' ORDER BY ordinal_position`,
-          this.duckDBService,
+          this.backend,
         );
       },
     });
@@ -905,7 +966,7 @@ export class BedevereApp implements EventHandler {
       execute: async () => {
         const tab = this.tabManager.getActiveDatasetTab();
         if (!tab) throw new Error(".hide needs an active dataset tab");
-        if (!this.duckDBService) throw new Error("Database not initialized");
+        if (!this.backend) throw new Error("Database not initialized");
 
         // Source-table resolution matches handleFilterChange: a filtered
         // provider knows its source; an unfiltered one is its own source.
@@ -914,7 +975,7 @@ export class BedevereApp implements EventHandler {
             ? tab.dataProvider.getSourceTableName()
             : tab.metadata.name;
 
-        const tableInfo = await this.duckDBService.getTableInfo(sourceTableName);
+        const tableInfo = await this.backend.getTableInfo(sourceTableName);
         const allCols = tableInfo.map((c: any) => c.column_name as string);
 
         const filterManager = this.tabManager.getFilterManager();
@@ -940,20 +1001,13 @@ export class BedevereApp implements EventHandler {
       category: "Dataset",
       execute: async (params) => {
         if (params?.folder || params?.d) {
-          this.leftPanel?.openFolderPicker();
+          await this.leftPanel?.openFolderPicker();
           return;
         }
-        const picker = document.createElement("input");
-        picker.type = "file";
-        picker.multiple = true;
-        const exts = this.fileImportService.getSupportedExtensions();
-        picker.accept = exts.map((e) => (e.startsWith(".") ? e : "." + e)).join(",");
-        picker.addEventListener("change", async () => {
-          if (picker.files && picker.files.length > 0) {
-            await this.leftPanel?.addFilesFromDrop(Array.from(picker.files), true);
-          }
-        });
-        picker.click();
+        // Delegate the file picker to the panel — it branches on the
+        // active FileSource (FSA: browser `<input type="file">`; IPC:
+        // host's native dialog returning paths the host opens directly).
+        await this.leftPanel?.openFilePicker();
       },
     });
 
@@ -1265,21 +1319,24 @@ export class BedevereApp implements EventHandler {
       shellName: "export",
       title: "Export Selection / Chart",
       description:
-        "Export the active dataset's selection (csv | tsv | html | markdown — clipboard + downloads) " +
-        "or the active chart (png | svg — downloads only)",
+        "Export the active dataset — selection as csv | tsv | html | markdown (clipboard + download), " +
+        "or the whole table to a file as parquet | json | xpt | sav | por | sas7bdat. " +
+        "The active chart exports as png | svg.",
       category: "Dataset",
       parameters: [
         {
           name: "format",
           type: "string",
           required: true,
-          description: "csv | tsv | html | markdown (datasets); png | svg (charts)",
+          description:
+            "csv | tsv | html | markdown (selection); parquet | json | xpt | sav | por | sas7bdat (whole table); png | svg (charts)",
           // Argument-completion is per-active-tab so the user only sees the
-          // formats that apply right now.
+          // formats that apply right now — and only the file-export formats
+          // the current engine can actually write.
           options: () =>
             this.tabManager.getActiveChartTab() !== null
               ? ["png", "svg"]
-              : ["csv", "tsv", "html", "markdown"],
+              : ["csv", "tsv", "html", "markdown", ...this.availableFileExportFormats()],
         },
         { name: "includeHeader", type: "boolean", required: false, default: "true" },
         { name: "includeIndex",  type: "boolean", required: false, default: "true" },
@@ -1296,6 +1353,14 @@ export class BedevereApp implements EventHandler {
           }
           const filename = await this.tabManager.exportActiveChart(fmt);
           this.showMessage(`Exported ${filename} to downloads`, "success");
+          return;
+        }
+        // File-export formats (parquet/json/xpt/sav/por/sas7bdat) write the
+        // whole table via the backend's COPY path; the text formats fall
+        // through to the selection-based, client-side export.
+        const fmt = String(params?.format ?? "").toLowerCase();
+        if (isExportFormat(fmt)) {
+          await this.exportDatasetToFile(fmt);
           return;
         }
         await this.exportSelection(params);
@@ -1333,15 +1398,18 @@ export class BedevereApp implements EventHandler {
         },
       ],
       execute: async (params) => {
-        if (!this.duckDBService) throw new Error("Database not initialized");
+        if (!this.backend) throw new Error("Database not initialized");
         if (params?.all) {
+          if (!this.backend.wipeUserState) {
+            throw new Error("Backend doesn't support wipeUserState — `.drop --all` unavailable in this environment");
+          }
           // Close any open tabs first — leaving them visible after the
           // backing table is gone would just produce errors on the next
           // refresh. Snapshot ids to avoid mutating while iterating.
           for (const id of [...this.tabManager.getDatasetIds()]) {
             this.tabManager.closeDataset(id);
           }
-          const summary = await this.duckDBService.wipeUserState();
+          const summary = await this.backend.wipeUserState();
           // Without this, the panel still believes every imported file is
           // backed by a live DuckDB table; clicking a tree row would try to
           // reuse a stale DataProvider pointing at a relation that no
@@ -1362,13 +1430,16 @@ export class BedevereApp implements EventHandler {
         }
         const name = (params?.name as string | undefined)?.trim();
         if (!name) throw new Error(".drop needs a name, or pass --all to wipe everything");
+        if (!this.backend.dropByName) {
+          throw new Error("Backend doesn't support dropByName — `.drop <name>` unavailable in this environment");
+        }
         // If the named object is currently shown as a dataset tab, close
         // the tab so the user doesn't end up looking at a stale view of a
         // deleted relation.
         if (this.tabManager.getDatasetIds().includes(name)) {
           this.tabManager.closeDataset(name);
         }
-        const kind = await this.duckDBService.dropByName(name);
+        const kind = await this.backend.dropByName(name);
         if (!kind) throw new Error(`No table, view, macro, type or sequence called "${name}" in main`);
         // For tables / views, also clear the panel's cached DataProvider
         // and tree-node import markers so a future click re-imports
@@ -1535,6 +1606,64 @@ export class BedevereApp implements EventHandler {
       this.showMessage("Demo loaded \u2014 press Ctrl+Enter to run", "info");
     } catch (error) {
       // loadSampleDataset already surfaced its own error; nothing to add.
+    }
+  }
+
+  /**
+   * The file-export formats the current engine can write right now.
+   * Filtered by whether the backend implements `exportTable` at all and —
+   * for the stat formats — whether stats_duck is loaded
+   * (`capabilities.visualize`). Drives `.export` argument completion.
+   */
+  private availableFileExportFormats(): ExportFormat[] {
+    if (!this.backend.exportTable) return [];
+    const statsDuck = this.backend.capabilities.visualize;
+    return EXPORT_FORMAT_ORDER.filter(
+      (f) => !EXPORT_FORMATS[f].requiresStatsDuck || statsDuck,
+    );
+  }
+
+  /**
+   * Export the active dataset's whole backing table to a file via the
+   * backend's COPY path. The in-process WASM engine hands back bytes we
+   * download in the browser; the desktop host writes the file itself
+   * after a native Save dialog. Active filters / sorts / hidden columns
+   * are NOT applied — this is the full table. (The selection-based
+   * csv / tsv / html / markdown export is the filter-aware path.)
+   */
+  private async exportDatasetToFile(format: ExportFormat): Promise<void> {
+    const activeDataset = this.tabManager.getActiveDatasetTab();
+    if (!activeDataset) {
+      this.showMessage("No active dataset to export", "warning");
+      return;
+    }
+    if (!this.backend.exportTable) {
+      this.showMessage("This engine can't export files", "warning");
+      return;
+    }
+    const meta = EXPORT_FORMATS[format];
+    if (meta.requiresStatsDuck && !this.backend.capabilities.visualize) {
+      this.showMessage(`${meta.label} export needs the stats_duck extension loaded`, "warning");
+      return;
+    }
+    const table = activeDataset.dataProvider.getSourceTable?.() ?? activeDataset.metadata.name;
+    const filenameHint = activeDataset.metadata.name;
+    try {
+      const result = await this.backend.exportTable({ table, format, filenameHint });
+      switch (result.kind) {
+        case "cancelled":
+          return;
+        case "bytes":
+          downloadBinaryFile(result.data, result.filename, result.mime);
+          this.showMessage(`Exported ${result.filename} to downloads (whole table)`, "success");
+          return;
+        case "saved":
+          this.showMessage(`Exported ${meta.label} to ${result.path}`, "success");
+          return;
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "unknown error";
+      this.showMessage(`Export failed: ${msg}`, "error");
     }
   }
 
