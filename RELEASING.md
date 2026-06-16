@@ -166,7 +166,7 @@ Per [[feedback-release-branches]] in memory: the moment a release is tagged + me
 
 - **npm version is clean semver**: `0.13.0`, not `0.13.0-i-am`. Anything after a `-` is a pre-release per semver, and npm refuses to assign `@latest` to pre-release versions automatically. Keeping the codename out of `package.json` means `npm publish` Just Works.
 - **The codename is the release identity** for humans: git tag, CHANGELOG heading, About tab, blog post, GitHub Release page. All those carry `v0.X-codename`.
-- **`@next` during active dev**: bedevere-desktop's renderer pins `@kolistat/bedevere-wise` to `"next"` while `dev-0.X` is in flight. Wise pre-release builds can be published via `npm publish --tag next` from a `dev-0.X` branch without affecting `@latest`. The release ritual above bumps the pin to the exact version `"0.X.0"` so the tagged desktop release is reproducible.
+- **Releases publish from `main` only**: every `npm publish` runs from `main`, after the `dev-0.X` → `main` merge (step 2 above) — never from a `dev-0.X` branch. Publishing a clean `0.X.0` from a dev branch consumes the release version number before the real release ships (it happened once with `0.13.0` — the recovery was to release as `0.13.1`). During active dev the desktop renderer tracks wise through a local `bun link` (see `renderer/README.md`) rather than a published `@next` build; the release ritual then pins the renderer to the exact published version so the tagged desktop release is reproducible. Keep `@next` aligned to the latest published release (`npm dist-tag add @kolistat/bedevere-wise@0.X.Y next`) so it never points at stale bytes.
 - **Patch releases**: same ritual, patch level only. Bump to `0.X.1` on both, codename stays the same (e.g. `v0.X.1-i-am` git tag if you want to be explicit, or just `v0.X.1` — both work, pick one).
 - **Desktop-only fix between wise releases**: bump both repos' patch level. Wise's publish is essentially a no-op (same code, new version) but preserves the version invariant. For now this is rare and tolerable; if it becomes frequent, revisit the lockstep model.
 
@@ -174,6 +174,7 @@ Per [[feedback-release-branches]] in memory: the moment a release is tagged + me
 
 - Don't commit post-release features to the just-shipped `dev-0.X` branch. Branch `dev-0.X+1` immediately on merge.
 - Don't put the codename in `package.json` `version`. It breaks `npm publish` `@latest` promotion.
+- Don't `npm publish` from a `dev-X.Y` branch — releases publish from `main` only (see Versioning subtleties). Pre-release publishing to `@next` from dev is what burned `0.13.0`.
 - Don't release wise without releasing desktop, or vice versa. Lockstep means lockstep — even if one side has no changes, bump and re-publish.
 - Don't tag without merging to main. Tags should always point to commits reachable from `main`.
 - Don't `git push --force` on `main` or any `dev-X.Y` after it's been pushed. Other tooling (npm publish, installer pipelines, CHANGELOG diffs) assumes those refs are stable.

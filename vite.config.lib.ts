@@ -2,12 +2,12 @@ import { defineConfig } from "vite";
 import { resolve } from "path";
 
 /**
- * Library-build config for `@kolistat/bedevere`.
+ * Library-build config for `@kolistat/bedevere-wise`.
  *
  * This is separate from `vite.config.ts` (which builds the *standalone
  * app* with `index.html` + `embed.html` as MPA entries). Running
  * `bun run build:lib` against this config produces an ES module bundle
- * + CSS that downstream apps (e.g. `tflier`) can import as a package.
+ * + CSS that downstream apps (e.g. `tlf-studio`) can import as a package.
  *
  * Externals: peer-dep packages (DuckDB, CodeMirror, Vega) are NOT
  * bundled — consumers install them as their own dependencies. This

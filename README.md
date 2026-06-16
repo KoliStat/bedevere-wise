@@ -8,7 +8,7 @@ Embeddable browser components for DuckDB-WASM-backed data exploration:
 - **`EmbedSqlEditor`** — slim CodeMirror SQL editor with Bedevere's PostgreSQL-extended dialect.
 - **`DuckDBService` + `DuckDBDataProvider`** — DuckDB-WASM runtime wrapper + bridge to the UI components.
 
-These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). Also consumed by [tflier](https://github.com/caerbannogwhite/tflier) for clinical-trial pipeline inspection.
+These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). Also consumed by [tlf-studio](https://github.com/KoliStat/tlf-studio) for clinical-trial pipeline inspection.
 
 > **Status**: pre-stable. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes possible before `0.13.0`. Pin to an exact version in production.
 
