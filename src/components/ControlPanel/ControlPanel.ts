@@ -603,30 +603,56 @@ export class ControlPanel {
    * handlers.
    */
   private buildIpcFolderTree(folder: FileSourceFolder, files: FileSourceFile[]): FileTreeNode {
-    const importable = files.filter((f) => {
-      if (f.kind !== "path") return false;
-      return detectFileType(f.name) !== null;
-    });
-    const children: FileTreeNode[] = importable.map((f) => {
-      const file = f as Extract<typeof f, { kind: "path" }>;
-      return {
-        id: `ipc/${folder.id}/${file.name}`,
-        name: file.name,
-        kind: "file" as const,
-        filePath: file.path,
-        fileType: detectFileType(file.name) ?? undefined,
-        isImported: false,
-        isExpanded: false,
-      };
-    });
-    return {
+    const root: FileTreeNode = {
       id: `ipc/${folder.id}`,
       name: folder.name,
       kind: "folder",
-      children,
+      children: [],
       isImported: false,
       isExpanded: true,
     };
+
+    // The host returns every importable file in the tree (recursive walk)
+    // with an absolute path. Rebuild the folder hierarchy from each file's
+    // path relative to the opened root, minting intermediate folder nodes
+    // on demand (and de-duping them) so nested study folders show as a
+    // real tree rather than a flat list of top-level files.
+    for (const f of files) {
+      if (f.kind !== "path") continue;
+      const fileType = detectFileType(f.name);
+      if (fileType === null) continue;
+
+      // Path relative to the opened folder, normalized to "/".
+      let rel = f.path.startsWith(folder.id) ? f.path.slice(folder.id.length) : f.path;
+      rel = rel.replace(/^[\\/]+/, "").replace(/\\/g, "/");
+      const segments = rel.split("/").filter((s) => s.length > 0);
+      const fileSeg = segments.pop() ?? f.name;
+
+      // Walk/create the folder chain down to the file's parent.
+      let parent = root;
+      let idPath = `ipc/${folder.id}`;
+      for (const seg of segments) {
+        idPath += `/${seg}`;
+        let dir = parent.children?.find((c) => c.kind === "folder" && c.name === seg);
+        if (!dir) {
+          dir = { id: idPath, name: seg, kind: "folder", children: [], isImported: false, isExpanded: false };
+          parent.children!.push(dir);
+        }
+        parent = dir;
+      }
+
+      parent.children!.push({
+        id: `ipc/${folder.id}/${rel}`,
+        name: fileSeg,
+        kind: "file",
+        filePath: f.path,
+        fileType: fileType ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      });
+    }
+
+    return root;
   }
 
   /**
