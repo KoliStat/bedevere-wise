@@ -238,10 +238,14 @@ export class BedevereApp implements EventHandler {
         }
       }
 
-      // Register extension-based handlers (they self-check if extension loaded)
-      this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
-      this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
     }
+    // Excel + Stat handlers register regardless of backend: on DuckDB-WASM
+    // they gate on the loaded extension; on IPC (extensionLoader null) they
+    // defer to the host's native read_xlsx / read_stat. Without registering
+    // them for IPC, the desktop had no handler for xlsx / xpt / sav / sas7bdat / dta
+    // (drag-dropped stat files hit "No handler registered for file type").
+    this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
+    this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
     // HTML import is pure DOM parsing in the main thread — no extension required.
     this.fileImportService.register(new HtmlFormatHandler());
 

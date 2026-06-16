@@ -4,14 +4,16 @@ import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
 
 export class ExcelFormatHandler implements FormatHandler {
-  private extensionLoader: DuckDBExtensionLoader;
+  private extensionLoader: DuckDBExtensionLoader | null;
 
-  constructor(extensionLoader: DuckDBExtensionLoader) {
+  constructor(extensionLoader: DuckDBExtensionLoader | null) {
     this.extensionLoader = extensionLoader;
   }
 
   canHandle(fileType: SupportedFileType): boolean {
-    return (fileType === "xlsx" || fileType === "xls") && this.extensionLoader.isLoaded("excel");
+    // DuckDB-WASM gates on the loaded extension; an IPC backend (loader
+    // null) defers to the host's native read_xlsx.
+    return (fileType === "xlsx" || fileType === "xls") && (this.extensionLoader?.isLoaded("excel") ?? true);
   }
 
   async import(file: File, tableName: string, backend: Backend, options?: ImportFileOptions): Promise<void> {
