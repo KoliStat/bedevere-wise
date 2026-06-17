@@ -1,7 +1,7 @@
 import type { Backend } from "./Backend";
 import { Column, ColumnStats, DataProvider, DatasetMetadata, normalizeDuckDBType } from "./types";
 import { ColumnFilterManager } from "./ColumnFilterManager";
-import { unwrapArrowValue } from "./arrowUnwrap";
+import { unwrapArrowRows } from "./arrowUnwrap";
 import { parseDuckDBType, TypeNode } from "./duckdbTypeParser";
 import { quoteIdent } from "./sqlIdent";
 
@@ -136,14 +136,12 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       this.ensureSourceColumns(),
     ]);
     // `allTypes` is keyed by the source table's column order; filter to
-    // the visible-projection order so unwrapArrowValue lines up.
+    // the visible-projection order so the cell types line up.
     const visibleSet = new Set(visible.map((c: any) => c.column_name));
     const types = sourceColumns
       .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
       .filter((t): t is TypeNode | undefined => t !== null);
-    return rows.map((row: any) =>
-      (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, types[i])),
-    );
+    return unwrapArrowRows(rows, types);
   }
 
   public async fetchDataColumnRange(
@@ -170,9 +168,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
       .filter((t): t is TypeNode | undefined => t !== null);
     const sliceTypes = visibleTypes.slice(startCol, endCol);
-    return rows.map((row: any) =>
-      (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, sliceTypes[i])),
-    );
+    return unwrapArrowRows(rows, sliceTypes);
   }
 
   /**

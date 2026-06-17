@@ -1,6 +1,6 @@
 import { DuckDBService } from "./DuckDBService";
 import { quoteIdent } from "./sqlIdent";
-import { unwrapArrowValue } from "./arrowUnwrap";
+import { unwrapArrowRows } from "./arrowUnwrap";
 import { parseDuckDBType, TypeNode } from "./duckdbTypeParser";
 import {
   Column,
@@ -87,9 +87,7 @@ export class DuckDBDataProvider implements DataProvider {
       this.duckDBService.executeQuery(query),
       this.ensureColumnTypes(),
     ]);
-    return rows.map((row: any) =>
-      (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, types[i])),
-    );
+    return unwrapArrowRows(rows, types);
   }
 
   public async fetchDataColumnRange(startRow: number, endRow: number, startCol: number, endCol: number): Promise<any[][]> {
@@ -104,9 +102,7 @@ export class DuckDBDataProvider implements DataProvider {
     ]);
     // types is full column list; we sliced columnNames the same way.
     const sliceTypes = types.slice(startCol, endCol);
-    return rows.map((row: any) =>
-      (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, sliceTypes[i])),
-    );
+    return unwrapArrowRows(rows, sliceTypes);
   }
 
   /**

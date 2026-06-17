@@ -7,28 +7,10 @@
 // (the desktop's IpcBackend) never does.
 import type * as duckdb from "@duckdb/duckdb-wasm";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
-import { quoteIdent } from "./sqlIdent";
+import { quoteIdent, quoteLiteral } from "./sqlIdent";
+import { extractDecimalScales } from "./arrowUnwrap";
 import type { Backend, BackendCapabilities, ExportResult, ExportTableOptions, FunctionInfo } from "./Backend";
 import { EXPORT_FORMATS } from "./exportFormats";
-
-/**
- * Best-effort lift of a DECIMAL scale from an Apache Arrow schema field's
- * type. Different builds of duckdb-wasm / apache-arrow expose the scale
- * differently; covers the two we've seen in the wild plus a defensive
- * `toString()` parse for anything else.
- */
-function inferDecimalScale(t: any): number | undefined {
-  if (!t || typeof t !== "object") return undefined;
-  if (typeof t.scale === "number") return t.scale;
-  // Some builds nest decimal config under `precision`/`scale` on a `data`
-  // sub-object, others stringify as `Decimal128<10, 2>` or `Decimal(10,2)`.
-  if (typeof t.toString === "function") {
-    const s = String(t);
-    const m = /Decimal\d*\s*[<(]\s*\d+\s*,\s*(\d+)/i.exec(s);
-    if (m) return Number(m[1]);
-  }
-  return undefined;
-}
 
 export class DuckDBService implements Backend {
   public readonly id = "duckdb-wasm";
@@ -137,16 +119,7 @@ export class DuckDBService implements Backend {
     const connection = await this.getConnection();
     try {
       const table: any = await connection.query(query);
-      const decimalScales: Record<string, number> = {};
-      const fields: any[] = table?.schema?.fields ?? [];
-      for (const field of fields) {
-        const name = String(field?.name ?? "");
-        if (!name) continue;
-        const scale = inferDecimalScale(field?.type);
-        if (typeof scale === "number" && scale > 0) {
-          decimalScales[name] = scale;
-        }
-      }
+      const decimalScales = extractDecimalScales(table?.schema?.fields);
       return { rows: table.toArray(), decimalScales };
     } finally {
       await connection.close();
@@ -239,7 +212,7 @@ export class DuckDBService implements Backend {
     const conn = await this.getConnection();
     try {
       await conn.query(
-        `COPY ${quoteIdent(opts.table)} TO '${vname.replace(/'/g, "''")}' (FORMAT ${meta.duckFormat})`,
+        `COPY ${quoteIdent(opts.table)} TO ${quoteLiteral(vname)} (FORMAT ${meta.duckFormat})`,
       );
     } finally {
       await conn.close();
@@ -410,7 +383,7 @@ export class DuckDBService implements Backend {
       // Avoids running blind `DROP TABLE ... CASCADE` on a view and the
       // reverse, which can spuriously remove other deps with CASCADE.
       const probe = (await conn.query(
-        `SELECT table_type FROM information_schema.tables WHERE table_schema = 'main' AND table_name = '${name.replace(/'/g, "''")}'`,
+        `SELECT table_type FROM information_schema.tables WHERE table_schema = 'main' AND table_name = ${quoteLiteral(name)}`,
       )).toArray() as Array<{ table_type: string }>;
       if (probe.length > 0) {
         const isView = String(probe[0].table_type).toUpperCase() === "VIEW";
@@ -419,7 +392,7 @@ export class DuckDBService implements Backend {
       }
 
       const macroProbe = (await conn.query(
-        `SELECT 1 AS x FROM duckdb_functions() WHERE schema_name = 'main' AND function_type IN ('macro', 'table_macro') AND internal = false AND function_name = '${name.replace(/'/g, "''")}' LIMIT 1`,
+        `SELECT 1 AS x FROM duckdb_functions() WHERE schema_name = 'main' AND function_type IN ('macro', 'table_macro') AND internal = false AND function_name = ${quoteLiteral(name)} LIMIT 1`,
       )).toArray();
       if (macroProbe.length > 0) {
         await conn.query(`DROP MACRO IF EXISTS ${ident}`);
@@ -428,7 +401,7 @@ export class DuckDBService implements Backend {
 
       try {
         const typeProbe = (await conn.query(
-          `SELECT 1 AS x FROM duckdb_types() WHERE schema_name = 'main' AND internal = false AND type_name = '${name.replace(/'/g, "''")}' LIMIT 1`,
+          `SELECT 1 AS x FROM duckdb_types() WHERE schema_name = 'main' AND internal = false AND type_name = ${quoteLiteral(name)} LIMIT 1`,
         )).toArray();
         if (typeProbe.length > 0) {
           await conn.query(`DROP TYPE IF EXISTS ${ident}`);
@@ -440,7 +413,7 @@ export class DuckDBService implements Backend {
 
       try {
         const seqProbe = (await conn.query(
-          `SELECT 1 AS x FROM duckdb_sequences() WHERE schema_name = 'main' AND internal = false AND sequence_name = '${name.replace(/'/g, "''")}' LIMIT 1`,
+          `SELECT 1 AS x FROM duckdb_sequences() WHERE schema_name = 'main' AND internal = false AND sequence_name = ${quoteLiteral(name)} LIMIT 1`,
         )).toArray();
         if (seqProbe.length > 0) {
           await conn.query(`DROP SEQUENCE IF EXISTS ${ident}`);
