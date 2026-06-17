@@ -1,6 +1,6 @@
 import "./styles/main.scss";
 import { BedevereApp } from "./components/BedevereApp/BedevereApp";
-import { duckDBService } from "./data/DuckDBService.ts";
+import { DuckDBService } from "./data/DuckDBService.ts";
 import { persistenceService } from "./data/PersistenceService.ts";
 import {
   DEFAULT_DATE_FORMAT,
@@ -14,6 +14,11 @@ import {
 async function initApplication() {
   const debugMode = import.meta.env.DEV;
   const appVersion = "0.14-tbd";
+
+  // The web app owns its engine instance (the singleton used to live in
+  // DuckDBService.ts, but that made the module non-tree-shakeable for
+  // non-WASM embedders). Construct it here and hand it to BedevereApp.
+  const duckDBService = new DuckDBService();
 
   // Initialize DuckDB first
   try {

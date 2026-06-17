@@ -26,11 +26,13 @@ import {
   isExportFormat,
   type ExportFormat,
 } from "@/data/exportFormats";
-import { DuckDBService } from "@/data/DuckDBService";
-// NOTE: DuckDBService stays imported for the no-options default — when a
-// host doesn't pass `options.backend` we construct one for them. Hosts
-// that bring their own (IpcBackend in bedevere-desktop, future remote
-// backends) pass it via options and the DuckDB-WASM tree-shakes out.
+// DuckDBService is intentionally NOT imported here. BedevereApp is
+// backend-agnostic: the embedder supplies `options.backend` (a
+// DuckDBService from "@kolistat/bedevere-wise/duckdb" for the in-browser
+// default, an IpcBackend for the desktop, a remote relay, …). Keeping the
+// DuckDB-WASM worker chain out of this module's static graph is what lets
+// a non-WASM host bundle the app shell without shipping ~3 MB of unused
+// DuckDB workers.
 import { PersistenceService, persistenceService } from "@/data/PersistenceService";
 import { keymapService } from "@/data/KeymapService";
 import { commandRegistry } from "@/data/CommandRegistry";
@@ -84,12 +86,13 @@ export type BedevereAppMessageType = "info" | "warning" | "error" | "success";
 
 export interface BedevereAppOptions {
   /**
-   * Engine that runs SQL on behalf of the app. Defaults to a fresh
-   * `DuckDBService` (in-browser DuckDB-WASM) so the standalone web app
-   * keeps working with zero config. Pass an `IpcBackend` to point the
-   * UI at a native DuckDB sitting in another process.
+   * Engine that runs SQL on behalf of the app. Required — BedevereApp
+   * has no built-in default so the app shell carries no hard DuckDB-WASM
+   * dependency. For the in-browser default, import `DuckDBService` from
+   * `@kolistat/bedevere-wise/duckdb` and pass `new DuckDBService()`; pass
+   * an `IpcBackend` to point the UI at a native DuckDB in another process.
    */
-  backend?: Backend;
+  backend: Backend;
   /**
    * File picker source — folder + file dialogs, recent-folders
    * enumeration. Defaults to {@link FsaFileSource} (the File System
@@ -133,7 +136,7 @@ export class BedevereApp implements EventHandler {
   private focusManager: FocusManager;
   private eventDispatcher: EventDispatcher;
 
-  constructor(parent: HTMLElement, version: string, options: BedevereAppOptions = {}) {
+  constructor(parent: HTMLElement, version: string, options: BedevereAppOptions) {
     this.options = {
       theme: "dark",
       showLeftPanel: true,
@@ -145,10 +148,18 @@ export class BedevereApp implements EventHandler {
     this.container.className = "bedevere-app";
     this.setupTheme();
 
-    // Default to in-browser DuckDB-WASM when the embedder didn't supply
-    // a backend. Hosts that bring their own (bedevere-desktop's
-    // IpcBackend, future remote backends) pass it via options.
-    this.backend = options.backend ?? new DuckDBService();
+    // The embedder owns the engine. There is no built-in default so the
+    // app shell stays free of any hard DuckDB-WASM dependency — the web
+    // app passes a DuckDBService, the desktop passes an IpcBackend.
+    if (!options.backend) {
+      throw new Error(
+        "BedevereApp requires options.backend. For the in-browser default, " +
+          'import { DuckDBService } from "@kolistat/bedevere-wise/duckdb" and ' +
+          "pass `new DuckDBService()`; or supply your own Backend " +
+          "(IpcBackend, a remote relay, …).",
+      );
+    }
+    this.backend = options.backend;
     // Default to the browser File System Access API. Desktop / future
     // remote hosts substitute an IpcFileSource so picks go through
     // the native OS dialog.
@@ -157,14 +168,15 @@ export class BedevereApp implements EventHandler {
 
     // Initialize persistence, view management, and import service.
     // DuckDBExtensionLoader is DuckDB-WASM-specific (INSTALL FROM URL is
-    // a WASM-only concept) and only runs when the backend is the
-    // bundled DuckDBService. Other backends (IpcBackend, …) are
-    // responsible for loading their own extensions on the host side
-    // before BedevereApp constructs; `initAsync` skips the WASM
-    // extension probe when the backend isn't DuckDBService.
+    // a WASM-only concept) and only runs against the bundled DuckDBService.
+    // Gate on the backend's `id` marker rather than `instanceof DuckDBService`
+    // so this module never references the DuckDBService value (which would
+    // drag the WASM worker chain back into the static graph). Other backends
+    // (IpcBackend, …) load their own extensions host-side before BedevereApp
+    // constructs; `initAsync` skips the WASM extension probe for them.
     this.persistenceService = persistenceService;
     this.extensionLoader =
-      this.backend instanceof DuckDBService ? new DuckDBExtensionLoader(this.backend) : null;
+      this.backend.id === "duckdb-wasm" ? new DuckDBExtensionLoader(this.backend) : null;
     this.fileImportService = new FileImportService(this.backend);
     this.aliasManager = new AliasManager(this.backend);
 

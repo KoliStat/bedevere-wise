@@ -49,10 +49,12 @@ export default defineConfig({
     emptyOutDir: false,
     cssCodeSplit: false, // single style.css for the whole library
     lib: {
-      // Four published sub-entries:
-      //   - index : combined (UI + DuckDB), back-compat
+      // Five published sub-entries:
+      //   - index : combined (UI + DuckDB + app), back-compat
       //   - ui    : UI components + DataProvider interface + types,
       //             zero DuckDB dependency
+      //   - app   : app shells (BedevereApp, …) + PersistenceService,
+      //             backend-agnostic — zero DuckDB dependency
       //   - duckdb: DuckDBService + DuckDBDataProvider only
       //   - ipc   : Bridge + IpcBackend + wire types — for host
       //             processes (desktop / python / R) that drive the
@@ -61,6 +63,7 @@ export default defineConfig({
       entry: {
         index: resolve(__dirname, "src/index.ts"),
         ui: resolve(__dirname, "src/ui.ts"),
+        app: resolve(__dirname, "src/app.ts"),
         duckdb: resolve(__dirname, "src/duckdb.ts"),
         ipc: resolve(__dirname, "src/ipc.ts"),
       },

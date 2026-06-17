@@ -1,39 +1,24 @@
 /**
- * Combined entry — re-exports `./ui` and `./duckdb` for back-compat.
+ * Combined (back-compat) entry — re-exports every sub-entry so
+ * `import { ... } from "@kolistat/bedevere-wise"` keeps working.
  *
- * New code should prefer the sub-entry imports so non-Vite bundlers
- * and non-DuckDB consumers don't drag in the worker URL chain:
+ * Prefer the sub-entries; they let non-Vite bundlers and non-DuckDB
+ * consumers avoid the worker `?url` chain:
  *
- *   import { SpreadsheetVisualizer } from "@kolistat/bedevere-wise/ui";
- *   import { DuckDBService }         from "@kolistat/bedevere-wise/duckdb";
+ *   import { SpreadsheetVisualizer } from "@kolistat/bedevere-wise/ui";    // components, no WASM
+ *   import { BedevereApp }          from "@kolistat/bedevere-wise/app";   // app shell, BYO backend, no WASM
+ *   import { DuckDBService }        from "@kolistat/bedevere-wise/duckdb"; // in-browser engine (pulls WASM)
  *
- * The root entry stays around so `import { ... } from
- * "@kolistat/bedevere-wise"` keeps working. The UI tier
- * carries the SCSS import; importing only the root or `/ui` brings
- * the stylesheet, importing only `/duckdb` does not.
+ * This root entry re-exports `/duckdb`, so importing anything from it
+ * pulls the DuckDB-WASM worker chain into your bundle. A host that
+ * brings its own backend (the desktop, a remote relay) should import
+ * `BedevereApp` from `/app` instead to keep DuckDB-WASM out.
+ *
+ * The stylesheet rides along with the `/ui` tier, so importing the root
+ * (which re-exports `/ui`) brings the CSS. `/app` deliberately omits it
+ * (see its docblock) — app-shell hosts import `./style.css` explicitly.
  */
 
 export * from "./ui";
 export * from "./duckdb";
-
-// App-shell surface (top-level components composing the standalone
-// web app). Kept for completeness; the embedding contract is the
-// `./ui` + `./duckdb` tiers above. See README.
-export { BedevereApp } from "./components/BedevereApp/BedevereApp";
-export { TabManager } from "./components/TabManager/TabManager";
-export { ControlPanel } from "./components/ControlPanel/ControlPanel";
-export { StatusBar } from "./components/StatusBar/StatusBar";
-export { CommandBar } from "./components/CommandBar/CommandBar";
-
-export type { BedevereAppOptions } from "./components/BedevereApp/BedevereApp";
-export type { StatusBarItem } from "./components/StatusBar/StatusBar";
-export type { Command } from "./data/CommandRegistry";
-export type { CommandBarOptions, CellInfo } from "./components/CommandBar/CommandBar";
-
-// PersistenceService singleton — the kv store that backs settings,
-// environments, query bookmarks, and the editor autosave draft. Hosts
-// that want to swap its substrate (the desktop's IpcFilesystemPersistence,
-// a future server-synced backend) call `persistenceService.setBackend(...)`
-// before constructing BedevereApp.
-export { PersistenceService, persistenceService } from "./data/PersistenceService";
-export type { AppSettings, QueryBookmark, RecentFolderEntry } from "./data/PersistenceService";
+export * from "./app";

@@ -456,6 +456,3 @@ export class DuckDBService implements Backend {
     }
   }
 }
-
-// Export a singleton instance
-export const duckDBService = new DuckDBService();

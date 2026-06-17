@@ -100,6 +100,10 @@
       "types": "./dist/ui.d.ts",
       "import": "./dist/ui.es.js"
     },
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.es.js"
+    },
     "./duckdb": {
       "types": "./dist/duckdb.d.ts",
       "import": "./dist/duckdb.es.js"

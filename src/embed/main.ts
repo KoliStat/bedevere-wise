@@ -1,6 +1,6 @@
 import "../styles/main.scss";
 import "../styles/embed.scss";
-import { duckDBService } from "../data/DuckDBService";
+import { DuckDBService } from "../data/DuckDBService";
 import { EmbedApp } from "./EmbedApp";
 import { parseEmbedConfig } from "./embedConfig";
 import { applyTheme, resolveTheme } from "./embedTheme";
@@ -22,6 +22,10 @@ async function initEmbed(): Promise<void> {
     console.error("/embed: missing #embed-root mount node");
     return;
   }
+
+  // Own the engine instance locally (the shared singleton was removed from
+  // DuckDBService.ts so the module tree-shakes out for non-WASM embedders).
+  const duckDBService = new DuckDBService();
 
   try {
     await duckDBService.initialize();
