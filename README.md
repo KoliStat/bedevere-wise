@@ -10,7 +10,7 @@ Embeddable browser components for DuckDB-WASM-backed data exploration:
 
 These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). Also consumed by [tlf-studio](https://github.com/KoliStat/tlf-studio) for clinical-trial pipeline inspection.
 
-> **Status**: pre-stable. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes possible before `0.13.0`. Pin to an exact version in production.
+> **Status**: pre-1.0. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes are possible between `0.x` minor versions (the CHANGELOG flags them). Pin to an exact version in production.
 
 ## Install
 

@@ -60,8 +60,8 @@ export class FileImportService {
    *
    * Customisation knobs the WASM path exposes (`sample_size`,
    * `ignore_errors`, sheet picker, multi-table HTML) aren't available
-   * here yet — they need host-side support that v1.0 of the wire
-   * protocol doesn't expose. Filed as v0.14 follow-up.
+   * here yet — they need host-side support the v1.0 wire protocol
+   * doesn't expose. A future enhancement once the protocol grows it.
    */
   public async importPath(path: string, tableName?: string): Promise<DataProvider> {
     const fileName = path.split(/[\\/]/).pop() ?? path;

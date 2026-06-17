@@ -15,9 +15,9 @@ async function initApplication() {
   const debugMode = import.meta.env.DEV;
   const appVersion = "0.14-tbd";
 
-  // The web app owns its engine instance (the singleton used to live in
-  // DuckDBService.ts, but that made the module non-tree-shakeable for
-  // non-WASM embedders). Construct it here and hand it to BedevereApp.
+  // The web app constructs its own engine and hands it to BedevereApp
+  // (which has no built-in default). Kept in a local so the debug handle
+  // below points at the very instance the app uses.
   const duckDBService = new DuckDBService();
 
   // Initialize DuckDB first
@@ -35,12 +35,7 @@ async function initApplication() {
 
   const persistedSettings = persistenceService.loadAppSettings();
 
-  // Create the Bedevere Wise application. The default in-browser
-  // DuckDB-WASM backend is constructed inside BedevereApp when
-  // `options.backend` is omitted — but we still initialize the singleton
-  // here so the window-level `duckDBService` debug handle below stays
-  // pointed at the same instance the app uses. We pass that instance
-  // via options.
+  // Mount the app against the DuckDB-WASM engine constructed above.
   const app = new BedevereApp(appContainer, appVersion, {
     backend: duckDBService,
     theme: "auto", // Automatically detect user's preferred theme

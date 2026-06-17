@@ -23,8 +23,8 @@ async function initEmbed(): Promise<void> {
     return;
   }
 
-  // Own the engine instance locally (the shared singleton was removed from
-  // DuckDBService.ts so the module tree-shakes out for non-WASM embedders).
+  // Construct the engine locally (no module-level singleton, so the module
+  // tree-shakes out for non-WASM embedders).
   const duckDBService = new DuckDBService();
 
   try {

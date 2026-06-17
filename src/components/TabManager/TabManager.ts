@@ -805,8 +805,8 @@ export class TabManager {
     // the tab would paint stale rows. Close it and fall through to the
     // fresh-tab path, which re-reads metadata and rebuilds the cache.
     // Trade-off: scroll position / selection / local filter+sort don't
-    // survive the rebuild — acceptable for v0.12; a v0.13 follow-up can
-    // add an in-place refresh that preserves view state.
+    // survive the rebuild. A future enhancement could add an in-place
+    // refresh that preserves view state.
     if (this.getDatasetIds().includes(name)) {
       this.closeDataset(name);
     }
