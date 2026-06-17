@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.14-tbd
+## v0.14-and-this
 
 - [Breaking] **`BedevereApp` requires `options.backend`.** The app shell no longer constructs a default `DuckDBService` when you omit a backend — that hidden default was the last static edge pulling DuckDB-WASM into every consumer of the shell. Pass the engine explicitly: `import { DuckDBService } from "@kolistat/bedevere-wise/duckdb"` and hand it `new DuckDBService()` (the in-browser default), or an `IpcBackend` / remote relay. The standalone web app and the desktop renderer already injected their backend, so nothing user-facing changed; only the zero-arg `new BedevereApp(el, ver)` path is gone. The gate that decides whether to run the WASM extension probe now keys off `backend.id === "duckdb-wasm"` instead of `instanceof DuckDBService`, so the shell module never references the `DuckDBService` value.
 - [Feature] **New `@kolistat/bedevere-wise/app` sub-entry — the app shell, backend-agnostic, zero DuckDB-WASM.** `BedevereApp` + `TabManager` / `ControlPanel` / `StatusBar` / `CommandBar` + the `PersistenceService` singleton now ship from a dedicated `/app` entry that pulls **no** DuckDB-WASM. A host that brings its own engine (bedevere-desktop's native DuckDB over IPC, a remote relay) imports the full UI from `/app` and never bundles the ~3 MB of DuckDB worker assets. The back-compat root entry still re-exports `/duckdb`, so importing from the package root continues to pull the WASM chain.

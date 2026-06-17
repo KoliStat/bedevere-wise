@@ -13,7 +13,7 @@ import {
 // Initialize the Bedevere Wise application
 async function initApplication() {
   const debugMode = import.meta.env.DEV;
-  const appVersion = "0.14-tbd";
+  const appVersion = "0.14-and-this";
 
   // The web app constructs its own engine and hands it to BedevereApp
   // (which has no built-in default). Kept in a local so the debug handle
