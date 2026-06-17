@@ -2,6 +2,7 @@ import type { Backend } from "../Backend";
 import { DuckDBExtensionLoader } from "../DuckDBExtensionLoader";
 import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
+import { quoteIdent } from "../sqlIdent";
 
 export class StatFormatHandler implements FormatHandler {
   private extensionLoader: DuckDBExtensionLoader | null;
@@ -23,7 +24,7 @@ export class StatFormatHandler implements FormatHandler {
     const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
 
     await backend.executeQuery(
-      `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_stat('${effectiveName.replace(/'/g, "''")}')`
+      `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_stat('${effectiveName.replace(/'/g, "''")}')`
     );
   }
 }

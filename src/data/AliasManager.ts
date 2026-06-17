@@ -1,5 +1,6 @@
 import type { Backend } from "./Backend";
 import { persistenceService } from "./PersistenceService";
+import { quoteIdent } from "./sqlIdent";
 
 export class AliasManager {
   private aliases: Map<string, string> = new Map(); // tableName → alias
@@ -23,7 +24,7 @@ export class AliasManager {
 
     // Rename in the underlying engine (any DuckDB-flavored backend
     // accepts ALTER TABLE … RENAME).
-    await this.backend.executeQuery(`ALTER TABLE "${tableName}" RENAME TO "${sanitized}"`);
+    await this.backend.executeQuery(`ALTER TABLE ${quoteIdent(tableName)} RENAME TO ${quoteIdent(sanitized)}`);
 
     // Update local state
     this.aliases.set(sanitized, sanitized);

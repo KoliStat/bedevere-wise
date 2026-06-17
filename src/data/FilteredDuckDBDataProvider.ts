@@ -121,14 +121,14 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   public async fetchData(startRow: number, endRow: number): Promise<any[][]> {
     const visible = await this.getVisibleColumns();
     const projection = visible.length > 0
-      ? visible.map((c: any) => `"${c.column_name}"`).join(", ")
+      ? visible.map((c: any) => quoteIdent(c.column_name)).join(", ")
       : "*";
 
     const where = this.filterManager.buildWhereClause(this.name);
     const orderBy = this.filterManager.buildOrderByClause(this.name);
 
     const query =
-      `SELECT ${projection} FROM "${this.sourceTableName}" ${where} ${orderBy} ` +
+      `SELECT ${projection} FROM ${quoteIdent(this.sourceTableName)} ${where} ${orderBy} ` +
       `LIMIT ${endRow - startRow} OFFSET ${startRow}`;
     const [rows, allTypes, sourceColumns] = await Promise.all([
       this.backend.executeQuery(query),
@@ -151,13 +151,13 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     endCol: number
   ): Promise<any[][]> {
     const visible = await this.getVisibleColumns();
-    const columnNames = visible.map((c: any) => `"${c.column_name}"`).slice(startCol, endCol);
+    const columnNames = visible.map((c: any) => quoteIdent(c.column_name)).slice(startCol, endCol);
     const columnNamesString = columnNames.join(", ");
 
     const where = this.filterManager.buildWhereClause(this.name);
     const orderBy = this.filterManager.buildOrderByClause(this.name);
 
-    const query = `SELECT ${columnNamesString} FROM "${this.sourceTableName}" ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
+    const query = `SELECT ${columnNamesString} FROM ${quoteIdent(this.sourceTableName)} ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
     const [rows, allTypes, sourceColumns] = await Promise.all([
       this.backend.executeQuery(query),
       this.ensureColumnTypes(),

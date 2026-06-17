@@ -8,6 +8,7 @@ import {
   isTimeType,
   isTimestampType,
 } from "./types";
+import { quoteIdent } from "./sqlIdent";
 
 export type FilterType = "include" | "exclude" | "range";
 
@@ -200,14 +201,14 @@ export class ColumnFilterManager {
     const sorts = this.sorts.get(datasetName);
     if (!sorts || sorts.length === 0) return "";
 
-    const orderParts = sorts.map((sort) => `"${sort.columnName}" ${sort.direction.toUpperCase()}`);
+    const orderParts = sorts.map((sort) => `${quoteIdent(sort.columnName)} ${sort.direction.toUpperCase()}`);
     return `ORDER BY ${orderParts.join(", ")}`;
   }
 
   public buildFilteredQuery(tableName: string, datasetName: string): string {
     const where = this.buildWhereClause(datasetName);
     const orderBy = this.buildOrderByClause(datasetName);
-    return `SELECT * FROM "${tableName}" ${where} ${orderBy}`.trim();
+    return `SELECT * FROM ${quoteIdent(tableName)} ${where} ${orderBy}`.trim();
   }
 
   public hasAnyFiltersOrSorts(datasetName: string): boolean {
@@ -409,7 +410,7 @@ function sqlBoundForRange(value: number | string | undefined, dataType?: DataTyp
 }
 
 function buildConditionForFilter(filter: ColumnFilter): string {
-  const col = `"${filter.columnName}"`;
+  const col = quoteIdent(filter.columnName);
   const dt = filter.dataType;
 
   switch (filter.filterType) {

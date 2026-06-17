@@ -164,7 +164,7 @@ export class DuckDBService implements Backend {
     const inner = query.replace(/;\s*$/, "");
     const connection = await this.getConnection();
     try {
-      await connection.query(`CREATE OR REPLACE TABLE "${tempName}" AS (${inner})`);
+      await connection.query(`CREATE OR REPLACE TABLE ${quoteIdent(tempName)} AS (${inner})`);
     } finally {
       await connection.close();
     }
