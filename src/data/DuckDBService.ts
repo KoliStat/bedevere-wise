@@ -1,8 +1,11 @@
-import * as duckdb from "@duckdb/duckdb-wasm";
-import mvpWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
-import ehWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
-import coiWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?url";
-import coiPthreadWorkerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url";
+// duckdb-wasm is imported TYPE-only here; the module + its worker URLs
+// load dynamically in initialize() (see the `wasm` field). This keeps
+// DuckDB-WASM's ~3 MB of worker assets out of the *static* import graph,
+// so merely importing DuckDBService — or the package root that re-exports
+// it — doesn't force them into a consumer's bundle. Only an actually-
+// initialized WASM backend loads them; an embedder on another backend
+// (the desktop's IpcBackend) never does.
+import type * as duckdb from "@duckdb/duckdb-wasm";
 import { DuckDBDataProvider } from "./DuckDBDataProvider";
 import { quoteIdent } from "./sqlIdent";
 import type { Backend, BackendCapabilities, ExportResult, ExportTableOptions, FunctionInfo } from "./Backend";
@@ -45,6 +48,8 @@ export class DuckDBService implements Backend {
   private db: duckdb.AsyncDuckDB | null = null;
   private worker: Worker | null = null;
   private isInitialized = false;
+  // The duckdb-wasm module, dynamically imported on first initialize().
+  private wasm: typeof import("@duckdb/duckdb-wasm") | null = null;
 
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -61,12 +66,22 @@ export class DuckDBService implements Backend {
       // getJsDelivrBundles() currently returns only `mvp` and `eh` — no
       // `coi`. Guard each entry so the override survives an upstream
       // change that adds COI, without breaking today's two-entry shape.
+      // Load duckdb-wasm + the worker URLs on demand (first init only).
+      const duckdb = await import("@duckdb/duckdb-wasm");
+      this.wasm = duckdb;
+      const [mvpWorker, ehWorker, coiWorker, coiPthreadWorker] = await Promise.all([
+        import("@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url"),
+        import("@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url"),
+        import("@duckdb/duckdb-wasm/dist/duckdb-browser-coi.worker.js?url"),
+        import("@duckdb/duckdb-wasm/dist/duckdb-browser-coi.pthread.worker.js?url"),
+      ]);
+
       const bundles = duckdb.getJsDelivrBundles();
-      bundles.mvp.mainWorker = mvpWorkerUrl;
-      if (bundles.eh) bundles.eh.mainWorker = ehWorkerUrl;
+      bundles.mvp.mainWorker = mvpWorker.default;
+      if (bundles.eh) bundles.eh.mainWorker = ehWorker.default;
       if (bundles.coi) {
-        bundles.coi.mainWorker = coiWorkerUrl;
-        bundles.coi.pthreadWorker = coiPthreadWorkerUrl;
+        bundles.coi.mainWorker = coiWorker.default;
+        bundles.coi.pthreadWorker = coiPthreadWorker.default;
       }
       const bundle = await duckdb.selectBundle(bundles);
 
@@ -202,8 +217,8 @@ export class DuckDBService implements Backend {
    * error when DuckDB tries to read the registered file.
    */
   public async registerFileURL(name: string, url: string): Promise<void> {
-    if (!this.db) throw new Error("DuckDB not initialized");
-    await this.db.registerFileURL(name, url, duckdb.DuckDBDataProtocol.HTTP, false);
+    if (!this.db || !this.wasm) throw new Error("DuckDB not initialized");
+    await this.db.registerFileURL(name, url, this.wasm.DuckDBDataProtocol.HTTP, false);
   }
 
   /**
