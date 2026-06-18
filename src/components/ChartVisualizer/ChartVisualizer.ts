@@ -85,7 +85,12 @@ export class ChartVisualizer {
     const themedSpec = this.applyTheme(this.currentSpec);
     const fullSpec = this.withSizing(themedSpec);
     this.currentResult = await vegaEmbed(this.host, fullSpec, {
-      actions: { export: true, source: true, compiled: true, editor: true },
+      // Keep PNG/SVG export; drop the source / compiled / "Open in Vega
+      // Editor" actions. Those expose/round-trip the full spec (built from
+      // untrusted file data and, in /embed, an untrusted host's query) and
+      // the editor action navigates to an external origin — no value to an
+      // end user, and a needless surface on the embed path.
+      actions: { export: true, source: false, compiled: false, editor: false },
       renderer: "canvas",
     });
   }

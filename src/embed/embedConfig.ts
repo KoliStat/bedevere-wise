@@ -44,6 +44,21 @@ export function parseEmbedConfig(search: string): EmbedConfig {
 export function describeDatasetUrl(
   url: string,
 ): { fileName: string; tableName: string; readerSql: (registeredName: string) => string } | null {
+  // Scheme allowlist. The /embed host page is untrusted and controls this
+  // URL, so DuckDB-WASM would fetch whatever we hand it — reject anything
+  // that could reach loopback/internal services or smuggle bytes via
+  // file:/blob:/data:. Only https is allowed (http just for localhost dev).
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const isLocalDev = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLocalDev)) {
+    return null;
+  }
+
   // Strip query string + hash before extension sniffing so
   // /datasets/foo.parquet?v=2 still matches `.parquet`.
   const cleanPath = url.split("?")[0].split("#")[0];

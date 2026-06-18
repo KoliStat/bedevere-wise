@@ -27,6 +27,11 @@ export default defineConfig(({ command }) => {
       outDir: "dist",
       sourcemap: true,
       target: "esnext",
+      // Drop Vite's inline modulepreload-polyfill <script>. It's the only
+      // inline script in the built HTML; removing it lets the CSP use a
+      // strict `script-src 'self'` (no 'unsafe-inline'). Native
+      // modulepreload is universal in the browsers this WASM app targets.
+      modulePreload: { polyfill: false },
       rollupOptions: {
         input: {
           main: resolve(__dirname, "index.html"),

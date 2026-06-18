@@ -1,15 +1,30 @@
 # HTTP headers applied by Cloudflare Workers' static-asset serving.
 # Vite copies `public/_headers` verbatim into `dist/`, and Cloudflare
-# Workers' assets pipeline reads it as a route → header map.
+# Workers' assets pipeline reads it as a route → header map. The most
+# specific matching rule wins for a given header name.
 #
-# `frame-ancestors` MUST be set as an HTTP header — the CSP spec
-# explicitly disallows it from <meta http-equiv> tags. Without this
-# header /embed could not be iframed cross-origin.
+# CSP notes:
+#   - `script-src 'self' 'wasm-unsafe-eval'` — no 'unsafe-inline': the
+#     build emits no inline scripts (Vite's modulepreload polyfill is
+#     disabled in vite.config.ts; the JSON-LD block is data, not script).
+#     'wasm-unsafe-eval' is what DuckDB-WASM needs to compile its modules.
+#   - `worker-src 'self' blob:` — DuckDB-WASM's workers (same-origin asset
+#     URLs + blob wrappers).
+#   - `connect-src … https:` — datasets / the DuckDB-WASM .wasm (jsDelivr)
+#     are fetched from arbitrary https origins (URL import, embed datasets).
+#   - `style-src 'unsafe-inline'` — the inline <style> in index/embed.html
+#     plus styles Vega / CodeMirror inject at runtime.
+#   - `frame-ancestors` MUST be an HTTP header (the CSP spec disallows it
+#     from <meta>). The main app forbids framing; /embed allows the blog.
+
+/*
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
 
 /embed
-  Content-Security-Policy: frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
-  X-Frame-Options: ALLOW-FROM https://caveofcaerbannog.com
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
 
 /embed.html
-  Content-Security-Policy: frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
-  X-Frame-Options: ALLOW-FROM https://caveofcaerbannog.com
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
