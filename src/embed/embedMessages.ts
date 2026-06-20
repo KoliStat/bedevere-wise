@@ -1,15 +1,20 @@
 /**
  * postMessage protocol for the /embed route. Child→parent for height
  * reporting; parent→child for theme switches and run-trigger so the
- * parent can add an external "run" button later.
+ * parent can drive the embed (e.g. sync a dark-mode toggle).
  *
- * The origin allowlist is hardcoded to the production blog plus
- * common Vite dev ports. Anything else is silently dropped — never
- * thrown — because a noisy iframe is harder to debug than a quiet one
- * and we don't want a misconfigured parent to spam the embed console.
+ * Asymmetry worth noting: the /embed route is framable by ANY origin
+ * (see frame-ancestors in public/_headers — it's a public widget), but
+ * the parent→child *control* messages below are accepted only from our
+ * first-party blogs. Arbitrary embedders set the theme via the `theme=`
+ * URL param instead; the child→parent resize broadcast already goes to
+ * everyone. Off-allowlist messages are silently dropped — never thrown —
+ * because a noisy iframe is harder to debug than a quiet one.
  */
 
 export const ALLOWED_PARENT_ORIGINS = [
+  "https://kolistat.com",
+  "https://www.kolistat.com",
   "https://caveofcaerbannog.com",
   "https://www.caveofcaerbannog.com",
   // Local dev (blog + embed both run on localhost during development)
