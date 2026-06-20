@@ -15,7 +15,8 @@
 #   - `style-src 'unsafe-inline'` — the inline <style> in index/embed.html
 #     plus styles Vega / CodeMirror inject at runtime.
 #   - `frame-ancestors` MUST be an HTTP header (the CSP spec disallows it
-#     from <meta>). The main app forbids framing; /embed allows the blog.
+#     from <meta>). The main app forbids framing; /embed is a public
+#     embeddable widget, framable by any origin (read-only, no auth).
 
 /*
   X-Content-Type-Options: nosniff
@@ -23,8 +24,8 @@
 
 /embed
   X-Content-Type-Options: nosniff
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors *
 
 /embed.html
   X-Content-Type-Options: nosniff
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self' https://caveofcaerbannog.com https://*.caveofcaerbannog.com
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors *
