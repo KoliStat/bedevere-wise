@@ -105,8 +105,20 @@ export class ChartVisualizer {
    */
   private withSizing(themedSpec: VisualizationSpec): VisualizationSpec {
     const s = themedSpec as Record<string, unknown>;
+    // A `column` / `row` encoding channel makes a unit (or per-layer) spec
+    // faceted just like the top-level `facet` operator: Vega-Lite then ignores
+    // `autosize`, and `width: "container"` doesn't apply cleanly to the inner
+    // panels — it blows each facet up to the full host width, so only the first
+    // is visible. stats_duck's `violin` mark facets this way (one column per x
+    // category), so detect it and fall through to the composite path.
+    const hasEncodingFacet = (node: unknown): boolean => {
+      const enc = (node as { encoding?: Record<string, unknown> } | null)?.encoding;
+      return !!enc && ("column" in enc || "row" in enc);
+    };
     const isComposite =
-      "facet" in s || "repeat" in s || "concat" in s || "hconcat" in s || "vconcat" in s;
+      "facet" in s || "repeat" in s || "concat" in s || "hconcat" in s || "vconcat" in s ||
+      hasEncodingFacet(s) ||
+      (Array.isArray(s.layer) && (s.layer as unknown[]).some(hasEncodingFacet));
     if (isComposite) {
       return { ...themedSpec, datasets: this.currentDatasets } as VisualizationSpec;
     }
