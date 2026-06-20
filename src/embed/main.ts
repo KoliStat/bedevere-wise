@@ -1,6 +1,8 @@
 import "../styles/main.scss";
 import "../styles/embed.scss";
 import { DuckDBService } from "../data/DuckDBService";
+import { DuckDBExtensionLoader } from "../data/DuckDBExtensionLoader";
+import { resolveStatsDuckUrl } from "../data/statsDuckUrl";
 import { EmbedApp } from "./EmbedApp";
 import { parseEmbedConfig } from "./embedConfig";
 import { applyTheme, resolveTheme } from "./embedTheme";
@@ -38,6 +40,20 @@ async function initEmbed(): Promise<void> {
     banner.textContent = "Failed to initialize DuckDB-WASM. See browser console for details.";
     root.appendChild(banner);
     return;
+  }
+
+  // Load stats_duck so the ggsql `VISUALIZE` parser and the stats table
+  // functions (meta / lm / lm_summary / bootstrap / table_one / distributions)
+  // are available — the main app does this in BedevereApp.initAsync; the embed
+  // must too, or every stats_duck call is a "function does not exist" catalog
+  // error. Eager (before EmbedApp.bootstrap → autorun) so a ?query= using
+  // VISUALIZE or a stats function works on first run. Non-fatal: plain SQL
+  // still runs if it fails. Served same-origin in production; the browser
+  // caches the WASM across iframes after the first load.
+  const statsDuckUrl = resolveStatsDuckUrl();
+  const statsDuckOk = await new DuckDBExtensionLoader(duckDBService).tryLoad("stats_duck", statsDuckUrl);
+  if (!statsDuckOk) {
+    console.warn(`/embed: stats_duck failed to load from ${statsDuckUrl} — VISUALIZE and stats functions are unavailable.`);
   }
 
   const app = new EmbedApp(root, { duck: duckDBService, config });

@@ -47,6 +47,7 @@ import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { fetchAsFile } from "@/data/UrlImport";
 import { AliasManager } from "@/data/AliasManager";
 import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
+import { resolveStatsDuckUrl } from "@/data/statsDuckUrl";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
 import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
 
@@ -205,16 +206,10 @@ export class BedevereApp implements EventHandler {
         "SELECT * FROM read_xlsx('__probe_nonexistent__.xlsx') LIMIT 0",
       ]);
 
-      // stats_duck (ggsql VISUALIZE parser). Source URL is env-configurable
-      // via VITE_STATS_DUCK_URL — see .env.example for the local-build setup.
-      // Page-relative paths (starting with `/`) get the origin prefixed because
-      // DuckDB-WASM's INSTALL FROM requires an absolute URL.
-      const rawStatsDuckUrl =
-        (import.meta.env.VITE_STATS_DUCK_URL as string | undefined) ||
-        "https://kolistat.github.io/the-stats-duck";
-      const statsDuckUrl = rawStatsDuckUrl.startsWith("/")
-        ? `${window.location.origin}${rawStatsDuckUrl}`
-        : rawStatsDuckUrl;
+      // stats_duck (ggsql VISUALIZE parser + stats table functions). URL
+      // resolution is shared with the /embed bootstrap via resolveStatsDuckUrl
+      // so the two never drift — see .env.example for the local-build setup.
+      const statsDuckUrl = resolveStatsDuckUrl();
       const installOk = await this.extensionLoader.tryLoad("stats_duck", statsDuckUrl);
       if (!installOk) {
         const reason = `INSTALL FROM '${statsDuckUrl}' rejected by DuckDB`;
