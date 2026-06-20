@@ -126,6 +126,10 @@
 .embed-result__chart {
   width: 100%;
   height: 100%;
+  // Faceted charts (e.g. `DRAW violin` → one `column` facet per category) can
+  // be wider than the narrow embed panel. Let the chart scroll within the
+  // panel instead of being clipped by the surface's `overflow: hidden`.
+  overflow: auto;
 }
 
 // Stats panel is hidden by default in the embed (its toggle is on the
