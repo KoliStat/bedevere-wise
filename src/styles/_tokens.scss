@@ -102,9 +102,9 @@ body.theme-classic-light {
 }
 
 // ----------------------------------------------------------------------
-// Tokyonight Storm (dark)
+// Tokyonight Storm (classic dark) — the original dark palette, kept selectable
 // ----------------------------------------------------------------------
-body.theme-dark {
+body.theme-classic-dark {
   // Surfaces
   --bg:              #1a1b26;
   --bg-dark:         #16161e;
@@ -144,6 +144,51 @@ body.theme-dark {
   --warning-bg:      rgba(224, 175, 104, 0.22);
   --success-bg:      rgba(158, 206, 106, 0.18);
   --info-bg:         rgba(125, 207, 255, 0.18);
+}
+
+// ----------------------------------------------------------------------
+// Dark — default theme (GitHub Dark, matches the blog code blocks)
+// ----------------------------------------------------------------------
+body.theme-dark {
+  // Surfaces
+  --bg:              #24292e;
+  --bg-dark:         #1f2428;
+  --bg-highlight:    #32383f;
+  --bg-float:        #2d333b;
+
+  // Text
+  --fg:              #e1e4e8;
+  --fg-dark:         #b1bac4;
+  --fg-muted:        #6a737d;
+
+  // Structural
+  --border:          #444c56;
+  --border-strong:   #586069;
+  --gutter:          #444c56;
+
+  // Accents
+  --blue:            #79b8ff;
+  --cyan:            #56d4dd;
+  --green:           #85e89d;
+  --yellow:          #ffea7f;
+  --orange:          #ffab70;
+  --red:             #f97583;
+  --magenta:         #b392f0;
+  --purple:          #b392f0;
+
+  // Version chip
+  --version-bg:      #ffea7f;
+  --version-fg:      #24292e;
+
+  // Semantic
+  --selection:       rgba(121, 184, 255, 0.15);
+  --selection-bg:    rgba(121, 184, 255, 0.20);
+  --selection-fg:    var(--fg);
+  --hover:           rgba(121, 184, 255, 0.10);
+  --error-bg:        rgba(249, 117, 131, 0.15);
+  --warning-bg:      rgba(255, 171, 112, 0.18);
+  --success-bg:      rgba(133, 232, 157, 0.15);
+  --info-bg:         rgba(121, 184, 255, 0.15);
 }
 
 // ----------------------------------------------------------------------
