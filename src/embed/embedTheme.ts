@@ -5,7 +5,7 @@
  * and mirrors a `data-theme` attribute on `<html>` for the parent
  * blog's contract (see the embed spec).
  */
-export type EmbedTheme = "light" | "dark";
+export type EmbedTheme = "light" | "classic-light" | "dark";
 
 export function resolveTheme(explicit: EmbedTheme | null): EmbedTheme {
   if (explicit) return explicit;
@@ -15,7 +15,8 @@ export function resolveTheme(explicit: EmbedTheme | null): EmbedTheme {
 
 export function applyTheme(theme: EmbedTheme): void {
   document.documentElement.setAttribute("data-theme", theme);
-  const other = theme === "light" ? "dark" : "light";
-  document.body.classList.remove(`theme-${other}`);
+  // Remove every theme class before adding the chosen one so switching
+  // between any of the three palettes is clean.
+  document.body.classList.remove("theme-light", "theme-classic-light", "theme-dark");
   document.body.classList.add(`theme-${theme}`);
 }
