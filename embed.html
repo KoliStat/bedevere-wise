@@ -11,6 +11,10 @@
       html, body {
         height: 100%;
         width: 100%;
+        /* Fixed-viewport widget: all scrolling is internal (CodeMirror, the
+           spreadsheet's own rows, the chart's overflow), so the outer document
+           must never show a scrollbar. */
+        overflow: hidden;
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
         font-size: 13px;
         line-height: 1.4;

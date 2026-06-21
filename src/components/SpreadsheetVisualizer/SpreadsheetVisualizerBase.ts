@@ -775,7 +775,13 @@ export class SpreadsheetVisualizerBase {
     const rhw = o.rowHeaderWidth;
     const pad = o.cellPadding;
     const fvc = this.getFirstVisibleColumnIndex();
-    const lvc = this.getLastVisibleColumnIndex();
+    // Clamp to the live column count: getLastVisibleColumnIndex derives from
+    // colOffsets, which can briefly outrun `this.columns` during a resize (and
+    // returns 0 even when there are no columns). An unclamped lvc indexes past
+    // the array, so `this.columns[col]` is undefined and the draw loops throw
+    // ("Cannot read properties of undefined"). min(..., length - 1) yields -1
+    // when there are no columns, so the loops simply don't run.
+    const lvc = Math.min(this.getLastVisibleColumnIndex(), this.columns.length - 1);
 
     // ---- 1. Clear ----
     ctx.clearRect(0, 0, width, height);
