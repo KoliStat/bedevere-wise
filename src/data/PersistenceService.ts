@@ -10,7 +10,7 @@ export interface QueryBookmark {
 }
 
 export interface AppSettings {
-  theme?: "light" | "classic-light" | "dark" | "auto";
+  theme?: "light" | "classic-light" | "dark" | "classic-dark" | "auto";
   panelMinimized?: boolean;
   panelWidth?: number;
   hasSeenOnboarding?: boolean;

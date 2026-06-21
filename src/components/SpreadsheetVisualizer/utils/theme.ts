@@ -34,7 +34,7 @@ export interface ThemeColors {
 // Module-level cache for theme colors. Invalidated whenever the theme changes
 // (body class mutation or system media query). Avoids recomputing colors and
 // re-running DOM queries on every cell render.
-let cachedTheme: "light" | "classic-light" | "dark" | null = null;
+let cachedTheme: "light" | "classic-light" | "dark" | "classic-dark" | null = null;
 let cachedColors: ThemeColors | null = null;
 let cacheObserverInstalled = false;
 
@@ -55,7 +55,7 @@ function installCacheInvalidation(): void {
   }
 }
 
-export function detectCurrentTheme(): "light" | "classic-light" | "dark" {
+export function detectCurrentTheme(): "light" | "classic-light" | "dark" | "classic-dark" {
   installCacheInvalidation();
   if (cachedTheme !== null) return cachedTheme;
 
@@ -66,6 +66,10 @@ export function detectCurrentTheme(): "light" | "classic-light" | "dark" {
   }
   if (document.body.classList.contains("theme-classic-light")) {
     cachedTheme = "classic-light";
+    return cachedTheme;
+  }
+  if (document.body.classList.contains("theme-classic-dark")) {
+    cachedTheme = "classic-dark";
     return cachedTheme;
   }
   if (document.body.classList.contains("theme-dark")) {
@@ -83,7 +87,7 @@ export function detectCurrentTheme(): "light" | "classic-light" | "dark" {
   return cachedTheme;
 }
 
-export function getThemeColors(theme?: "light" | "classic-light" | "dark"): ThemeColors {
+export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "classic-dark"): ThemeColors {
   // Fast path: cached colors (only valid when no theme override is requested)
   if (!theme && cachedColors !== null) return cachedColors;
 
@@ -96,7 +100,35 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark"): Them
   let colors: ThemeColors;
   if (currentTheme === "dark") {
     colors = {
-      // Storm — dark variant
+      // GitHub Dark — default dark variant (matches the blog code blocks)
+      headerBackgroundColor: "#1f2428",
+      headerTextColor: "#e1e4e8",
+
+      cellBackgroundColor: "#24292e",
+      cellTextColor: "#e1e4e8",
+      stripeBackgroundColor: "#282d33",
+
+      borderColor: "#444c56",
+      selectionColor: "rgba(121, 184, 255, 0.20)",
+      selectionBorderColor: "#79b8ff",
+      hoverColor: "rgba(121, 184, 255, 0.10)",
+      hoverBorderColor: "rgba(121, 184, 255, 0.5)",
+
+      scrollbarColor: "#1f2428",
+      scrollbarThumbColor: "#444c56",
+      scrollbarHoverColor: "#586069",
+
+      // Type-coloured cells — soft tinted backgrounds with fg accents.
+      booleanStyle:  { backgroundColor: "#24292e", textColor: "#79b8ff" },
+      numericStyle:  { backgroundColor: "#24292e", textColor: "#85e89d" },
+      stringStyle:   { backgroundColor: "#24292e", textColor: "#e1e4e8" },
+      dateStyle:     { backgroundColor: "#24292e", textColor: "#ffea7f" },
+      datetimeStyle: { backgroundColor: "#24292e", textColor: "#ffab70" },
+      nullStyle:     { backgroundColor: "#24292e", textColor: "#6a737d" },
+    };
+  } else if (currentTheme === "classic-dark") {
+    colors = {
+      // Storm — classic dark variant (the original dark palette)
       headerBackgroundColor: "#1f2335",
       headerTextColor: "#c0caf5",
 
@@ -183,7 +215,7 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark"): Them
   return colors;
 }
 
-export function listenForThemeChanges(callback: (theme: "light" | "classic-light" | "dark") => void): () => void {
+export function listenForThemeChanges(callback: (theme: "light" | "classic-light" | "dark" | "classic-dark") => void): () => void {
   let currentTheme = detectCurrentTheme();
 
   // Force a recompute on every event. The module-level cache invalidator

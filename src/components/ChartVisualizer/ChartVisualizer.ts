@@ -144,10 +144,11 @@ export class ChartVisualizer {
   private applyTheme(spec: VisualizationSpec): VisualizationSpec {
     const css = getComputedStyle(document.body);
     const v = (name: string) => css.getPropertyValue(name).trim();
-    const isLight = detectCurrentTheme() !== "dark";
+    const ct = detectCurrentTheme();
+    const isLight = ct === "light" || ct === "classic-light";
 
     const themeConfig = {
-      background: v("--bg") || (isLight ? "#e1e2e7" : "#1a1b26"),
+      background: v("--bg") || (isLight ? "#e1e2e7" : "#24292e"),
       view: { stroke: v("--border") || "#3b4261" },
       axis: {
         domainColor: v("--border") || "#3b4261",
