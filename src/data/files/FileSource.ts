@@ -105,4 +105,18 @@ export interface FileSource {
    * files) are host-specific.
    */
   listFolderFiles(folder: FileSourceFolder): Promise<FileSourceFile[]>;
+
+  /**
+   * Read the raw bytes of a host file by its absolute path. Only the
+   * IPC source needs this: its picker nodes carry a host `filePath`
+   * (kind `"path"`) with no browser bytes, yet some JS-side readers must
+   * parse the file themselves — notably `.xlsx` sheet enumeration, which
+   * unzips `xl/workbook.xml` in the renderer. The FSA source can't read
+   * arbitrary host paths (and never needs to — its nodes carry a `File`),
+   * so it throws an "unsupported" error.
+   *
+   * Large data files do NOT come here; they import via
+   * `backend.registerFileURL` by path so the host reads them directly.
+   */
+  readFile(path: string): Promise<Uint8Array>;
 }

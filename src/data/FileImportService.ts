@@ -58,16 +58,18 @@ export class FileImportService {
    * `read_xlsx` etc. based on the path's extension; the renderer-side
    * format handlers are skipped because the bytes never reach JS.
    *
-   * Customisation knobs the WASM path exposes (`sample_size`,
-   * `ignore_errors`, sheet picker, multi-table HTML) aren't available
-   * here yet — they need host-side support the v1.0 wire protocol
-   * doesn't expose. A future enhancement once the protocol grows it.
+   * `sheet` selects a worksheet of a multi-sheet `.xlsx` workbook; the
+   * backend forwards it to the host's `read_xlsx` `sheet=` argument.
+   * It's ignored for every non-xlsx path. Other WASM-path knobs
+   * (`sample_size`, `ignore_errors`, multi-table HTML) still aren't
+   * available here — they need host-side support the wire protocol
+   * doesn't expose yet.
    */
-  public async importPath(path: string, tableName?: string): Promise<DataProvider> {
+  public async importPath(path: string, tableName?: string, sheet?: string): Promise<DataProvider> {
     const fileName = path.split(/[\\/]/).pop() ?? path;
     const preferred = tableName ?? fileName.replace(/\.[^/.]+$/, "");
     const name = await this.resolveUniqueTableName(preferred);
-    await this.backend.registerFileURL(name, path);
+    await this.backend.registerFileURL(name, path, sheet);
     return this.backend.getDataProvider(name, fileName);
   }
 

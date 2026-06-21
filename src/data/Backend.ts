@@ -162,8 +162,14 @@ export interface Backend {
    * DuckDBDataProtocol.HTTP). The URL must be reachable from wherever
    * the backend lives — a desktop backend won't necessarily resolve
    * the same URLs a browser can.
+   *
+   * `sheet` is an optional worksheet selector for multi-sheet `.xlsx`
+   * workbooks. The out-of-process host forwards it to `read_xlsx`'s
+   * `sheet=` argument so the chosen sheet is imported; backends that
+   * decode bytes in-process (DuckDB-WASM) read sheets through
+   * registerFileBuffer + a SQL `sheet=` instead and ignore it here.
    */
-  registerFileURL(name: string, url: string): Promise<void>;
+  registerFileURL(name: string, url: string, sheet?: string): Promise<void>;
 
   /**
    * Register an in-memory text blob as a virtual file. Backends that

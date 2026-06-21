@@ -189,8 +189,12 @@ export class DuckDBService implements Backend {
    * — we don't paper over CORS failures; they surface as a normal fetch
    * error when DuckDB tries to read the registered file.
    */
-  public async registerFileURL(name: string, url: string): Promise<void> {
+  public async registerFileURL(name: string, url: string, _sheet?: string): Promise<void> {
     if (!this.db || !this.wasm) throw new Error("DuckDB not initialized");
+    // `_sheet` is part of the Backend contract for out-of-process hosts
+    // (they forward it to read_xlsx); the in-process WASM path imports a
+    // specific xlsx sheet through registerFileBuffer + a SQL `sheet=`
+    // clause (see ExcelFormatHandler), so there's nothing to do here.
     await this.db.registerFileURL(name, url, this.wasm.DuckDBDataProtocol.HTTP, false);
   }
 

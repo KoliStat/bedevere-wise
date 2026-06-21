@@ -422,13 +422,62 @@ Open a file path with the appropriate DuckDB reader (`read_parquet`,
 { "tableName": "adsl", "totalRows": 1234, "totalColumns": 17 }
 ```
 
+The optional `sheet` param picks a worksheet of a multi-sheet `.xlsx`
+workbook. When present and non-empty, the host emits
+`read_xlsx('<path>', sheet='<sheet>')` (single-quote-escaping the sheet
+name); every non-xlsx reader ignores it. This is how the desktop
+imports a chosen Excel sheet — its file-tree sheet nodes carry the
+parent workbook's `path` plus the `sheet` name, since the bytes never
+cross the wire for picker-opened files.
+
+```jsonc
+{ "path": "/abs/path/book.xlsx", "tableName": "adsl_summary", "sheet": "Summary" }
+// result
+{ "tableName": "adsl_summary", "totalRows": 1234, "totalColumns": 17 }
+```
+
+The host MUST confine `path` to the file-access grant ledger (a file the
+user opened via the native picker, or one beneath a picked folder); a
+path outside it is rejected with `NOT_FOUND`. This stops a peer that
+reached the sidecar from registering an arbitrary file the user can read.
+
 Errors:
 
-- `NOT_FOUND` — path does not resolve
+- `NOT_FOUND` — path does not resolve, or is outside the grant ledger
 - `DUCKDB_ERROR` — reader failed (corrupt file, unsupported extension)
 - `INVALID_PARAMS` — `tableName` is empty or contains illegal characters
 - `UNLICENSED` — file format requires a commercial reader extension the
   user has not licensed (e.g. future paid format support)
+
+#### 5.3.1a `readFile`
+
+Return the raw bytes of a host file, **base64-encoded** in the JSON
+result. The renderer uses this when a file-tree node carries a host
+`path` (folder / file picker) instead of browser bytes, but a JS-side
+reader must parse the file itself — notably `.xlsx` worksheet
+enumeration, which unzips `xl/workbook.xml` in the renderer to list
+sheet names. Bulk data files do NOT use this; they import via
+`registerFile` by path so the host reads them directly and the bytes
+never travel the wire.
+
+```jsonc
+{ "path": "/abs/path/book.xlsx" }
+// result
+{ "data": "<base64 of the file bytes>" }
+```
+
+Confinement is identical to `registerFile`: the host MUST reject a
+`path` outside the file-access grant ledger with `NOT_FOUND`, so this
+can't be used to exfiltrate arbitrary files. The host MUST also bound
+the size (the reference host caps a single read at 256 MiB, refusing
+larger files with `INVALID_PARAMS`) so a huge file can't exhaust host
+memory or overflow the response frame.
+
+Errors:
+
+- `NOT_FOUND` — path does not resolve, or is outside the grant ledger
+- `INVALID_PARAMS` — `path` missing/empty, or file exceeds the size cap
+- `INTERNAL` — I/O failure opening or reading the file
 
 #### 5.3.2 `executeQuery`
 
