@@ -25,7 +25,12 @@ export default defineConfig(({ command }) => {
     },
     build: {
       outDir: "dist",
-      sourcemap: true,
+      // No source maps in the production app bundle — they bloat the deploy and
+      // expose source, and add nothing for the live site / embeds (a thrown
+      // error there is usually inside the third-party duckdb-wasm worker, which
+      // our maps don't cover anyway). The library build keeps maps for package
+      // consumers (desktop / tlf-studio).
+      sourcemap: false,
       target: "esnext",
       // Drop Vite's inline modulepreload-polyfill <script>. It's the only
       // inline script in the built HTML; removing it lets the CSP use a

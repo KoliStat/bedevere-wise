@@ -349,11 +349,13 @@ export class DuckDBService implements Backend {
       }
 
       // Sequences — `information_schema.sequences` doesn't exist in
-      // DuckDB-WASM; use `duckdb_sequences()` and filter for non-
-      // internal entries.
+      // DuckDB-WASM; use `duckdb_sequences()`. NOTE: that catalog function has
+      // no `internal` column (only duckdb_tables/views/types do) — the old
+      // `AND internal = false` filter threw a Binder Error on every wipe, so
+      // filter by schema only. User sequences live in `main`.
       try {
         const seqRows = (await conn.query(
-          "SELECT sequence_name AS name FROM duckdb_sequences() WHERE schema_name = 'main' AND internal = false",
+          "SELECT sequence_name AS name FROM duckdb_sequences() WHERE schema_name = 'main'",
         )).toArray() as Array<{ name: string }>;
         for (const s of seqRows) {
           try {
