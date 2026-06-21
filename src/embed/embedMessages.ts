@@ -36,11 +36,11 @@ export type EmbedOutboundMessage = {
 };
 
 export type EmbedInboundMessage =
-  | { type: "embed-theme"; theme: "light" | "dark" }
+  | { type: "embed-theme"; theme: "light" | "classic-light" | "dark" }
   | { type: "embed-run" };
 
 export interface EmbedMessageHandlers {
-  onSetTheme: (theme: "light" | "dark") => void;
+  onSetTheme: (theme: "light" | "classic-light" | "dark") => void;
   onRunRequested: () => void;
 }
 
@@ -108,7 +108,10 @@ export function installParentListener(handlers: EmbedMessageHandlers): () => voi
     const data = e.data;
     if (!data || typeof data !== "object") return;
     const msg = data as Partial<EmbedInboundMessage>;
-    if (msg.type === "embed-theme" && (msg.theme === "light" || msg.theme === "dark")) {
+    if (
+      msg.type === "embed-theme" &&
+      (msg.theme === "light" || msg.theme === "classic-light" || msg.theme === "dark")
+    ) {
       handlers.onSetTheme(msg.theme);
     } else if (msg.type === "embed-run") {
       handlers.onRunRequested();

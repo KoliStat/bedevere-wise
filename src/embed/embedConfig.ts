@@ -9,7 +9,7 @@ export interface EmbedConfig {
   /** Optional SQL to prefill the editor. */
   query: string | null;
   /** Explicit theme, or null to follow prefers-color-scheme. */
-  theme: "light" | "dark" | null;
+  theme: "light" | "classic-light" | "dark" | null;
   /** Auto-run the prefilled query once all datasets are loaded. */
   autorun: boolean;
   /** Opaque tag from the parent — echoed back in postMessage payloads
@@ -20,7 +20,8 @@ export interface EmbedConfig {
 export function parseEmbedConfig(search: string): EmbedConfig {
   const params = new URLSearchParams(search);
   const themeRaw = params.get("theme");
-  const theme = themeRaw === "light" || themeRaw === "dark" ? themeRaw : null;
+  const theme =
+    themeRaw === "light" || themeRaw === "classic-light" || themeRaw === "dark" ? themeRaw : null;
   return {
     datasets: params.getAll("dataset"),
     query: params.get("query"),

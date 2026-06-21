@@ -34,8 +34,8 @@ export interface HelpPanelOptions {
   onBrowseFolder?: () => void;
   onFilesReceived?: (files: File[]) => void | Promise<void>;
   supportedFormats?: string[];
-  initialTheme?: "light" | "dark" | "auto";
-  onThemeChange?: (theme: "light" | "dark" | "auto") => void;
+  initialTheme?: "light" | "classic-light" | "dark" | "auto";
+  onThemeChange?: (theme: "light" | "classic-light" | "dark" | "auto") => void;
   onResetKeymap?: () => void;
   onClearAllData?: () => Promise<void> | void;
   getCopyOptions?: () => { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" };
@@ -986,8 +986,9 @@ export class HelpPanel {
       const seg = document.createElement("div");
       seg.className = "help-panel__segmented";
       const current = this.options.initialTheme ?? "auto";
-      const opts: Array<{ value: "light" | "dark" | "auto"; label: string }> = [
+      const opts: Array<{ value: "light" | "classic-light" | "dark" | "auto"; label: string }> = [
         { value: "light", label: "Light" },
+        { value: "classic-light", label: "Light (classic)" },
         { value: "dark", label: "Dark" },
         { value: "auto", label: "Auto" },
       ];

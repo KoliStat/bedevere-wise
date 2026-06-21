@@ -81,7 +81,7 @@ DRAW point
 ;
 `;
 
-export type BedevereAppTheme = "light" | "dark" | "auto";
+export type BedevereAppTheme = "light" | "classic-light" | "dark" | "auto";
 
 export type BedevereAppMessageType = "info" | "warning" | "error" | "success";
 
@@ -302,7 +302,7 @@ export class BedevereApp implements EventHandler {
     return this.focusManager;
   }
 
-  public setTheme(theme: "light" | "dark"): void {
+  public setTheme(theme: "light" | "classic-light" | "dark"): void {
     this.container.classList.remove(`bedevere-app--${this.theme}`);
     document.body.classList.remove(`theme-${this.theme}`);
 
@@ -902,14 +902,14 @@ export class BedevereApp implements EventHandler {
           name: "theme",
           type: "string",
           required: true,
-          description: "light | dark | auto",
-          options: () => ["light", "dark", "auto"],
+          description: "light | classic-light | dark | auto",
+          options: () => ["light", "classic-light", "dark", "auto"],
         },
       ],
       execute: (params) => {
-        const choice = params?.theme as "light" | "dark" | "auto" | undefined;
-        if (!choice || !["light", "dark", "auto"].includes(choice)) {
-          throw new Error(".theme requires one of: light, dark, auto");
+        const choice = params?.theme as "light" | "classic-light" | "dark" | "auto" | undefined;
+        if (!choice || !["light", "classic-light", "dark", "auto"].includes(choice)) {
+          throw new Error(".theme requires one of: light, classic-light, dark, auto");
         }
         const resolved = choice === "auto" ? this.detectTheme() : choice;
         this.setTheme(resolved);
@@ -1522,9 +1522,10 @@ export class BedevereApp implements EventHandler {
       switch (key) {
         case "theme": {
           const v = String(raw);
-          if (!["light", "dark", "auto"].includes(v)) throw new Error(`theme must be light|dark|auto, got '${v}'`);
-          settings.theme = v as "light" | "dark" | "auto";
-          this.setTheme(v === "auto" ? this.detectTheme() : (v as "light" | "dark"));
+          if (!["light", "classic-light", "dark", "auto"].includes(v))
+            throw new Error(`theme must be light|classic-light|dark|auto, got '${v}'`);
+          settings.theme = v as "light" | "classic-light" | "dark" | "auto";
+          this.setTheme(v === "auto" ? this.detectTheme() : (v as "light" | "classic-light" | "dark"));
           updates.push(`theme=${v}`);
           break;
         }
