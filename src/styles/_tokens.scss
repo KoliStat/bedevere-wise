@@ -150,11 +150,13 @@ body.theme-classic-dark {
 // Dark — default theme (GitHub Dark, matches the blog code blocks)
 // ----------------------------------------------------------------------
 body.theme-dark {
-  // Surfaces
-  --bg:              #24292e;
-  --bg-dark:         #1f2428;
-  --bg-highlight:    #32383f;
-  --bg-float:        #2d333b;
+  // Surfaces — neutral dark greys. #1f1f1f reads cleaner than GitHub's
+  // blue-tinted #24292e; the text + accents below stay github-dark so the
+  // widget still matches the blog's code blocks.
+  --bg:              #1f1f1f;
+  --bg-dark:         #181818;
+  --bg-highlight:    #2d2d2d;
+  --bg-float:        #282828;
 
   // Text
   --fg:              #e1e4e8;
@@ -162,9 +164,9 @@ body.theme-dark {
   --fg-muted:        #6a737d;
 
   // Structural
-  --border:          #444c56;
-  --border-strong:   #586069;
-  --gutter:          #444c56;
+  --border:          #3a3a3a;
+  --border-strong:   #4d4d4d;
+  --gutter:          #3a3a3a;
 
   // Accents
   --blue:            #79b8ff;
@@ -178,7 +180,7 @@ body.theme-dark {
 
   // Version chip
   --version-bg:      #ffea7f;
-  --version-fg:      #24292e;
+  --version-fg:      #1f1f1f;
 
   // Semantic
   --selection:       rgba(121, 184, 255, 0.15);

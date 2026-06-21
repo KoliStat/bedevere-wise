@@ -143,7 +143,7 @@ export class ChartVisualizer {
     const isLight = ct === "light" || ct === "classic-light";
 
     const themeConfig = {
-      background: v("--bg") || (isLight ? "#e1e2e7" : "#24292e"),
+      background: v("--bg") || (isLight ? "#f5f5f3" : "#1f1f1f"),
       view: { stroke: v("--border") || "#3b4261" },
       axis: {
         domainColor: v("--border") || "#3b4261",

@@ -100,31 +100,33 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "cla
   let colors: ThemeColors;
   if (currentTheme === "dark") {
     colors = {
-      // GitHub Dark — default dark variant (matches the blog code blocks)
-      headerBackgroundColor: "#1f2428",
+      // GitHub Dark — default dark variant. Text + accents match the blog's
+      // github-dark code blocks; surfaces are neutral dark greys (the #1f1f1f
+      // bg the editor asked for, cleaner than GitHub's blue-tinted #24292e).
+      headerBackgroundColor: "#181818",
       headerTextColor: "#e1e4e8",
 
-      cellBackgroundColor: "#24292e",
+      cellBackgroundColor: "#1f1f1f",
       cellTextColor: "#e1e4e8",
-      stripeBackgroundColor: "#282d33",
+      stripeBackgroundColor: "#262626",
 
-      borderColor: "#444c56",
+      borderColor: "#3a3a3a",
       selectionColor: "rgba(121, 184, 255, 0.20)",
       selectionBorderColor: "#79b8ff",
       hoverColor: "rgba(121, 184, 255, 0.10)",
       hoverBorderColor: "rgba(121, 184, 255, 0.5)",
 
-      scrollbarColor: "#1f2428",
-      scrollbarThumbColor: "#444c56",
-      scrollbarHoverColor: "#586069",
+      scrollbarColor: "#181818",
+      scrollbarThumbColor: "#3a3a3a",
+      scrollbarHoverColor: "#4d4d4d",
 
       // Type-coloured cells — soft tinted backgrounds with fg accents.
-      booleanStyle:  { backgroundColor: "#24292e", textColor: "#79b8ff" },
-      numericStyle:  { backgroundColor: "#24292e", textColor: "#85e89d" },
-      stringStyle:   { backgroundColor: "#24292e", textColor: "#e1e4e8" },
-      dateStyle:     { backgroundColor: "#24292e", textColor: "#ffea7f" },
-      datetimeStyle: { backgroundColor: "#24292e", textColor: "#ffab70" },
-      nullStyle:     { backgroundColor: "#24292e", textColor: "#6a737d" },
+      booleanStyle:  { backgroundColor: "#1f1f1f", textColor: "#79b8ff" },
+      numericStyle:  { backgroundColor: "#1f1f1f", textColor: "#85e89d" },
+      stringStyle:   { backgroundColor: "#1f1f1f", textColor: "#e1e4e8" },
+      dateStyle:     { backgroundColor: "#1f1f1f", textColor: "#ffea7f" },
+      datetimeStyle: { backgroundColor: "#1f1f1f", textColor: "#ffab70" },
+      nullStyle:     { backgroundColor: "#1f1f1f", textColor: "#6a737d" },
     };
   } else if (currentTheme === "classic-dark") {
     colors = {
