@@ -1,26 +1,20 @@
 // /embed route — slim, iframable view. No top header, no left panel,
 // no help / status / command chrome. Editor on top, result panel below.
 //
-// Sizing: fits its content height, no fixed page width. The result panel
-// is given an explicit pixel height by EmbedResultPanel (a table hugs its
-// grid's content height, a chart gets a fixed canvas), so the page grows
-// to fit the result rather than stretching the result to fill a fixed
-// viewport. The parent page controls the iframe's outer size; the embed
-// reports its document-scroll height back via postMessage so the parent
-// can grow the iframe to fit.
+// Sizing: fills the iframe viewport, no fixed page width. The parent
+// page controls the iframe's outer size; the embed reports its
+// document-scroll height back via postMessage so the parent can grow
+// the iframe to fit.
 
 .embed-root {
   width: 100%;
-  // Content-sized, not viewport-filling: the result panel sets its own
-  // pixel height (see EmbedResultPanel), so the column grows to fit it.
-  height: auto;
-  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg);
   color: var(--fg);
-  // The editor is content-sized with a sensible minimum so a one-line
-  // query doesn't collapse it; the result panel sizes to its content.
+  // The result panel is the flex-grower; the editor is content-sized
+  // with a sensible minimum so a one-line query doesn't collapse it.
 }
 
 .embed-root__editor {
@@ -32,11 +26,8 @@
 }
 
 .embed-root__result {
-  // Content-sized: the inner `.embed-result` gets an explicit pixel
-  // height from EmbedResultPanel.showResult / showChart, and this
-  // wrapper hugs it instead of stretching to fill the column.
-  flex: 0 0 auto;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 240px;
   position: relative;
   overflow: hidden;
 }
@@ -114,13 +105,7 @@
 
 .embed-result {
   width: 100%;
-  // Height is driven by an inline pixel value set in
-  // EmbedResultPanel.showResult / showChart so the panel hugs the grid's
-  // content (table) or a fixed canvas (chart). min-height stays 0 so a
-  // tiny table isn't inflated past its computed height; the hint / error
-  // states carry their own min-height instead (below).
-  height: auto;
-  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -159,10 +144,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  // No table/chart height is set in the hint state (showHint clears it),
-  // so the hint carries its own minimum to stay legible instead of
-  // collapsing against the now content-sized panel.
-  min-height: 160px;
+  height: 100%;
   padding: 24px;
   font-size: 13px;
   color: var(--fg-muted);

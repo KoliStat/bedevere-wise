@@ -10,35 +10,6 @@ export interface EmbedResultPanelOptions {
 }
 
 /**
- * Hard ceiling for a table result's panel height. Beyond this the grid
- * stops growing and scrolls internally instead, so a 10k-row result
- * can't blow the iframe up to a page-tall canvas.
- */
-const MAX_EMBED_TABLE_HEIGHT = 600;
-
-/**
- * Default canvas height used by `cellHeight` math when the spreadsheet
- * options omit one. Mirrors DEFAULT_CELL_HEIGHT in the visualizer
- * defaults — header row and body rows share this height (the grid's
- * own content extent is `(rows + 1) * cellHeight`).
- */
-const DEFAULT_CELL_HEIGHT = 24;
-
-/**
- * Slack added below the computed grid content height so the horizontal
- * scrollbar (when the columns are wider than the narrow embed panel)
- * doesn't eat the last row. Added unconditionally — over-reserving a
- * dozen pixels is invisible; under-reserving clips a row.
- */
-const HORIZONTAL_SCROLLBAR_ALLOWANCE = 14;
-
-/**
- * Fixed height for chart (VISUALIZE) results. Charts aren't row-based,
- * so they get a sensible default canvas instead of a table-fitted one.
- */
-const EMBED_CHART_HEIGHT = 360;
-
-/**
  * Bottom-half result surface for the /embed route. Owns one
  * SpreadsheetVisualizer or ChartVisualizer at a time — running a new
  * query tears the previous one down and constructs a fresh visualizer.
@@ -86,7 +57,6 @@ export class EmbedResultPanel {
 
   public showHint(message: string): void {
     this.disposeCurrent();
-    this.resetHeight();
     this.surface.textContent = "";
     const hint = document.createElement("div");
     hint.className = "embed-result__hint";
@@ -96,21 +66,11 @@ export class EmbedResultPanel {
 
   public showError(message: string): void {
     this.disposeCurrent();
-    this.resetHeight();
     this.surface.textContent = "";
     const banner = document.createElement("div");
     banner.className = "embed-result__error";
     banner.textContent = message;
     this.surface.appendChild(banner);
-  }
-
-  /**
-   * Drop any explicit pixel height a previous table/chart result left on
-   * the container so hint/error states size to their own content (the
-   * SCSS `min-height` keeps a one-line message from collapsing).
-   */
-  private resetHeight(): void {
-    this.container.style.height = "";
   }
 
   public async showResult(provider: DuckDBDataProvider, _name: string): Promise<void> {
@@ -121,29 +81,9 @@ export class EmbedResultPanel {
     mount.className = "embed-result__grid";
     this.surface.appendChild(mount);
 
-    // Row count drives the content height. `getMetadata()` is the
-    // DataProvider contract method — for DuckDB it's a cheap
-    // `SELECT COUNT(*)`. The visualizer re-reads it inside initialize();
-    // we read it here too so the panel can be sized before the canvas
-    // paints (one extra COUNT(*) is immaterial next to a query result).
-    const rowCount = (await provider.getMetadata()).totalRows;
-
-    // Size the result surface to hug the grid's own content extent.
-    // The visualizer paints the header as one cell row and reserves
-    // `(rows + 1) * cellHeight` of content; mirror that, add slack for a
-    // possible horizontal scrollbar, then clamp so a 1-row table is
-    // snug and a huge one caps and scrolls internally.
-    const cellHeight = this.options.spreadsheetOptions.cellHeight ?? DEFAULT_CELL_HEIGHT;
-    // header row + body rows, matching the grid's `(rows + 1) * cellHeight`
-    const contentHeight = (rowCount + 1) * cellHeight + HORIZONTAL_SCROLLBAR_ALLOWANCE;
-    // Floor = header + one row so 0/1-row results still render cleanly.
-    const floor = 2 * cellHeight;
-    const desiredHeight = Math.max(floor, Math.min(MAX_EMBED_TABLE_HEIGHT, contentHeight));
-    this.container.style.height = `${desiredHeight}px`;
-
     // Force layout so SpreadsheetVisualizer's clientWidth/Height reads
-    // pick up real dimensions (including the height we just set) instead
-    // of falling back to the option minimums on first paint.
+    // pick up real dimensions instead of falling back to the option
+    // minimums on first paint.
     void this.container.offsetHeight;
 
     if (!this.statsVisualizer) {
@@ -164,8 +104,7 @@ export class EmbedResultPanel {
     // can land draw() first, leaving the canvas painted with empty
     // colWidths until the next event (scroll / theme switch) forces a
     // redraw. The main app's TabManager.activateTab works around this
-    // by yielding one frame and calling resize(); we do the same. The
-    // resize() also snaps the canvas to the explicit height set above.
+    // by yielding one frame and calling resize(); we do the same.
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await viz.resize();
   }
@@ -186,11 +125,6 @@ export class EmbedResultPanel {
     const mount = document.createElement("div");
     mount.className = "embed-result__chart";
     this.surface.appendChild(mount);
-
-    // Charts aren't row-based — give the panel a fixed, sensible canvas
-    // height instead of a table-fitted one (and overwrite any height a
-    // previous table result left on the container).
-    this.container.style.height = `${EMBED_CHART_HEIGHT}px`;
 
     // Force layout so vega-embed measures the host's real
     // clientWidth/Height when computing chart size, not zero.
