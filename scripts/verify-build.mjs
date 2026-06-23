@@ -12,17 +12,25 @@
 //   * The build ran from a branch where the snapshot doesn't exist.
 //
 // Failure modes this does NOT catch:
-//   * `@duckdb/duckdb-wasm` was bumped and the runtime now expects a
-//     different DuckDB-version path than what's committed. The
-//     release-day checklist memory has that one (item 5).
+//   * `@duckdb/duckdb-wasm` was bumped and DUCKDB_VERSION below wasn't
+//     updated to match — keep the two in lockstep.
 
 import { statSync, existsSync } from "node:fs";
 
+// The DuckDB version @duckdb/duckdb-wasm resolves at runtime: `INSTALL …
+// FROM` derives the path `/<DUCKDB_VERSION>/wasm_eh/`. This is NOT the
+// duckdb-wasm npm version — it's the DuckDB that version bundles
+// (duckdb-wasm 1.32.0 → DuckDB v1.4.3). Bump in lockstep with
+// @duckdb/duckdb-wasm. (We pin to duckdb-wasm's latest *stable*; it has no
+// stable 1.5.x line yet.)
+const DUCKDB_VERSION = "v1.4.3";
+
+// Only stats_duck is served from this same-origin bundle: BedevereApp runs
+// `INSTALL stats_duck FROM '<origin>/extensions/stats-duck'`. excel, parquet
+// and core_functions load from duckdb-wasm's own built-in repo (no
+// customRepository is set), so they don't need staging here.
 const required = [
-  ["dist/extensions/stats-duck/v1.5.1/wasm_eh/stats_duck.duckdb_extension.wasm", 100_000],
-  ["dist/extensions/stats-duck/v1.5.1/wasm_eh/core_functions.duckdb_extension.wasm", 100_000],
-  ["dist/extensions/stats-duck/v1.5.1/wasm_eh/parquet.duckdb_extension.wasm", 100_000],
-  ["dist/extensions/stats-duck/v1.5.1/wasm_eh/marks_demo.duckdb_extension.wasm", 1_000],
+  [`dist/extensions/stats-duck/${DUCKDB_VERSION}/wasm_eh/stats_duck.duckdb_extension.wasm`, 100_000],
 ];
 
 const failures = [];
