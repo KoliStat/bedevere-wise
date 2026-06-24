@@ -13,7 +13,15 @@ import { applyTheme, resolveTheme } from "./embedTheme";
  * BedevereApp surface — no left panel, no tab manager, no help panel.
  */
 async function initEmbed(): Promise<void> {
-  const config = parseEmbedConfig(window.location.search);
+  // Read prefill params from the URL fragment (#…) when present, else the
+  // query string. The fragment is never sent to the server, so a prefilled
+  // `query=<SQL>` rides the hash instead of `?query=…` — which a cross-site
+  // XSS heuristic (NoScript's InjectionChecker) flags on the request URL,
+  // and which would otherwise leak the query via the Referer header. The
+  // blog emits `#…` embeds; `?…` stays supported for older links.
+  const rawParams =
+    window.location.hash.length > 1 ? window.location.hash.slice(1) : window.location.search;
+  const config = parseEmbedConfig(rawParams);
 
   // Apply theme synchronously before DuckDB init so the loading state
   // matches the eventual UI. Avoids a dark→light (or vice versa) flash.
