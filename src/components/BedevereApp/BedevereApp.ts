@@ -51,6 +51,7 @@ import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
 import { resolveStatsDuckUrl } from "@/data/statsDuckUrl";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
 import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
+import { EmbedBuilderDialog } from "../EmbedBuilderDialog/EmbedBuilderDialog";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -912,6 +913,20 @@ export class BedevereApp implements EventHandler {
         const s = this.persistenceService.loadAppSettings();
         s.theme = choice;
         this.persistenceService.saveAppSettings(s);
+      },
+    });
+
+    commandRegistry.register({
+      id: "view.createEmbed",
+      shellName: "embed",
+      title: "Create Embed",
+      description: "Compose an embeddable URL + <iframe> for the current query",
+      category: "View",
+      execute: () => {
+        EmbedBuilderDialog.show({
+          query: this.tabManager.getSqlEditor()?.getQuery() ?? "",
+          theme: this.theme,
+        });
       },
     });
 
