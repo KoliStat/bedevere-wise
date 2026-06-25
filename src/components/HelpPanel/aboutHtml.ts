@@ -1,3 +1,5 @@
+import { KOLISTAT_URL, DESKTOP_DOWNLOAD_URL } from "../../appLinks";
+
 /**
  * Static HTML template for the About tab — version chip, "What's new"
  * highlights for the current release, shell intro, dependency list,
@@ -45,8 +47,10 @@ export function renderAboutBody(version: string): string {
         <a href="https://github.com/KoliStat/bedevere-wise/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
         <span class="help-panel__about-separator">·</span>
         <a href="https://github.com/KoliStat/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+        <span class="help-panel__about-separator">·</span>
+        <a href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer">Download the desktop app</a>
       </div>
-      <p class="help-panel__about-author">Made by <a href="https://github.com/KoliStat" target="_blank" rel="noopener noreferrer">KoliStat</a></p>
+      <p class="help-panel__about-author">Made by <a href="${KOLISTAT_URL}" target="_blank" rel="noopener noreferrer">KoliStat</a></p>
       <details class="help-panel__lore">
         <summary class="help-panel__lore-summary">Why a duck?</summary>
         <p class="help-panel__lore-body">
