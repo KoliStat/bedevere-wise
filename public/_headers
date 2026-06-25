@@ -8,6 +8,8 @@
 #     build emits no inline scripts (Vite's modulepreload polyfill is
 #     disabled in vite.config.ts; the JSON-LD block is data, not script).
 #     'wasm-unsafe-eval' is what DuckDB-WASM needs to compile its modules.
+#     The main-app (/*) rule also allows https://static.cloudflareinsights.com
+#     for the cookieless Cloudflare Web Analytics beacon — NOT on /embed.
 #   - `worker-src 'self' blob:` — DuckDB-WASM's workers (same-origin asset
 #     URLs + blob wrappers).
 #   - `connect-src … https:` — datasets / the DuckDB-WASM .wasm (jsDelivr)
@@ -20,7 +22,7 @@
 
 /*
   X-Content-Type-Options: nosniff
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
 
 /embed
   X-Content-Type-Options: nosniff

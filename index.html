@@ -118,5 +118,11 @@
       <div class="loading">Loading Bedevere Wise...</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
+    <!-- Cloudflare Web Analytics — cookieless, main app only (never /embed). -->
+    <script
+      defer
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "REPLACE_WITH_CF_WEB_ANALYTICS_TOKEN"}'
+    ></script>
   </body>
 </html>
