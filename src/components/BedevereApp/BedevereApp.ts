@@ -19,6 +19,7 @@ import { FsaFileSource } from "../../data/files/FsaFileSource";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
+import { applyThemeClasses, type ResolvedTheme } from "./themeClasses";
 import { downloadBinaryFile, exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
 import {
   EXPORT_FORMATS,
@@ -124,7 +125,7 @@ export class BedevereApp implements EventHandler {
   private helpPanel!: HelpPanel;
 
   private options: BedevereAppOptions;
-  private theme: BedevereAppTheme = "dark";
+  private theme: ResolvedTheme = "dark";
   private version: string;
 
   // Persistence, views, and import
@@ -302,13 +303,9 @@ export class BedevereApp implements EventHandler {
     return this.focusManager;
   }
 
-  public setTheme(theme: "light" | "classic-light" | "dark" | "classic-dark"): void {
-    this.container.classList.remove(`bedevere-app--${this.theme}`);
-    document.body.classList.remove(`theme-${this.theme}`);
-
+  public setTheme(theme: ResolvedTheme): void {
     this.theme = theme;
-    this.container.classList.add(`bedevere-app--${this.theme}`);
-    document.body.classList.add(`theme-${this.theme}`);
+    applyThemeClasses(this.container, this.theme);
 
     // Persist theme setting
     const settings = this.persistenceService.loadAppSettings();
@@ -622,8 +619,7 @@ export class BedevereApp implements EventHandler {
 
   private setupTheme(): void {
     this.theme = this.options.theme === "auto" ? this.detectTheme() : this.options.theme || "dark";
-    this.container.classList.add(`bedevere-app--${this.theme}`);
-    document.body.classList.add(`theme-${this.theme}`);
+    applyThemeClasses(this.container, this.theme);
   }
 
   private detectTheme(): "light" | "dark" {
