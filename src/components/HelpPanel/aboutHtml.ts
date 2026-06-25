@@ -14,12 +14,12 @@ export function renderAboutBody(version: string): string {
       <p class="help-panel__about-version">v${version}</p>
       <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
       <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.13</h3>
+        <h3 class="help-panel__about-section-title">What's new in 0.14</h3>
         <ul class="help-panel__about-list">
-          <li><strong>Charts in <code>/embed</code>.</strong> The embed route now renders <code>VISUALIZE … DRAW</code> charts in addition to tables — same URL prefill protocol (<code>?dataset=…&amp;query=…</code>), same iframe height-report contract; chart data flows through the lazy-loaded <code>vega-embed</code> chunk so non-chart embeds stay slim.</li>
-          <li><strong>NPM package split.</strong> <code>@kolistat/bedevere-wise</code> now exposes <code>/ui</code> and <code>/duckdb</code> sub-entries. UI consumers (spreadsheet, column stats, chart, slim SQL editor) can import without dragging in the DuckDB-WASM worker URL chain — works in any browser bundler, not just Vite. The root entry still re-exports both for back-compat.</li>
-          <li><strong>Extractable <code>runVisualize</code> helper.</strong> The full <code>VISUALIZE … DRAW</code> pipeline (spec + layer SQL run + dataset materialization) is now a standalone helper exported from <code>/ui</code>. <code>TabManager</code> consumes it; embed consumes it; downstream tools (desktop, tlf-studio) can drive it against their own SQL executor.</li>
-          <li><strong>File export.</strong> <code>.export</code> now writes the whole table to <code>parquet</code> / <code>json</code> (any engine), plus <code>xpt</code> / <code>sav</code> / <code>por</code> / <code>sas7bdat</code> (SAS &amp; SPSS, when Stats Duck is loaded) — alongside the existing clipboard-friendly <code>csv</code> / <code>tsv</code> / <code>html</code> / <code>markdown</code> selection export.</li>
+          <li><strong>New themes.</strong> GitHub-Dark is the default dark theme; a Classic light and dark (Tokyonight Day / Storm) are selectable in Settings. Exactly one theme applies cleanly across every panel.</li>
+          <li><strong>Faster start-up.</strong> DuckDB-WASM now loads lazily — its worker bytes are fetched during init instead of up front, so the app appears sooner.</li>
+          <li><strong>Security hardening.</strong> A Content-Security-Policy now covers the app and the <code>/embed</code> route, and every generated query quotes table and column names so a crafted file can't break out of the SQL.</li>
+          <li><strong><code>table_one</code> &amp; stats fixed.</strong> The <code>stats_duck</code> aggregates (<code>table_one</code>, ANOVA, chi-square) work again in the browser after a WASM i64 ABI fix.</li>
         </ul>
       </div>
       <div class="help-panel__about-section">

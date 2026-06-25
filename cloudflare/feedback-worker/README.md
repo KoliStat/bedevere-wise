@@ -4,8 +4,8 @@ Tiny POST receiver for the in-app feedback form. Stores submissions in
 Cloudflare D1; an admin GET route returns recent rows as JSON for the
 maintainer to read via `curl`.
 
-Deployed independently of the main app (the app is static on Cloudflare
-Pages, this is a Worker on `*.workers.dev`).
+Deployed independently of the main app (the app ships via Cloudflare
+Workers static assets; this is a separate Worker on `*.workers.dev`).
 
 ## One-time setup
 
@@ -24,7 +24,7 @@ $EDITOR wrangler.toml   # paste database_id
 bun run schema:apply
 
 # Set the secrets — random hex string for admin, and the EXACT origin of
-# the deployed Pages site (no trailing slash).
+# the deployed app's origin (no trailing slash).
 bunx wrangler secret put FEEDBACK_ADMIN_SECRET
 bunx wrangler secret put ALLOWED_ORIGIN     # e.g. https://bedevere.example.com
 
@@ -33,7 +33,7 @@ bun run deploy
 
 The deploy prints the worker's URL (e.g. `https://bedevere-feedback.<your-subdomain>.workers.dev`).
 Set that URL as `VITE_FEEDBACK_URL` in the main app's deploy environment
-(Cloudflare Pages → Settings → Environment variables) and rebuild Pages.
+(its Cloudflare Workers project → Settings → Variables) and redeploy.
 
 ## Local development
 

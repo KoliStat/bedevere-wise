@@ -1,10 +1,11 @@
 /**
- * URL parameters the /embed route reads on load. See README / blog
- * integration spec — these match the names emitted by the
+ * Parameters the /embed route reads on load, taken from the URL fragment
+ * (`#…`) when present, else the query string (`?…`) for older links. See
+ * README / blog integration spec — these match the names emitted by the
  * caveofcaerbannog renderer.
  */
 export interface EmbedConfig {
-  /** Each `dataset=…` query-string entry, in order. */
+  /** Each `dataset=…` entry, in order. */
   datasets: string[];
   /** Optional SQL to prefill the editor. */
   query: string | null;

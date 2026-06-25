@@ -27,7 +27,7 @@ to the wire shapes.
 
 The protocol was originally born inside bedevere-desktop as
 `ipc-protocol.md`. It moved to bedevere-wise in v0.13 alongside the
-Backend abstraction (see [`feature/backend-abstraction`](../CHANGELOG.md))
+Backend abstraction (see the [CHANGELOG](../CHANGELOG.md))
 so the contract has a single home and a versioning home that's
 independent of any particular host implementation.
 
@@ -590,7 +590,7 @@ Mirrors `PluginManager::describe_catalog()` in
     "manifest": {
       "name": "stats_duck",
       "displayName": "Stats Duck",
-      "version": "0.4.2",
+      "version": "0.6",
       "description": "Statistical helpers, VISUALIZE … DRAW chart syntax, …",
       "licenseRequired": false,
       "dependsOn": [],
@@ -924,7 +924,7 @@ round-trip.
 ### 6.12 `WireLicenseToken` (signed JSON token)
 
 The full token format documented in
-[`PROJECT_PLAN.md` §2.6](../PROJECT_PLAN.md). Fields use snake_case (as
+`PROJECT_PLAN.md` §2.6 (in the bedevere-desktop repo). Fields use snake_case (as
 issued by the offline signing tool); the renderer never inspects them
 directly, but the shape is normative for the issuer:
 

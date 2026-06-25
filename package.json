@@ -118,7 +118,8 @@
   "files": [
     "dist",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "homepage": "https://github.com/KoliStat/bedevere-wise",
   "keywords": [

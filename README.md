@@ -25,7 +25,7 @@ bun add @duckdb/duckdb-wasm \
   vega-embed
 ```
 
-All peer deps are required if you `import` from the package's main entry today. See [Bundler compatibility](#bundler-compatibility) for the rationale and the planned UI/DuckDB entry split.
+All peer deps are required if you `import` from the package's main entry today. See [Bundler compatibility](#bundler-compatibility) for the rationale and the WASM-free entry split (`/ui`, `/app`, `/ipc`).
 
 ## Quick start
 
@@ -106,18 +106,26 @@ These shells assume module-level singletons (`CommandRegistry`, `EnvironmentServ
 
 ## Theming
 
-The CSS uses tokyonight defaults wired to CSS custom properties. Override them in your own stylesheet, after importing the package CSS:
+The package ships four themes as CSS custom-property sets, selected by a single body class — exactly one is applied at a time:
+
+| Body class | Theme |
+| --- | --- |
+| `theme-dark` | GitHub-Dark — the default dark |
+| `theme-light` | Light (warm-neutral) |
+| `theme-classic-dark` | Tokyonight Storm |
+| `theme-classic-light` | Tokyonight Day |
+
+Override the tokens in your own stylesheet, after importing the package CSS (see `dist/style.css` for the full token list):
 
 ```css
-:root {
-  --bg: #fff;
-  --fg: #1a1a1a;
-  --magenta: #c0007a;
-  /* ... see dist/style.css for the full token list */
+body.theme-dark {
+  --bg: #1f1f1f;
+  --fg: #e1e4e8;
+  /* ... */
 }
 ```
 
-Body class `theme-light` / `theme-dark` triggers a re-render of theme-sensitive canvas surfaces (the spreadsheet repaints, the chart re-embeds with a matching Vega palette).
+Switching the body class re-renders theme-sensitive canvas surfaces (the spreadsheet repaints; the chart re-embeds with a matching Vega palette). `BedevereApp` manages this class for you and exposes `setTheme()`.
 
 ## Bundler compatibility
 
