@@ -52,6 +52,8 @@ import { resolveStatsDuckUrl } from "@/data/statsDuckUrl";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
 import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
 import { EmbedBuilderDialog } from "../EmbedBuilderDialog/EmbedBuilderDialog";
+import { shouldShowDesktopHint, renderDesktopHint } from "./desktopHint";
+import { DESKTOP_DOWNLOAD_URL } from "../../appLinks";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -285,6 +287,13 @@ export class BedevereApp implements EventHandler {
       this.persistenceService.saveAppSettings(settings);
     } else {
       this.helpPanel.show("import");
+      if (shouldShowDesktopHint(settings, this.backend.id)) {
+        renderDesktopHint(this.container, DESKTOP_DOWNLOAD_URL, () => {
+          const s = this.persistenceService.loadAppSettings();
+          s.hasSeenDesktopHint = true;
+          this.persistenceService.saveAppSettings(s);
+        });
+      }
     }
   }
 

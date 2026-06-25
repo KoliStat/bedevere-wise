@@ -14,6 +14,8 @@ export interface AppSettings {
   panelMinimized?: boolean;
   panelWidth?: number;
   hasSeenOnboarding?: boolean;
+  /** Set once the one-time "get the desktop app" hint has been shown. */
+  hasSeenDesktopHint?: boolean;
   copyDelimiter?: "tab" | "comma";
   copyIncludeHeader?: boolean;
   /**
