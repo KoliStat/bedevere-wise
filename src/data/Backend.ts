@@ -3,17 +3,15 @@
  *
  * The same Bedevere UI works against multiple Backend implementations:
  *
- *   - DuckDBService — DuckDB-WASM in the browser (the default, ships
- *     with the web app at bedeverewise.app and any consumer importing
- *     `@kolistat/bedevere-wise` and constructing BedevereApp
- *     without specifying a backend).
+ *   - DuckDBService — DuckDB-WASM in the browser. The web app at
+ *     bedeverewise.app injects it, as does most any consumer importing
+ *     `@kolistat/bedevere-wise`; BedevereApp now requires a backend
+ *     explicitly (there is no built-in default).
  *   - IpcBackend — talks to a native DuckDB sitting in a separate
  *     process over a localhost WebSocket. Used by bedevere-desktop
  *     (C++ shell) and any future host process — `pip install
  *     bedevere-py`, `install.packages("bedeverer")`, a remote DuckDB
  *     fronted by a relay.
- *   - MockBackend (test only) — short-circuits queries with canned
- *     results for component tests.
  *
  * Whatever engine sits behind the Backend, the contract assumes
  * DuckDB-flavored SQL plus the C Data Interface (Arrow) for results
@@ -36,7 +34,7 @@ export interface Backend {
    * Stable identifier for the backend kind. Used for diagnostics +
    * conditional behavior on the caller side ("only flip on the Arrow-
    * streamy path when backend.id === 'ipc'"). Should be a short
-   * lowercase token: `"duckdb-wasm"`, `"ipc"`, `"mock"`, etc.
+   * lowercase token: `"duckdb-wasm"`, `"ipc"`, etc.
    */
   readonly id: string;
 

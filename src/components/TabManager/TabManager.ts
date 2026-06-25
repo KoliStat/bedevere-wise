@@ -218,15 +218,6 @@ export class TabManager {
     // Wire filter manager for header indicators
     spreadsheetVisualizer.setFilterManager(this.filterManager, metadata.name);
 
-    // Connect selection change to cell value bar
-    spreadsheetVisualizer.addOnSelectionChangeSubscription((selection) => {
-      if (this.commandBar && selection) {
-        this.commandBar.updateCell(selection);
-      } else if (this.commandBar) {
-        this.commandBar.updateCell(undefined);
-      }
-    });
-
     // Wire the external cell-selection callback exactly once per dataset. Doing
     // this in activateTab would add a new subscription every time the user
     // switches to this tab, causing the callback to fire N times after N

@@ -1,5 +1,4 @@
 import { Column } from "../../data/types";
-import { ICellSelection } from "../SpreadsheetVisualizer/types";
 import { persistenceService } from "../../data/PersistenceService";
 import { Command, commandRegistry } from "../../data/CommandRegistry";
 
@@ -419,11 +418,6 @@ export class CommandBar {
 
   public setValue(value: string): void {
     this.input.value = value;
-  }
-
-  public updateCell(_selection?: ICellSelection): void {
-    // Cell value display moved to status bar; kept as a no-op for the existing
-    // TabManager call sites.
   }
 
   public setOnSubmitCallback(callback: (input: string) => void | Promise<void>): void {

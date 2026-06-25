@@ -189,7 +189,7 @@ function applyScale(v: any, divisor: number): any {
  * and falls back to parsing the `toString()` form (`Decimal128<p,s>` /
  * `Decimal(p,s)`) for builds that wrap the type in an opaque object.
  */
-export function inferDecimalScale(t: any): number | undefined {
+function inferDecimalScale(t: any): number | undefined {
   if (!t || typeof t !== "object") return undefined;
   if (typeof t.scale === "number") return t.scale;
   if (typeof t.toString === "function") {

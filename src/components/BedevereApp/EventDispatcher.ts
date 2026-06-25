@@ -214,17 +214,4 @@ export class EventDispatcher implements IEventDispatcher {
     // Window events
     window.addEventListener("resize", (e) => this.dispatchEvent(e));
   }
-
-  // Helper methods for debugging
-  public getDebugInfo(): object {
-    return {
-      registeredComponents: Array.from(this.components.keys()),
-      globalHandlerCount: this.globalEventHandlers.size,
-      focusedComponent: this.focusManager.getFocusedComponent(),
-    };
-  }
-
-  public setDebugMode(enabled: boolean): void {
-    this.debugMode = enabled;
-  }
 }

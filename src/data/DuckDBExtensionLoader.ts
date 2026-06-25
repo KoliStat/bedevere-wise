@@ -17,12 +17,9 @@ export class DuckDBExtensionLoader {
   }
 
   /**
-   * Try to install and load a DuckDB extension.
-   * Returns true if the extension loaded successfully, false otherwise.
-   * Failures are silent — the extension is simply marked as unavailable.
-   */
-  /**
-   * Try to install and load a DuckDB extension.
+   * Try to install and load a DuckDB extension. Returns true if it loaded,
+   * false otherwise — failures are silent (the extension is just marked
+   * unavailable).
    * @param probeQueries Optional SQL queries to verify functions work (catches WASM runtime errors)
    */
   public async tryLoad(name: string, source?: string, probeQueries?: string[]): Promise<boolean> {

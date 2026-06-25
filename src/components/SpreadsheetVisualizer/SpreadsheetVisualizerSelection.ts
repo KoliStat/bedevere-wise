@@ -536,7 +536,6 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
         const handleY = selectionBounds.y + selectionBounds.height - handleSize / 8;
 
         this.selectionCtx.fillStyle = this.options.selectionBorderColor || this.options.borderColor;
-        // this.selectionCtx.ellipse(handleX, handleY, handleSize / 2, handleSize / 2, 0, 0, 2 * Math.PI);
         this.selectionCtx.beginPath();
         this.selectionCtx.arc(handleX, handleY, handleSize / 2, 0, 2 * Math.PI);
         this.selectionCtx.fill();

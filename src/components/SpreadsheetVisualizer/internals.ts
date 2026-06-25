@@ -2,11 +2,6 @@ import { Column, DataType } from "../../data/types";
 import { SpreadsheetOptions } from "./types";
 import { getFormatOptions } from "./utils/formatting";
 
-export interface CellPosition {
-  row: number;
-  col: number;
-}
-
 export interface CellStyle {
   backgroundColor?: string;
   textColor?: string;
