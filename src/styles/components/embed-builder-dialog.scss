@@ -98,6 +98,7 @@
   &__select {
     appearance: none;
     -webkit-appearance: none;
+    min-height: 32px;
     padding-right: 28px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='none' stroke='%23888888' stroke-width='1.5' d='M1 3.5 5 7.5 9 3.5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -122,6 +123,9 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    // Match the select's height so the two controls' centers line up when
+    // the row bottom-aligns them.
+    min-height: 32px;
     font-size: 12px;
     color: var(--fg);
     font-family: var(--font-mono);
