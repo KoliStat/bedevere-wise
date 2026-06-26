@@ -67,7 +67,7 @@ export class EmbedBuilderDialog extends Dialog {
 
     this.queryInput = document.createElement("textarea");
     this.queryInput.className = "embed-builder__input embed-builder__textarea";
-    this.queryInput.rows = 4;
+    this.queryInput.rows = 6;
     this.queryInput.value = args.query;
     body.appendChild(this.labelled("Query", this.queryInput));
 
@@ -123,7 +123,7 @@ export class EmbedBuilderDialog extends Dialog {
     const ta = document.createElement("textarea");
     ta.className = "embed-builder__output-text";
     ta.readOnly = true;
-    ta.rows = 2;
+    ta.rows = 3;
     const copy = document.createElement("button");
     copy.className = "embed-builder__btn embed-builder__btn--secondary";
     copy.textContent = "Copy";
