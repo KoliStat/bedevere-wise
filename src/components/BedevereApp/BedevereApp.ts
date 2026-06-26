@@ -901,7 +901,7 @@ export class BedevereApp implements EventHandler {
       id: "view.setTheme",
       shellName: "theme",
       title: "Set Theme",
-      description: "Set light / dark / auto",
+      description: "Set the theme: light / classic-light / dark / classic-dark / auto",
       category: "View",
       parameters: [
         {

@@ -80,7 +80,7 @@ export interface AppSettings {
    * DuckDB on drop / folder-scan — no spreadsheet tab opens, but the
    * table becomes available to SQL queries. Above this, the file
    * tree shows a warning glyph and the user clicks-to-open. Default
-   * 100 KB; `0` disables auto-import entirely.
+   * 1 MB; `0` disables auto-import entirely.
    */
   autoImportSizeThreshold?: number;
   /**
