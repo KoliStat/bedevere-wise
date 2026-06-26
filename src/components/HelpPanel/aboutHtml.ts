@@ -14,10 +14,11 @@ import { KOLISTAT_URL, DESKTOP_DOWNLOAD_URL } from "../../appLinks";
 export function renderAboutBody(version: string): string {
   return `
       <p class="help-panel__about-version">v${version}</p>
-      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
+      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, CSV, TSV, and JSON files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
       <div class="help-panel__about-section">
         <h3 class="help-panel__about-section-title">What's new in 0.14</h3>
         <ul class="help-panel__about-list">
+          <li><strong>Embed builder.</strong> The <code>.embed</code> command opens a dialog that composes an <code>/embed</code> URL + <code>&lt;iframe&gt;</code> snippet from your query, a dataset URL, theme, and autorun — copy it straight into a blog or page.</li>
           <li><strong>New themes.</strong> GitHub-Dark is the default dark theme; a Classic light and dark (Tokyonight Day / Storm) are selectable in Settings. Exactly one theme applies cleanly across every panel.</li>
           <li><strong>Faster start-up.</strong> DuckDB-WASM now loads lazily — its worker bytes are fetched during init instead of up front, so the app appears sooner.</li>
           <li><strong>Security hardening.</strong> A Content-Security-Policy now covers the app and the <code>/embed</code> route, and every generated query quotes table and column names so a crafted file can't break out of the SQL.</li>
@@ -37,7 +38,7 @@ export function renderAboutBody(version: string): string {
         <ul class="help-panel__about-list">
           <li><a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a> &mdash; in-browser SQL engine.</li>
           <li><a href="https://github.com/KoliStat/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> &mdash; DuckDB extension that adds <code>VISUALIZE … DRAW</code> and stats helpers.</li>
-          <li><a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a> &mdash; SQL editor with autocomplete and tokyonight highlighting.</li>
+          <li><a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a> &mdash; SQL editor with autocomplete and theme-aware highlighting.</li>
           <li><a href="https://vega.github.io/vega-lite/" target="_blank" rel="noopener noreferrer">Vega-Lite</a> + <a href="https://github.com/vega/vega-embed" target="_blank" rel="noopener noreferrer">vega-embed</a> &mdash; chart rendering. Code-split: only loaded on first <code>VISUALIZE</code>.</li>
         </ul>
       </div>

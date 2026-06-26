@@ -15,6 +15,7 @@ import { Command, commandRegistry } from "@/data/CommandRegistry";
 import { renderAboutBody } from "./aboutHtml";
 import {
   AUTO_IMPORT_THRESHOLD_PRESETS,
+  DEFAULT_AUTO_IMPORT_THRESHOLD,
   DATE_FORMAT_PRESETS,
   DATETIME_FORMAT_PRESETS,
   DECIMAL_PRESETS,
@@ -262,9 +263,11 @@ export class HelpPanel {
       <div class="help-panel__callout help-panel__callout--deps">
         <div class="help-panel__callout-title">\u2696\uFE0F Minimal dependencies</div>
         <p>
-          Built on three libraries:
+          Built on four libraries:
           <a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a>
           (SQL engine),
+          <a href="https://github.com/KoliStat/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a>
+          (DuckDB extension behind <code>VISUALIZE</code> + stats),
           <a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a>
           (editor), and
           <a href="https://vega.github.io/vega-lite/" target="_blank" rel="noopener noreferrer">Vega-Lite</a>
@@ -280,6 +283,7 @@ export class HelpPanel {
       <ol class="help-panel__steps">
         <li><strong>Drop a file</strong> &mdash; CSV, TSV, JSON, Parquet, Excel, SAS, Stata, SPSS &mdash; or use the <em>Browse</em> button.</li>
         <li><strong>Try a SQL query</strong> &mdash; press <kbd>Ctrl</kbd>+<kbd>E</kbd> for the editor; autocomplete knows your tables and columns.</li>
+        <li><strong>Use the command bar</strong> &mdash; the bar above the spreadsheet runs dot-commands (start with <code>.help</code>); plain lines run as SQL.</li>
         <li><strong>Save views &amp; queries</strong> &mdash; build up a workspace from the left panel.</li>
       </ol>
 
@@ -431,7 +435,7 @@ export class HelpPanel {
         Drag files here, or use the buttons below.
       </p>
       <p class="help-panel__import-formats">
-        Supported: ${formats.join(", ") || "CSV, TSV, JSON, Parquet, Excel, SAS, SPSS, Stata"}
+        Supported: ${formats.join(", ")}
       </p>
     `;
 
@@ -485,6 +489,13 @@ export class HelpPanel {
     actions.appendChild(folderBtn);
 
     body.appendChild(actions);
+
+    // Pointer to the command-bar import paths (remote URL + clipboard).
+    const moreHint = document.createElement("p");
+    moreHint.className = "help-panel__hint";
+    moreHint.innerHTML =
+      "Also from the command bar: <code>.fetch &lt;url&gt;</code> imports a remote CSV / JSON / Parquet / HTML file, and <code>.paste</code> imports an HTML table from your clipboard.";
+    body.appendChild(moreHint);
 
     // Recent folders shortcuts (only on browsers where the directory
     // handle could be persisted — `getRecentFolders` returns []
@@ -592,6 +603,8 @@ export class HelpPanel {
       // outside the keymap so not rebindable — show it read-only.
       if (scope === "global") {
         list.appendChild(this.buildStaticShortcutRow("Jump to tab N", "Alt+1 \u2026 Alt+9"));
+        list.appendChild(this.buildStaticShortcutRow("Cycle Help tabs", "Ctrl+Alt+\u2190 / \u2192"));
+        list.appendChild(this.buildStaticShortcutRow("Close this panel", "Esc"));
       }
 
       section.appendChild(list);
@@ -986,18 +999,19 @@ export class HelpPanel {
       const seg = document.createElement("div");
       seg.className = "help-panel__segmented";
       const current = this.options.initialTheme ?? "auto";
-      const opts: Array<{ value: "light" | "classic-light" | "dark" | "classic-dark" | "auto"; label: string }> = [
-        { value: "light", label: "Light" },
-        { value: "classic-light", label: "Light (classic)" },
-        { value: "dark", label: "Dark" },
-        { value: "classic-dark", label: "Dark (classic)" },
-        { value: "auto", label: "Auto" },
+      const opts: Array<{ value: "light" | "classic-light" | "dark" | "classic-dark" | "auto"; label: string; title: string }> = [
+        { value: "light", label: "Light", title: "Light — warm neutral" },
+        { value: "classic-light", label: "Light (classic)", title: "Tokyonight Day" },
+        { value: "dark", label: "Dark", title: "GitHub-Dark (default)" },
+        { value: "classic-dark", label: "Dark (classic)", title: "Tokyonight Storm" },
+        { value: "auto", label: "Auto", title: "Follow your system setting" },
       ];
       for (const opt of opts) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "help-panel__segmented-btn";
         btn.textContent = opt.label;
+        btn.title = opt.title;
         if (opt.value === current) btn.classList.add("help-panel__segmented-btn--active");
         btn.addEventListener("click", () => {
           for (const sibling of seg.querySelectorAll("button")) {
@@ -1012,7 +1026,7 @@ export class HelpPanel {
     }));
 
     // --- Copy & export format ---
-    body.appendChild(this.buildSettingsSection("Copy & export format", (section) => {
+    body.appendChild(this.buildSettingsSection("Copy & text export", (section) => {
       const defaults = { delimiter: "tab" as const, includeHeader: true, quoteEscape: "double" as const };
       const current = this.options.getCopyOptions?.() ?? defaults;
       const getLatest = () => this.options.getCopyOptions?.() ?? defaults;
@@ -1169,7 +1183,7 @@ export class HelpPanel {
       section.appendChild(hint);
 
       const initialThreshold = this.options.getFormatOptions?.().autoImportSizeThreshold
-        ?? AUTO_IMPORT_THRESHOLD_PRESETS[1];
+        ?? DEFAULT_AUTO_IMPORT_THRESHOLD;
       section.appendChild(this.buildLabeledRow(
         "Auto-import threshold",
         this.buildSegmented(
