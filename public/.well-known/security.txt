@@ -1,0 +1,5 @@
+# Security contact for bedeverewise.app — RFC 9116
+Contact: https://kolistat.com/contact
+Expires: 2027-06-27T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://bedeverewise.app/.well-known/security.txt
