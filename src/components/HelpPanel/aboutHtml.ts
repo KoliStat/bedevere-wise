@@ -1,4 +1,4 @@
-import { KOLISTAT_URL, DESKTOP_DOWNLOAD_URL } from "../../appLinks";
+import { KOLISTAT_URL, DESKTOP_DOWNLOAD_URL, CONTACT_URL } from "../../appLinks";
 
 /**
  * Static HTML template for the About tab — version chip, "What's new"
@@ -50,6 +50,8 @@ export function renderAboutBody(version: string): string {
         <a href="https://github.com/KoliStat/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
         <span class="help-panel__about-separator">·</span>
         <a href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer">Download the desktop app</a>
+        <span class="help-panel__about-separator">·</span>
+        <a href="${CONTACT_URL}" target="_blank" rel="noopener noreferrer">Contact</a>
       </div>
       <p class="help-panel__about-author">Made by <a href="${KOLISTAT_URL}" target="_blank" rel="noopener noreferrer">KoliStat</a></p>
       <details class="help-panel__lore">

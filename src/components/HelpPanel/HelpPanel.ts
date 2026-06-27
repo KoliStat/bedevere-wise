@@ -6,11 +6,6 @@ import {
   keymapService,
   matchesBinding,
 } from "@/data/KeymapService";
-import {
-  FeedbackCategory,
-  isFeedbackConfigured,
-  submitFeedback,
-} from "@/data/FeedbackService";
 import { Command, commandRegistry } from "@/data/CommandRegistry";
 import { renderAboutBody } from "./aboutHtml";
 import {
@@ -26,7 +21,7 @@ import {
 } from "./formatPresets";
 import { PENGUINS_TUTORIAL, TutorialNode } from "./tutorial";
 
-export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "feedback" | "settings" | "about";
+export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "settings" | "about";
 
 export interface HelpPanelOptions {
   version: string;
@@ -49,7 +44,7 @@ export interface HelpPanelOptions {
   onRecentFolderClick?: (id: string) => void;
 }
 
-const TAB_ORDER: HelpPanelTab[] = ["howto", "import", "shortcuts", "commands", "feedback", "settings", "about"];
+const TAB_ORDER: HelpPanelTab[] = ["howto", "import", "shortcuts", "commands", "settings", "about"];
 
 const SCOPE_LABELS: Record<string, string> = {
   global: "App",
@@ -185,7 +180,6 @@ export class HelpPanel {
     body.appendChild(this.buildImportBody());
     body.appendChild(this.buildShortcutsBody());
     body.appendChild(this.buildCommandsBody());
-    body.appendChild(this.buildFeedbackBody());
     body.appendChild(this.buildSettingsBody());
     body.appendChild(this.buildAboutBody());
     this.panel.appendChild(body);
@@ -222,7 +216,6 @@ export class HelpPanel {
       import: "Import",
       shortcuts: "Shortcuts",
       commands: "Commands",
-      feedback: "Feedback",
       settings: "Settings",
       about: "About",
     };
@@ -828,165 +821,6 @@ export class HelpPanel {
       }
       body.appendChild(list);
     }
-  }
-
-  private buildFeedbackBody(): HTMLElement {
-    const body = document.createElement("div");
-    body.className = "help-panel__tab-body help-panel__tab-body--feedback";
-    this.tabBodies.set("feedback", body);
-
-    const configured = isFeedbackConfigured();
-
-    body.innerHTML = `
-      <p class="help-panel__lead">
-        Found a bug? Wanted feature? Just here to say hi? \u2014 send a note via the form
-        below, or email <a href="mailto:contact@bedeverewise.app">contact@bedeverewise.app</a>
-        directly. The form's email field is optional; leave it blank to stay anonymous.
-      </p>
-
-      ${
-        configured
-          ? ""
-          : `<div class="help-panel__callout help-panel__callout--deps">
-               <div class="help-panel__callout-title">Endpoint not configured</div>
-               <p>
-                 The feedback service URL hasn\u2019t been wired into this build (set
-                 <code>VITE_FEEDBACK_URL</code> at build time). Until it is, the form
-                 below falls back to opening your email client.
-               </p>
-             </div>`
-      }
-
-      <form class="help-panel__feedback-form" id="help-feedback-form" novalidate>
-        <label class="help-panel__feedback-row">
-          <span class="help-panel__feedback-label">Category</span>
-          <select class="help-panel__feedback-select" id="help-feedback-category">
-            <option value="bug">Bug</option>
-            <option value="feature">Feature request</option>
-            <option value="question">Question</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-
-        <label class="help-panel__feedback-row">
-          <span class="help-panel__feedback-label">Email <span class="help-panel__feedback-optional">(optional)</span></span>
-          <input class="help-panel__feedback-input" id="help-feedback-email" type="email"
-                 placeholder="you@example.com" autocomplete="email" />
-        </label>
-
-        <label class="help-panel__feedback-row help-panel__feedback-row--stack">
-          <span class="help-panel__feedback-label">Message</span>
-          <textarea class="help-panel__feedback-textarea" id="help-feedback-message"
-                    rows="6" maxlength="8000" required
-                    placeholder="What\u2019s on your mind?"></textarea>
-          <span class="help-panel__feedback-counter" id="help-feedback-counter">0 / 8000</span>
-        </label>
-
-        <!-- Honeypot — hidden from real users, bots fill it. -->
-        <label class="help-panel__feedback-honeypot" aria-hidden="true">
-          Don\u2019t fill this in:
-          <input type="text" id="help-feedback-honeypot" tabindex="-1" autocomplete="off" />
-        </label>
-
-        <div class="help-panel__feedback-actions">
-          <span class="help-panel__feedback-status" id="help-feedback-status"></span>
-          <button class="help-panel__feedback-submit" id="help-feedback-submit" type="submit">
-            Send
-          </button>
-        </div>
-      </form>
-    `;
-
-    this.wireFeedbackForm(body);
-    return body;
-  }
-
-  private wireFeedbackForm(body: HTMLElement): void {
-    const form = body.querySelector<HTMLFormElement>("#help-feedback-form");
-    const messageEl = body.querySelector<HTMLTextAreaElement>("#help-feedback-message");
-    const counterEl = body.querySelector<HTMLSpanElement>("#help-feedback-counter");
-    const statusEl = body.querySelector<HTMLSpanElement>("#help-feedback-status");
-    const submitBtn = body.querySelector<HTMLButtonElement>("#help-feedback-submit");
-    const categoryEl = body.querySelector<HTMLSelectElement>("#help-feedback-category");
-    const emailEl = body.querySelector<HTMLInputElement>("#help-feedback-email");
-    const honeypotEl = body.querySelector<HTMLInputElement>("#help-feedback-honeypot");
-    if (!form || !messageEl || !counterEl || !statusEl || !submitBtn || !categoryEl || !emailEl || !honeypotEl) {
-      return;
-    }
-
-    const updateCounter = (): void => {
-      counterEl.textContent = `${messageEl.value.length} / 8000`;
-    };
-    messageEl.addEventListener("input", updateCounter);
-    updateCounter();
-
-    const setStatus = (text: string, kind: "ok" | "error" | "info" | ""): void => {
-      statusEl.textContent = text;
-      statusEl.className = "help-panel__feedback-status";
-      if (kind) statusEl.classList.add(`help-panel__feedback-status--${kind}`);
-    };
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const message = messageEl.value.trim();
-      if (message.length === 0) {
-        setStatus("Message can\u2019t be empty.", "error");
-        messageEl.focus();
-        return;
-      }
-      const email = emailEl.value.trim();
-      const category = categoryEl.value as FeedbackCategory;
-
-      submitBtn.disabled = true;
-      setStatus("Sending\u2026", "info");
-
-      const result = await submitFeedback(
-        {
-          category,
-          message,
-          email: email || undefined,
-          honeypot: honeypotEl.value || undefined,
-        },
-        this.options.version,
-      );
-
-      submitBtn.disabled = false;
-
-      switch (result.kind) {
-        case "ok":
-          setStatus("Thanks \u2014 sent.", "ok");
-          form.reset();
-          updateCounter();
-          break;
-        case "rate-limited":
-          setStatus("Too many submissions in a row \u2014 wait a moment, then retry.", "error");
-          break;
-        case "validation-error":
-          setStatus(`Rejected: ${result.message}`, "error");
-          break;
-        case "network-error":
-          setStatus(`Network error: ${result.message}. Try again, or email me directly.`, "error");
-          break;
-        case "not-configured":
-          // Fall back to mailto: so the user isn't stuck.
-          this.openMailtoFallback(category, message, email);
-          setStatus("Opened your email client (no submit endpoint configured).", "info");
-          break;
-      }
-    });
-  }
-
-  private openMailtoFallback(category: FeedbackCategory, message: string, email: string): void {
-    const subject = `[bedevere-wise] ${category}`;
-    const lines = [
-      `Category: ${category}`,
-      `Version: ${this.options.version}`,
-      email ? `From: ${email}` : "",
-      "",
-      message,
-    ].filter(Boolean);
-    const href = `mailto:contact@bedeverewise.app?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
-    window.location.href = href;
   }
 
   private buildSettingsBody(): HTMLElement {

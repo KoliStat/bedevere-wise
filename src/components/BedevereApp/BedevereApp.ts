@@ -774,7 +774,6 @@ export class BedevereApp implements EventHandler {
     const HELP_TAB_COMMANDS: Array<[id: string, shellName: string, tab: HelpPanelTab, title: string]> = [
       ["help.howto",     "how-to",    "howto",     "Open How-To"],
       ["help.shortcuts", "shortcuts", "shortcuts", "Open Shortcuts"],
-      ["help.feedback",  "feedback",  "feedback",  "Open Feedback"],
       ["help.about",     "about",     "about",     "Open About"],
     ];
     for (const [id, shellName, tab, title] of HELP_TAB_COMMANDS) {

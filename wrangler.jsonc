@@ -3,8 +3,6 @@
 // deploy runs `bunx wrangler deploy`. The `assets` block tells Workers to
 // serve `dist/` as static files; `single-page-application` handling routes
 // any unknown path back to `index.html` so client-side routing works.
-//
-// The feedback worker has its own config at cloudflare/feedback-worker/.
 {
 	"name": "bedevere-wise",
 	"compatibility_date": "2026-04-24",
