@@ -1,3 +1,15 @@
+// Six resolved theme variants: Paper (light/dark), Tokyonight (classic-*),
+// GitHub (github-*, the pre-0.15 defaults kept selectable). This module
+// keeps its own literal palette mirror rather than importing
+// BedevereApp's `ResolvedTheme` — documented sync with `_tokens.scss`.
+export type SpreadsheetTheme =
+  | "light"
+  | "classic-light"
+  | "dark"
+  | "classic-dark"
+  | "github-light"
+  | "github-dark";
+
 export interface ThemeColors {
   // Header colors
   headerBackgroundColor: string;
@@ -29,12 +41,21 @@ export interface ThemeColors {
   dateStyle: { backgroundColor: string; textColor: string };
   datetimeStyle: { backgroundColor: string; textColor: string };
   nullStyle: { backgroundColor: string; textColor: string };
+
+  // Booktabs rule colors — optional. Only the Paper/Night palettes set
+  // these; github/classic palettes leave them undefined, which the
+  // renderer (SpreadsheetVisualizerBase) reads as "old behavior, no rule
+  // painted" — zero regression risk for the four pre-existing palettes.
+  headerTopRuleColor?: string; // 2px, above the header (grid's top edge)
+  headerBottomRuleColor?: string; // 1px, under the header row
+  frameBottomRuleColor?: string; // 2px, grid's bottom edge (last row)
+  verticalGridColor?: string; // column separators; "transparent" hides them
 }
 
 // Module-level cache for theme colors. Invalidated whenever the theme changes
 // (body class mutation or system media query). Avoids recomputing colors and
 // re-running DOM queries on every cell render.
-let cachedTheme: "light" | "classic-light" | "dark" | "classic-dark" | null = null;
+let cachedTheme: SpreadsheetTheme | null = null;
 let cachedColors: ThemeColors | null = null;
 let cacheObserverInstalled = false;
 
@@ -55,11 +76,14 @@ function installCacheInvalidation(): void {
   }
 }
 
-export function detectCurrentTheme(): "light" | "classic-light" | "dark" | "classic-dark" {
+export function detectCurrentTheme(): SpreadsheetTheme {
   installCacheInvalidation();
   if (cachedTheme !== null) return cachedTheme;
 
-  // Check body class first (set by BedevereApp)
+  // Check body class first (set by BedevereApp). Every explicit theme class
+  // is checked before the generic prefers-color-scheme fallback below —
+  // github-* sit alongside their light/dark siblings (light family first,
+  // dark family last) so a stale/unrecognized combination can't shadow them.
   if (document.body.classList.contains("theme-light")) {
     cachedTheme = "light";
     return cachedTheme;
@@ -68,8 +92,16 @@ export function detectCurrentTheme(): "light" | "classic-light" | "dark" | "clas
     cachedTheme = "classic-light";
     return cachedTheme;
   }
+  if (document.body.classList.contains("theme-github-light")) {
+    cachedTheme = "github-light";
+    return cachedTheme;
+  }
   if (document.body.classList.contains("theme-classic-dark")) {
     cachedTheme = "classic-dark";
+    return cachedTheme;
+  }
+  if (document.body.classList.contains("theme-github-dark")) {
+    cachedTheme = "github-dark";
     return cachedTheme;
   }
   if (document.body.classList.contains("theme-dark")) {
@@ -87,7 +119,7 @@ export function detectCurrentTheme(): "light" | "classic-light" | "dark" | "clas
   return cachedTheme;
 }
 
-export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "classic-dark"): ThemeColors {
+export function getThemeColors(theme?: SpreadsheetTheme): ThemeColors {
   // Fast path: cached colors (only valid when no theme override is requested)
   if (!theme && cachedColors !== null) return cachedColors;
 
@@ -100,9 +132,37 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "cla
   let colors: ThemeColors;
   if (currentTheme === "dark") {
     colors = {
-      // GitHub Dark — default dark variant. Text + accents match the blog's
-      // github-dark code blocks; surfaces are neutral dark greys (the #1f1f1f
-      // bg the editor asked for, cleaner than GitHub's blue-tinted #24292e).
+      // Night — Paper's dark mode. Booktabs: rules carry the structure.
+      headerBackgroundColor: "#171511", // no header fill — rules instead
+      headerTextColor: "#ece7da",
+      cellBackgroundColor: "#171511",
+      cellTextColor: "#ece7da",
+      stripeBackgroundColor: "#1c1913",
+      borderColor: "#35322a", // hairline row separators
+      selectionColor: "rgba(255, 217, 57, 0.22)",
+      selectionBorderColor: "#ffd939",
+      hoverColor: "rgba(255, 217, 57, 0.10)",
+      hoverBorderColor: "rgba(255, 217, 57, 0.45)",
+      scrollbarColor: "#29251c",
+      scrollbarThumbColor: "#4d483c",
+      scrollbarHoverColor: "#a49e8e",
+      booleanStyle:  { backgroundColor: "#171511", textColor: "#8fb8c4" },
+      numericStyle:  { backgroundColor: "#171511", textColor: "#ece7da" },
+      stringStyle:   { backgroundColor: "#171511", textColor: "#ece7da" },
+      dateStyle:     { backgroundColor: "#171511", textColor: "#d9bd66" },
+      datetimeStyle: { backgroundColor: "#171511", textColor: "#cf9a62" },
+      nullStyle:     { backgroundColor: "#171511", textColor: "#a49e8e" },
+      headerTopRuleColor: "#ece7da",
+      headerBottomRuleColor: "#ece7da",
+      frameBottomRuleColor: "#ece7da",
+      verticalGridColor: "transparent",
+    };
+  } else if (currentTheme === "github-dark") {
+    colors = {
+      // GitHub Dark — pre-0.15 default dark, kept selectable. Text + accents
+      // match the blog's github-dark code blocks; surfaces are neutral dark
+      // greys (the #1f1f1f bg the editor asked for, cleaner than GitHub's
+      // blue-tinted #24292e).
       headerBackgroundColor: "#181818",
       headerTextColor: "#e1e4e8",
 
@@ -183,9 +243,9 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "cla
       datetimeStyle: { backgroundColor: "#e1e2e7", textColor: "#b15c00" },
       nullStyle:     { backgroundColor: "#e1e2e7", textColor: "#848cb5" },
     };
-  } else {
+  } else if (currentTheme === "github-light") {
     colors = {
-      // Light — default variant (warm neutral surfaces)
+      // GitHub Light — pre-0.15 default light, kept selectable (warm neutral surfaces)
       headerBackgroundColor: "#e8e8e4",
       headerTextColor: "#3760bf",
 
@@ -210,6 +270,33 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "cla
       datetimeStyle: { backgroundColor: "#f5f5f3", textColor: "#b15c00" },
       nullStyle:     { backgroundColor: "#f5f5f3", textColor: "#848cb5" },
     };
+  } else {
+    colors = {
+      // Paper — default light. Booktabs report grid.
+      headerBackgroundColor: "#f7f5ef",
+      headerTextColor: "#1a1917",
+      cellBackgroundColor: "#f7f5ef",
+      cellTextColor: "#1a1917",
+      stripeBackgroundColor: "#f2efe6",
+      borderColor: "#d9d5c9",
+      selectionColor: "rgba(255, 217, 57, 0.4)",
+      selectionBorderColor: "#1a1917",
+      hoverColor: "rgba(255, 217, 57, 0.18)",
+      hoverBorderColor: "rgba(26, 25, 23, 0.35)",
+      scrollbarColor: "#efece1",
+      scrollbarThumbColor: "#b8b3a3",
+      scrollbarHoverColor: "#5f5c54",
+      booleanStyle:  { backgroundColor: "#f7f5ef", textColor: "#275e6e" },
+      numericStyle:  { backgroundColor: "#f7f5ef", textColor: "#1a1917" },
+      stringStyle:   { backgroundColor: "#f7f5ef", textColor: "#1a1917" },
+      dateStyle:     { backgroundColor: "#f7f5ef", textColor: "#8a6d1f" },
+      datetimeStyle: { backgroundColor: "#f7f5ef", textColor: "#a05c2c" },
+      nullStyle:     { backgroundColor: "#f7f5ef", textColor: "#5f5c54" },
+      headerTopRuleColor: "#1a1917",
+      headerBottomRuleColor: "#1a1917",
+      frameBottomRuleColor: "#1a1917",
+      verticalGridColor: "transparent",
+    };
   }
 
   // Cache only the default (no-override) result
@@ -217,7 +304,7 @@ export function getThemeColors(theme?: "light" | "classic-light" | "dark" | "cla
   return colors;
 }
 
-export function listenForThemeChanges(callback: (theme: "light" | "classic-light" | "dark" | "classic-dark") => void): () => void {
+export function listenForThemeChanges(callback: (theme: SpreadsheetTheme) => void): () => void {
   let currentTheme = detectCurrentTheme();
 
   // Force a recompute on every event. The module-level cache invalidator
