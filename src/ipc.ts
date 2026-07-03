@@ -6,9 +6,8 @@
  * implements the Backend interface against it, and an IpcDataProvider
  * for the row-fetching path.
  *
- * Host processes — bedevere-desktop (C++ shell), a future
- * `pip install bedeverer-py` kernel, an R session, a remote relay —
- * import from here:
+ * Host processes — bedevere-desktop (C++ shell) today; one day maybe
+ * a Python or R kernel, or a remote relay — import from here:
  *
  *   import {
  *     Bridge,

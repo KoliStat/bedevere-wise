@@ -10,13 +10,18 @@ desktop host was the first implementer)
 
 ## 1. Overview
 
-A host process — the original target was bedevere-desktop's C++ shell;
-the protocol generalizes to any host (a `pip install bedeverer-py`
-kernel, an R session, a remote relay) — and the Bedevere webview
-renderer exchange RPC requests, RPC responses, server-pushed events,
-and Arrow IPC streaming bytes over a **single localhost WebSocket
-connection**. JSON travels in text frames; Arrow chunks travel in
-binary frames prefixed with an 8-byte routing header.
+A host process and the Bedevere renderer (the web UI) exchange RPC
+requests, RPC responses, host-pushed events, and Arrow IPC streaming
+bytes over a **single WebSocket connection**. JSON travels in text
+frames; Arrow chunks travel in binary frames prefixed with an 8-byte
+routing header.
+
+The original host is bedevere-desktop's C++ shell — today the sole
+implementer — and §2 describes its transport: a localhost socket with
+loopback-only binding and an out-of-band token. The wire contract
+itself (§3 onward) is host-agnostic: any process that speaks these
+frames (a future Python or R kernel, a remote relay) could drive the
+same renderer.
 
 This document is the canonical wire reference. The TypeScript
 declarations in [`src/data/ipc/types.ts`](../src/data/ipc/types.ts)
@@ -590,7 +595,7 @@ Mirrors `PluginManager::describe_catalog()` in
     "manifest": {
       "name": "stats_duck",
       "displayName": "Stats Duck",
-      "version": "0.6",
+      "version": "0.7.0",
       "description": "Statistical helpers, VISUALIZE … DRAW chart syntax, …",
       "licenseRequired": false,
       "dependsOn": [],
@@ -871,7 +876,7 @@ JSON-optional (absent when empty).
 {
   "name": "stats_duck",
   "displayName": "Stats Duck",
-  "version": "0.4.2",
+  "version": "0.7.0",
   "description": "...",
   "licenseRequired": false,
   "dependsOn": [],

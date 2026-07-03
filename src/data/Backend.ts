@@ -9,9 +9,8 @@
  *     explicitly (there is no built-in default).
  *   - IpcBackend — talks to a native DuckDB sitting in a separate
  *     process over a localhost WebSocket. Used by bedevere-desktop
- *     (C++ shell) and any future host process — `pip install
- *     bedevere-py`, `install.packages("bedeverer")`, a remote DuckDB
- *     fronted by a relay.
+ *     (C++ shell); a future host (a Python or R kernel, a remote
+ *     DuckDB fronted by a relay) would slot in the same way.
  *
  * Whatever engine sits behind the Backend, the contract assumes
  * DuckDB-flavored SQL plus the C Data Interface (Arrow) for results
