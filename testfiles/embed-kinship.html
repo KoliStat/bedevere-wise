@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Statistical Report: Embed Kinship</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #f7f5ef;
+        color: #1a1917;
+        font-family: 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
+        margin: 0;
+        padding: 2rem 1.5rem;
+      }
+
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      .eyebrow {
+        font-family: 'IBM Plex Mono', Consolas, monospace;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: #5f5c54;
+        margin: 0 0 0.5rem 0;
+      }
+
+      h1 {
+        margin: 0 0 1.5rem 0;
+        font-size: 2rem;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0 0 1.5rem 0;
+        line-height: 1.6;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 2rem 0;
+        font-family: 'IBM Plex Mono', Consolas, monospace;
+        font-size: 0.82rem;
+      }
+
+      th {
+        border-top: 2.5px solid #1a1917;
+        border-bottom: 1px solid #1a1917;
+        font-weight: 600;
+        padding: 0.5em 0.75em;
+        text-align: left;
+      }
+
+      td {
+        padding: 0.5em 0.75em;
+      }
+
+      tr:last-child td {
+        border-bottom: 2.5px solid #1a1917;
+      }
+
+      th:not(:first-child),
+      td:not(:first-child) {
+        text-align: right;
+      }
+
+      .figure-caption {
+        font-family: 'IBM Plex Mono', Consolas, monospace;
+        font-size: 0.72rem;
+        color: #5f5c54;
+        margin: 1.5rem 0 0.75rem 0;
+      }
+
+      iframe {
+        width: 100%;
+        height: 440px;
+        border: 1px solid #1a1917;
+        display: block;
+        background: #fffef9;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Statistical Report</div>
+      <h1>Penguin Morphometrics Summary</h1>
+
+      <p>
+        This report presents a statistical summary of penguin morphometrics from
+        the embed-demo dataset. The table below displays key measurements by
+        species, followed by interactive visualizations demonstrating the
+        /embed route in both light (paper) and dark (night) themes.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Species</th>
+            <th>N</th>
+            <th>Mean Bill (mm)</th>
+            <th>Mean Mass (g)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Adelie</td>
+            <td>152</td>
+            <td>38.79</td>
+            <td>3700.66</td>
+          </tr>
+          <tr>
+            <td>Chinstrap</td>
+            <td>68</td>
+            <td>48.83</td>
+            <td>3733.09</td>
+          </tr>
+          <tr>
+            <td>Gentoo</td>
+            <td>124</td>
+            <td>47.50</td>
+            <td>5076.02</td>
+          </tr>
+          <tr>
+            <td>Overall</td>
+            <td>344</td>
+            <td>43.92</td>
+            <td>4201.75</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        The figures below present an interactive exploration of this dataset.
+        The first frame loads in the default (paper) theme, while the second
+        demonstrates the night theme variant. Both iframes connect to the same
+        underlying embed route and dataset.
+      </p>
+
+      <div class="figure-caption">Figure 1 — live embed, paper</div>
+      <iframe
+        sandbox="allow-scripts allow-same-origin allow-popups"
+        referrerpolicy="no-referrer"
+        src="/embed?dataset=/testfiles/embed-demo.parquet&autorun=1#query=SELECT%20*%20FROM%20embed_demo%20LIMIT%2015"
+      ></iframe>
+
+      <div class="figure-caption">Figure 2 — live embed, night</div>
+      <iframe
+        sandbox="allow-scripts allow-same-origin allow-popups"
+        referrerpolicy="no-referrer"
+        src="/embed?dataset=/testfiles/embed-demo.parquet&autorun=1&theme=dark#query=SELECT%20*%20FROM%20embed_demo%20LIMIT%2015"
+      ></iframe>
+    </main>
+  </body>
+</html>

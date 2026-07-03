@@ -52,3 +52,4 @@ testfiles/*
 !testfiles/embed-demo.csv
 !testfiles/embed-demo.parquet
 !testfiles/embed-harness.html
+!testfiles/embed-kinship.html
