@@ -1,5 +1,8 @@
-// Tokyonight palette — Storm (dark) and Day (light) variants.
-// https://github.com/folke/tokyonight.nvim
+// Bedevere-wise: 6-theme token system spanning three palette families.
+//
+// Paper (light/dark) — default, new statistical-report aesthetic.
+// Tokyonight (classic-light/classic-dark) — original upstream themes, kept selectable.
+// GitHub (github-light/github-dark) — pre-0.15 defaults, kept selectable.
 //
 // Tokens are exposed as CSS custom properties on the body so the entire
 // stylesheet tree can pick them up via var(--bg) etc. — switching themes is
@@ -7,52 +10,62 @@
 //
 // Palette names mirror the upstream theme (bg, fg, comment, blue, …) so
 // component SCSS reads naturally to anyone familiar with neovim themes.
+// Night block is LAST on purpose: body.theme-dark wins cascade ties, which
+// keeps the desktop's hardcoded FOUC-prevention class rendering dark-first.
 
 // ----------------------------------------------------------------------
-// Light — default theme (warm neutral surfaces)
+// Paper — default light ("The Statistical Report", matches kolistat.com)
 // ----------------------------------------------------------------------
 body,
 body.theme-light {
   // Surfaces
-  --bg:              #f5f5f3;
-  --bg-dark:         #e8e8e4;
-  --bg-highlight:    #dadad5;
-  --bg-float:        #ffffff;
+  --bg:              #f7f5ef;   // warm paper
+  --bg-dark:         #efece1;   // raised/recessed apparatus (headers, tracks)
+  --bg-highlight:    #e9e5d8;
+  --bg-float:        #fffef9;   // dialogs / popovers
 
   // Text
-  --fg:              #3760bf;
-  --fg-dark:         #6172b0;
-  --fg-muted:        #848cb5;
+  --fg:              #1a1917;   // ink
+  --fg-dark:         #3d3a33;
+  --fg-muted:        #5f5c54;
 
   // Structural
-  --border:          #d6d6cf;
-  --border-strong:   #c2c2ba;
-  --gutter:          #c2c2ba;
+  --border:          #d9d5c9;   // hairline rule
+  --border-strong:   #b8b3a3;
+  --gutter:          #b8b3a3;
 
-  // Accents (used sparingly for selection / chips / highlights)
-  --blue:            #2e7de9;
-  --cyan:            #007197;
-  --green:           #587539;
-  --yellow:          #8c6c3e;
-  --orange:          #b15c00;
-  --red:             #f52a65;
-  --magenta:         #9854f1;
-  --purple:          #7847bd;
+  // Accents — restrained, ink-adjacent (yellow never colors text)
+  --blue:            #1a1917;   // interactive accent IS ink in Paper
+  --cyan:            #275e6e;
+  --green:           #1e6b46;
+  --yellow:          #8a6d1f;
+  --orange:          #a05c2c;
+  --red:             #9e2b25;
+  --magenta:         #7c5f80;
+  --purple:          #6b5a8e;
 
-  // Version chip — brand accent. Light theme uses a brighter gold than
-  // --yellow (#8c6c3e is muddy as a fill); dark theme keeps the existing look.
-  --version-bg:      #d4a04e;
-  --version-fg:      #2a2018;
+  // Version chip = the duck badge
+  --version-bg:      #ffd939;
+  --version-fg:      #1a1917;
 
   // Semantic
-  --selection:       rgba(46, 125, 233, 0.15);
-  --selection-bg:    rgba(46, 125, 233, 0.18);
+  --selection:       rgba(255, 217, 57, 0.4);
+  --selection-bg:    rgba(255, 217, 57, 0.4);
   --selection-fg:    var(--fg);
-  --hover:           rgba(46, 125, 233, 0.08);
-  --error-bg:        rgba(245, 42, 101, 0.15);
-  --warning-bg:      rgba(176, 92, 0, 0.18);
-  --success-bg:      rgba(88, 117, 57, 0.18);
-  --info-bg:         rgba(46, 125, 233, 0.12);
+  --hover:           rgba(255, 217, 57, 0.18);
+  --error-bg:        rgba(158, 43, 37, 0.12);
+  --warning-bg:      rgba(160, 92, 44, 0.15);
+  --success-bg:      rgba(30, 107, 70, 0.14);
+  --info-bg:         rgba(26, 25, 23, 0.07);
+
+  // Statistical-Report structural tokens
+  --rule:            #1a1917;   // booktabs heavy rule = ink
+  --duck:            #ffd939;   // the one accent
+  --duck-ink:        #1a1917;   // text on a duck fill (both modes)
+  --sel-tint:        rgba(255, 217, 57, 0.4);
+  --accent:          #1a1917;   // primary button fill (ink)
+  --accent-hover:    #000000;
+  --accent-text:     #f7f5ef;   // paper text on ink
 }
 
 // ----------------------------------------------------------------------
@@ -99,6 +112,15 @@ body.theme-classic-light {
   --warning-bg:      rgba(176, 92, 0, 0.18);
   --success-bg:      rgba(88, 117, 57, 0.18);
   --info-bg:         rgba(46, 125, 233, 0.12);
+
+  // Statistical-Report structural tokens — aliased to this family's accent.
+  --rule:            var(--fg);
+  --duck:            var(--blue);
+  --duck-ink:        #ffffff;
+  --sel-tint:        var(--selection-bg);
+  --accent:          var(--blue);
+  --accent-hover:    var(--cyan);
+  --accent-text:     #ffffff;
 }
 
 // ----------------------------------------------------------------------
@@ -144,12 +166,76 @@ body.theme-classic-dark {
   --warning-bg:      rgba(224, 175, 104, 0.22);
   --success-bg:      rgba(158, 206, 106, 0.18);
   --info-bg:         rgba(125, 207, 255, 0.18);
+
+  // Statistical-Report structural tokens — aliased to this family's accent.
+  --rule:            var(--fg);
+  --duck:            var(--blue);
+  --duck-ink:        #16161e;
+  --sel-tint:        var(--selection-bg);
+  --accent:          var(--blue);
+  --accent-hover:    var(--cyan);
+  --accent-text:     #16161e;
 }
 
 // ----------------------------------------------------------------------
-// Dark — default theme (GitHub Dark, matches the blog code blocks)
+// Github Light — the pre-0.15 default light, kept selectable
 // ----------------------------------------------------------------------
-body.theme-dark {
+body.theme-github-light {
+  // Surfaces
+  --bg:              #f5f5f3;
+  --bg-dark:         #e8e8e4;
+  --bg-highlight:    #dadad5;
+  --bg-float:        #ffffff;
+
+  // Text
+  --fg:              #3760bf;
+  --fg-dark:         #6172b0;
+  --fg-muted:        #848cb5;
+
+  // Structural
+  --border:          #d6d6cf;
+  --border-strong:   #c2c2ba;
+  --gutter:          #c2c2ba;
+
+  // Accents (used sparingly for selection / chips / highlights)
+  --blue:            #2e7de9;
+  --cyan:            #007197;
+  --green:           #587539;
+  --yellow:          #8c6c3e;
+  --orange:          #b15c00;
+  --red:             #f52a65;
+  --magenta:         #9854f1;
+  --purple:          #7847bd;
+
+  // Version chip — brand accent. Light theme uses a brighter gold than
+  // --yellow (#8c6c3e is muddy as a fill); dark theme keeps the existing look.
+  --version-bg:      #d4a04e;
+  --version-fg:      #2a2018;
+
+  // Semantic
+  --selection:       rgba(46, 125, 233, 0.15);
+  --selection-bg:    rgba(46, 125, 233, 0.18);
+  --selection-fg:    var(--fg);
+  --hover:           rgba(46, 125, 233, 0.08);
+  --error-bg:        rgba(245, 42, 101, 0.15);
+  --warning-bg:      rgba(176, 92, 0, 0.18);
+  --success-bg:      rgba(88, 117, 57, 0.18);
+  --info-bg:         rgba(46, 125, 233, 0.12);
+
+  // Statistical-Report structural tokens — aliased to this family's accent.
+  --rule:            var(--fg);
+  --duck:            var(--blue);
+  --duck-ink:        #ffffff;
+  --sel-tint:        var(--selection-bg);
+  --accent:          var(--blue);
+  --accent-hover:    var(--cyan);
+  --accent-text:     #ffffff;
+}
+
+// ----------------------------------------------------------------------
+// Github Dark — the pre-0.15 default dark, kept selectable
+// ----------------------------------------------------------------------
+body.theme-github-dark {
   // Surfaces — neutral dark greys. #1f1f1f reads cleaner than GitHub's
   // blue-tinted #24292e; the text + accents below stay github-dark so the
   // widget still matches the blog's code blocks.
@@ -191,6 +277,71 @@ body.theme-dark {
   --warning-bg:      rgba(255, 171, 112, 0.18);
   --success-bg:      rgba(133, 232, 157, 0.15);
   --info-bg:         rgba(121, 184, 255, 0.15);
+
+  // Statistical-Report structural tokens — aliased to this family's accent.
+  --rule:            var(--fg);
+  --duck:            var(--blue);
+  --duck-ink:        #1f1f1f;
+  --sel-tint:        var(--selection-bg);
+  --accent:          var(--blue);
+  --accent-hover:    var(--cyan);
+  --accent-text:     #1f1f1f;
+}
+
+// ----------------------------------------------------------------------
+// Night — Paper's dark mode ("night reading": warm, not pure black).
+// LAST block on purpose: theme-dark wins cascade ties, which keeps the
+// desktop's hardcoded FOUC-prevention class rendering dark-first.
+// ----------------------------------------------------------------------
+body.theme-dark {
+  // Surfaces
+  --bg:              #171511;
+  --bg-dark:         #110f0c;
+  --bg-highlight:    #29251c;
+  --bg-float:        #201d16;
+
+  // Text
+  --fg:              #ece7da;   // warm off-white ink
+  --fg-dark:         #c9c2b1;
+  --fg-muted:        #a49e8e;
+
+  // Structural
+  --border:          #35322a;
+  --border-strong:   #4d483c;
+  --gutter:          #4d483c;
+
+  // Accents
+  --blue:            #ece7da;
+  --cyan:            #8fb8c4;
+  --green:           #7cc8a0;
+  --yellow:          #d9bd66;
+  --orange:          #cf9a62;
+  --red:             #e08573;
+  --magenta:         #b99cbd;
+  --purple:          #a493c9;
+
+  // Version chip
+  --version-bg:      #ffd939;
+  --version-fg:      #1a1917;
+
+  // Semantic
+  --selection:       rgba(255, 217, 57, 0.22);
+  --selection-bg:    rgba(255, 217, 57, 0.22);
+  --selection-fg:    var(--fg);
+  --hover:           rgba(255, 217, 57, 0.10);
+  --error-bg:        rgba(224, 133, 115, 0.14);
+  --warning-bg:      rgba(207, 154, 98, 0.15);
+  --success-bg:      rgba(124, 200, 160, 0.14);
+  --info-bg:         rgba(236, 231, 218, 0.08);
+
+  // Statistical-Report structural tokens
+  --rule:            #ece7da;
+  --duck:            #ffd939;
+  --duck-ink:        #1a1917;
+  --sel-tint:        rgba(255, 217, 57, 0.22);
+  --accent:          #ece7da;
+  --accent-hover:    #fff8e8;
+  --accent-text:     #171511;
 }
 
 // ----------------------------------------------------------------------

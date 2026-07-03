@@ -30,8 +30,8 @@ export interface HelpPanelOptions {
   onBrowseFolder?: () => void;
   onFilesReceived?: (files: File[]) => void | Promise<void>;
   supportedFormats?: string[];
-  initialTheme?: "light" | "classic-light" | "dark" | "classic-dark" | "auto";
-  onThemeChange?: (theme: "light" | "classic-light" | "dark" | "classic-dark" | "auto") => void;
+  initialTheme?: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto";
+  onThemeChange?: (theme: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto") => void;
   onResetKeymap?: () => void;
   onClearAllData?: () => Promise<void> | void;
   getCopyOptions?: () => { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" };

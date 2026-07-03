@@ -1541,10 +1541,10 @@ export class BedevereApp implements EventHandler {
       switch (key) {
         case "theme": {
           const v = String(raw);
-          if (!["light", "classic-light", "dark", "classic-dark", "auto"].includes(v))
-            throw new Error(`theme must be light|classic-light|dark|classic-dark|auto, got '${v}'`);
-          settings.theme = v as "light" | "classic-light" | "dark" | "classic-dark" | "auto";
-          this.setTheme(v === "auto" ? this.detectTheme() : (v as "light" | "classic-light" | "dark" | "classic-dark"));
+          if (!["light", "classic-light", "dark", "classic-dark", "github-light", "github-dark", "auto"].includes(v))
+            throw new Error(`theme must be light|classic-light|dark|classic-dark|github-light|github-dark|auto, got '${v}'`);
+          settings.theme = v as "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto";
+          this.setTheme(v === "auto" ? this.detectTheme() : (v as "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark"));
           updates.push(`theme=${v}`);
           break;
         }
