@@ -60,7 +60,7 @@
       background-color: var(--duck);
       color: var(--duck-ink);
 
-      &:hover { background-color: var(--duck); }
+      &:hover { background-color: var(--duck); color: var(--duck-ink); }
 
       .tab-manager__tab-title { font-weight: 600; }
       .tab-manager__tab-close { color: var(--duck-ink); }

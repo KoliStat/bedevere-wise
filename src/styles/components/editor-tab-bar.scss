@@ -53,7 +53,7 @@
       background: var(--duck);
       color: var(--duck-ink);
 
-      &:hover { background: var(--duck); }
+      &:hover { background: var(--duck); color: var(--duck-ink); }
 
       .editor-tab-bar__name { font-weight: 600; }
 
