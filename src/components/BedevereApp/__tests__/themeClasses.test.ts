@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { applyThemeClasses } from "../themeClasses";
+import {
+  applyThemeClasses,
+  resolveThemeVariant,
+  splitResolvedTheme,
+  themeSelectionFromLegacy,
+  themeSelectionFromSettings,
+  type ResolvedTheme,
+} from "../themeClasses";
 
 /**
  * Regression coverage for the desktop "everything stays dark except the
@@ -60,5 +67,65 @@ describe("applyThemeClasses", () => {
 
     expect(document.body.classList.contains("host-class")).toBe(true);
     expect(el.classList.contains("bedevere-app")).toBe(true);
+  });
+});
+
+describe("resolveThemeVariant", () => {
+  it("resolves every family × concrete mode", () => {
+    expect(resolveThemeVariant({ family: "paper", mode: "light" }, false)).toBe("light");
+    expect(resolveThemeVariant({ family: "paper", mode: "dark" }, false)).toBe("dark");
+    expect(resolveThemeVariant({ family: "tokyonight", mode: "light" }, false)).toBe("classic-light");
+    expect(resolveThemeVariant({ family: "tokyonight", mode: "dark" }, false)).toBe("classic-dark");
+    expect(resolveThemeVariant({ family: "github", mode: "light" }, false)).toBe("github-light");
+    expect(resolveThemeVariant({ family: "github", mode: "dark" }, false)).toBe("github-dark");
+  });
+
+  it("auto follows the system flag", () => {
+    expect(resolveThemeVariant({ family: "paper", mode: "auto" }, true)).toBe("dark");
+    expect(resolveThemeVariant({ family: "paper", mode: "auto" }, false)).toBe("light");
+    expect(resolveThemeVariant({ family: "github", mode: "auto" }, true)).toBe("github-dark");
+  });
+});
+
+describe("splitResolvedTheme", () => {
+  it("round-trips every resolved variant", () => {
+    const all: ResolvedTheme[] = ["light", "dark", "classic-light", "classic-dark", "github-light", "github-dark"];
+    for (const t of all) {
+      const { family, mode } = splitResolvedTheme(t);
+      expect(resolveThemeVariant({ family, mode }, false)).toBe(t);
+    }
+  });
+});
+
+describe("legacy migration", () => {
+  it("maps legacy persisted values (light/dark ride the restyle; classics stay Tokyonight)", () => {
+    expect(themeSelectionFromLegacy("light")).toEqual({ family: "paper", mode: "light" });
+    expect(themeSelectionFromLegacy("dark")).toEqual({ family: "paper", mode: "dark" });
+    expect(themeSelectionFromLegacy("auto")).toEqual({ family: "paper", mode: "auto" });
+    expect(themeSelectionFromLegacy("classic-light")).toEqual({ family: "tokyonight", mode: "light" });
+    expect(themeSelectionFromLegacy("classic-dark")).toEqual({ family: "tokyonight", mode: "dark" });
+    expect(themeSelectionFromLegacy(undefined)).toEqual({ family: "paper", mode: "auto" });
+    expect(themeSelectionFromLegacy("garbage")).toEqual({ family: "paper", mode: "auto" });
+  });
+
+  it("prefers the new settings keys over the legacy one", () => {
+    expect(themeSelectionFromSettings({ themeFamily: "github", themeMode: "dark", theme: "classic-light" }))
+      .toEqual({ family: "github", mode: "dark" });
+    expect(themeSelectionFromSettings({ theme: "classic-dark" }))
+      .toEqual({ family: "tokyonight", mode: "dark" });
+    expect(themeSelectionFromSettings({})).toEqual({ family: "paper", mode: "auto" });
+  });
+});
+
+describe("applyThemeClasses — github variants", () => {
+  it("clears github classes when switching away", () => {
+    const container = document.createElement("div");
+    document.body.className = "theme-github-dark";
+    container.className = "bedevere-app bedevere-app--github-dark";
+    applyThemeClasses(container, "light");
+    expect(document.body.classList.contains("theme-github-dark")).toBe(false);
+    expect(document.body.classList.contains("theme-light")).toBe(true);
+    expect(container.classList.contains("bedevere-app--github-dark")).toBe(false);
+    expect(container.classList.contains("bedevere-app--light")).toBe(true);
   });
 });
