@@ -80,7 +80,7 @@ trick). Changes:
    its own colors — no per-family CSS forks.
 
 3. WCAG AA holds for text pairs (muted-on-paper ≈ 4.6:1, ink-on-duck ≈ 12:1);
-   chart marks ≥ 3:1 non-text contrast on both grounds.
+   chart marks ≥ 3:1 non-text contrast on both grounds, except series-1 duck on the paper ground (~1.3:1) — accepted deliberately: duck is the approved first-series marker, validated visually; a Paper-family mark stroke is a possible future refinement.
 
 ## 3. Structure sweep (the laws)
 
