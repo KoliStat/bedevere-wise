@@ -64,31 +64,30 @@
     font-size: 11px;
     font-family: var(--font-mono);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
     cursor: pointer;
     transition: all 0.12s ease;
     font-weight: 600;
   }
 
   &__run-button {
-    background: var(--blue);
-    color: var(--bg-dark);
-    border-color: var(--blue);
+    background: var(--duck);
+    color: var(--duck-ink);
+    border: 1.5px solid var(--rule);
 
     &:hover {
-      background: var(--cyan);
-      border-color: var(--cyan);
+      background: var(--duck);
+      transform: translate(-1px, -1px);
+      box-shadow: 2px 2px 0 var(--rule);   // sanctioned hard offset (site .btn-run)
     }
   }
 
   &__clear-button {
     background: transparent;
-    color: var(--fg-dark);
+    color: var(--fg);
+    border-color: var(--rule);
 
-    &:hover {
-      background: var(--bg-highlight);
-      color: var(--fg);
-    }
+    &:hover { background: var(--sel-tint); }
   }
 
   // Indent selector — sits opposite to Run / Clear via `margin-left: auto`

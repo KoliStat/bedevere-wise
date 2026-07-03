@@ -88,13 +88,17 @@
   font-family: inherit;
   font-size: 12px;
   padding: 4px 12px;
-  background: var(--blue);
-  color: var(--bg);
-  border: 1px solid var(--blue);
-  border-radius: 3px;
+  background: var(--duck);
+  color: var(--duck-ink);
+  border: 1.5px solid var(--rule);
+  border-radius: 0;
   cursor: pointer;
 
-  &:hover { filter: brightness(1.08); }
+  &:hover {
+    background: var(--duck);
+    transform: translate(-1px, -1px);
+    box-shadow: 2px 2px 0 var(--rule);   // sanctioned hard offset (site .btn-run)
+  }
   &:active { filter: brightness(0.92); }
   &:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
 }
