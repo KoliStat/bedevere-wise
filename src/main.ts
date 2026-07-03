@@ -38,8 +38,10 @@ async function initApplication() {
   // Mount the app against the DuckDB-WASM engine constructed above.
   const app = new BedevereApp(appContainer, appVersion, {
     backend: duckDBService,
-    theme: "auto", // Automatically detect user's preferred theme
-    // theme: "light",
+    // No explicit `theme` — BedevereApp defaults to Paper+Auto on a fresh
+    // profile and restores the persisted family/mode selection otherwise.
+    // (An explicit value here would win every time and permanently block
+    // that restore — see BedevereApp.setupTheme / initAsync.)
     showLeftPanel: true,
     statusBarVisible: true,
     spreadsheetOptions: {

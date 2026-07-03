@@ -30,8 +30,8 @@ export interface HelpPanelOptions {
   onBrowseFolder?: () => void;
   onFilesReceived?: (files: File[]) => void | Promise<void>;
   supportedFormats?: string[];
-  initialTheme?: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto";
-  onThemeChange?: (theme: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto") => void;
+  initialThemeSelection?: { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" };
+  onThemeSelectionChange?: (selection: { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" }) => void;
   onResetKeymap?: () => void;
   onClearAllData?: () => Promise<void> | void;
   getCopyOptions?: () => { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" };
@@ -830,33 +830,54 @@ export class HelpPanel {
 
     // --- Theme ---
     body.appendChild(this.buildSettingsSection("Theme", (section) => {
-      const seg = document.createElement("div");
-      seg.className = "help-panel__segmented";
-      const current = this.options.initialTheme ?? "auto";
-      const opts: Array<{ value: "light" | "classic-light" | "dark" | "classic-dark" | "auto"; label: string; title: string }> = [
-        { value: "light", label: "Light", title: "Light — warm neutral" },
-        { value: "classic-light", label: "Light (classic)", title: "Tokyonight Day" },
-        { value: "dark", label: "Dark", title: "GitHub-Dark (default)" },
-        { value: "classic-dark", label: "Dark (classic)", title: "Tokyonight Storm" },
+      const current = this.options.initialThemeSelection ?? { family: "paper", mode: "auto" };
+      let selection = { ...current };
+
+      const mkRow = <T extends string>(
+        label: string,
+        opts: Array<{ value: T; label: string; title: string }>,
+        active: T,
+        onPick: (v: T) => void,
+      ) => {
+        const row = document.createElement("div");
+        row.className = "help-panel__settings-row";
+        const lab = document.createElement("span");
+        lab.className = "help-panel__settings-label";
+        lab.textContent = label;
+        row.appendChild(lab);
+        const seg = document.createElement("div");
+        seg.className = "help-panel__segmented";
+        for (const opt of opts) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "help-panel__segmented-btn";
+          btn.textContent = opt.label;
+          btn.title = opt.title;
+          if (opt.value === active) btn.classList.add("help-panel__segmented-btn--active");
+          btn.addEventListener("click", () => {
+            for (const sibling of seg.querySelectorAll("button")) {
+              sibling.classList.remove("help-panel__segmented-btn--active");
+            }
+            btn.classList.add("help-panel__segmented-btn--active");
+            onPick(opt.value);
+          });
+          seg.appendChild(btn);
+        }
+        row.appendChild(seg);
+        section.appendChild(row);
+      };
+
+      mkRow("Family", [
+        { value: "paper", label: "Paper", title: "The Statistical Report — matches kolistat.com (default)" },
+        { value: "tokyonight", label: "Tokyonight", title: "Day / Storm — the classic Bedevere palettes" },
+        { value: "github", label: "Github", title: "The pre-0.15 default look" },
+      ] as const, selection.family, (v) => { selection = { ...selection, family: v }; this.options.onThemeSelectionChange?.(selection); });
+
+      mkRow("Mode", [
+        { value: "light", label: "Light", title: "Always light" },
+        { value: "dark", label: "Dark", title: "Always dark" },
         { value: "auto", label: "Auto", title: "Follow your system setting" },
-      ];
-      for (const opt of opts) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "help-panel__segmented-btn";
-        btn.textContent = opt.label;
-        btn.title = opt.title;
-        if (opt.value === current) btn.classList.add("help-panel__segmented-btn--active");
-        btn.addEventListener("click", () => {
-          for (const sibling of seg.querySelectorAll("button")) {
-            sibling.classList.remove("help-panel__segmented-btn--active");
-          }
-          btn.classList.add("help-panel__segmented-btn--active");
-          this.options.onThemeChange?.(opt.value);
-        });
-        seg.appendChild(btn);
-      }
-      section.appendChild(seg);
+      ] as const, selection.mode, (v) => { selection = { ...selection, mode: v }; this.options.onThemeSelectionChange?.(selection); });
     }));
 
     // --- Copy & export format ---

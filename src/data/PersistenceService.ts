@@ -10,7 +10,11 @@ export interface QueryBookmark {
 }
 
 export interface AppSettings {
+  /** Legacy single-value theme (pre-0.15). Read for migration only; the
+   *  family/mode pair below is the source of truth now. */
   theme?: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto";
+  themeFamily?: "paper" | "tokyonight" | "github";
+  themeMode?: "light" | "dark" | "auto";
   panelMinimized?: boolean;
   panelWidth?: number;
   hasSeenOnboarding?: boolean;

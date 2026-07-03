@@ -19,7 +19,11 @@ import { FsaFileSource } from "../../data/files/FsaFileSource";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
-import { applyThemeClasses, type ResolvedTheme } from "./themeClasses";
+import {
+  applyThemeClasses, resolveThemeVariant, splitResolvedTheme,
+  themeSelectionFromLegacy, themeSelectionFromSettings,
+  type ResolvedTheme, type ThemeFamily, type ThemeMode, type ThemeSelection,
+} from "./themeClasses";
 import { downloadBinaryFile, exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
 import {
   EXPORT_FORMATS,
@@ -85,7 +89,9 @@ DRAW point
 ;
 `;
 
-export type BedevereAppTheme = "light" | "classic-light" | "dark" | "classic-dark" | "auto";
+export type BedevereAppTheme =
+  | "light" | "classic-light" | "dark" | "classic-dark"
+  | "github-light" | "github-dark" | "auto";
 
 export type BedevereAppMessageType = "info" | "warning" | "error" | "success";
 
@@ -128,7 +134,8 @@ export class BedevereApp implements EventHandler {
   private helpPanel!: HelpPanel;
 
   private options: BedevereAppOptions;
-  private theme: ResolvedTheme = "dark";
+  private themeSelection: ThemeSelection = { family: "paper", mode: "auto" };
+  private theme: ResolvedTheme = "light";
   private version: string;
 
   // Persistence, views, and import
@@ -143,7 +150,6 @@ export class BedevereApp implements EventHandler {
 
   constructor(parent: HTMLElement, version: string, options: BedevereAppOptions) {
     this.options = {
-      theme: "dark",
       showLeftPanel: true,
       statusBarVisible: true,
       ...options,
@@ -262,8 +268,19 @@ export class BedevereApp implements EventHandler {
 
     // Restore app settings
     const settings = this.persistenceService.loadAppSettings();
-    if (settings.theme && settings.theme !== "auto") {
-      this.setTheme(settings.theme);
+    // Theme: new family/mode keys win; a legacy single `theme` value migrates
+    // (light/dark/auto → Paper; classic-* → Tokyonight). Only apply when it
+    // differs from what the constructor already resolved, and only persist via
+    // setThemeSelection (which writes the new keys).
+    const persisted = themeSelectionFromSettings(settings);
+    if (!this.options.theme) {
+      this.setThemeSelection(persisted);
+      // Mirror onto this local snapshot too: the onboarding-flag save a few
+      // lines below persists this same `settings` object, and without this
+      // it would clobber what setThemeSelection just wrote (loaded/saved on
+      // its own fresh copy) back to whatever was on disk before this call.
+      settings.themeFamily = persisted.family;
+      settings.themeMode = persisted.mode;
     }
     if (settings.panelMinimized && this.leftPanel && !this.leftPanel.getIsMinimized()) {
       this.leftPanel.toggleMinimize();
@@ -313,14 +330,18 @@ export class BedevereApp implements EventHandler {
     return this.focusManager;
   }
 
-  public setTheme(theme: ResolvedTheme): void {
-    this.theme = theme;
+  public setThemeSelection(selection: ThemeSelection): void {
+    this.themeSelection = selection;
+    this.theme = resolveThemeVariant(selection, this.systemPrefersDark());
     applyThemeClasses(this.container, this.theme);
-
-    // Persist theme setting
     const settings = this.persistenceService.loadAppSettings();
-    settings.theme = theme;
+    settings.themeFamily = selection.family;
+    settings.themeMode = selection.mode;
     this.persistenceService.saveAppSettings(settings);
+  }
+
+  public setTheme(theme: ResolvedTheme): void {
+    this.setThemeSelection(splitResolvedTheme(theme));
   }
 
   public showMessage(
@@ -421,16 +442,8 @@ export class BedevereApp implements EventHandler {
       },
       onRecentFolderClick: (id: string) => this.leftPanel?.openRecentFolder(id),
       supportedFormats: this.fileImportService.getSupportedExtensions(),
-      initialTheme: this.persistenceService.loadAppSettings().theme ?? "auto",
-      onThemeChange: (theme) => {
-        const resolved = theme === "auto" ? this.detectTheme() : theme;
-        this.setTheme(resolved);
-        // setTheme persists the resolved value; re-save to preserve "auto"
-        // intent so reloads keep following OS preference.
-        const s = this.persistenceService.loadAppSettings();
-        s.theme = theme;
-        this.persistenceService.saveAppSettings(s);
-      },
+      initialThemeSelection: themeSelectionFromSettings(this.persistenceService.loadAppSettings()),
+      onThemeSelectionChange: (selection) => this.setThemeSelection(selection),
       onResetKeymap: () => keymapService.resetToDefaults(),
       onClearAllData: () => this.persistenceService.clearAll(),
       getCopyOptions: () => {
@@ -628,27 +641,29 @@ export class BedevereApp implements EventHandler {
   }
 
   private setupTheme(): void {
-    this.theme = this.options.theme === "auto" ? this.detectTheme() : this.options.theme || "dark";
+    // Explicit option wins (legacy single-value contract); otherwise Paper+Auto.
+    this.themeSelection = this.options.theme
+      ? themeSelectionFromLegacy(this.options.theme)
+      : { family: "paper", mode: "auto" };
+    this.theme = resolveThemeVariant(this.themeSelection, this.systemPrefersDark());
     applyThemeClasses(this.container, this.theme);
   }
 
-  private detectTheme(): "light" | "dark" {
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      return "dark";
-    }
-    return "light";
+  private systemPrefersDark(): boolean {
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
   }
 
   private setupEventSystem(): void {
     // Register BedevereApp as a global event handler
     this.eventDispatcher.addGlobalEventHandler(this);
 
-    // Theme change detection
-    if (this.options.theme === "auto") {
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-        this.setTheme(e.matches ? "dark" : "light");
-      });
-    }
+    // Follow OS light/dark while mode is "auto" (any family).
+    window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if (this.themeSelection.mode === "auto") {
+        this.theme = resolveThemeVariant(this.themeSelection, this.systemPrefersDark());
+        applyThemeClasses(this.container, this.theme);
+      }
+    });
 
     // Body-level drag-drop: users can drop files anywhere on the page as a
     // shortcut, without opening Help → Import. The files route to ControlPanel
@@ -900,27 +915,34 @@ export class BedevereApp implements EventHandler {
       id: "view.setTheme",
       shellName: "theme",
       title: "Set Theme",
-      description: "Set the theme: light / classic-light / dark / classic-dark / auto",
+      description: "Set the theme: a family (paper / tokyonight / github), a mode (light / dark / auto), or a full variant",
       category: "View",
       parameters: [
         {
           name: "theme",
           type: "string",
           required: true,
-          description: "light | classic-light | dark | classic-dark | auto",
-          options: () => ["light", "classic-light", "dark", "classic-dark", "auto"],
+          description: "paper | tokyonight | github | light | dark | auto | classic-light | classic-dark | github-light | github-dark",
+          options: () => ["paper", "tokyonight", "github", "light", "dark", "auto",
+                          "classic-light", "classic-dark", "github-light", "github-dark"],
         },
       ],
       execute: (params) => {
-        const choice = params?.theme as "light" | "classic-light" | "dark" | "classic-dark" | "auto" | undefined;
-        if (!choice || !["light", "classic-light", "dark", "classic-dark", "auto"].includes(choice)) {
-          throw new Error(".theme requires one of: light, classic-light, dark, classic-dark, auto");
+        const choice = params?.theme as string | undefined;
+        const FAMILIES = ["paper", "tokyonight", "github"] as const;
+        const MODES = ["light", "dark", "auto"] as const;
+        const VARIANTS = ["classic-light", "classic-dark", "github-light", "github-dark"] as const;
+        if (!choice) throw new Error(".theme requires a family (paper/tokyonight/github), a mode (light/dark/auto), or a variant");
+        if ((FAMILIES as readonly string[]).includes(choice)) {
+          this.setThemeSelection({ family: choice as ThemeFamily, mode: this.themeSelection.mode });
+        } else if ((MODES as readonly string[]).includes(choice)) {
+          this.setThemeSelection({ family: this.themeSelection.family, mode: choice as ThemeMode });
+        } else if ((VARIANTS as readonly string[]).includes(choice)) {
+          this.setThemeSelection(themeSelectionFromLegacy(choice));
+        } else {
+          throw new Error(`.theme: unknown value '${choice}'`);
         }
-        const resolved = choice === "auto" ? this.detectTheme() : choice;
-        this.setTheme(resolved);
-        const s = this.persistenceService.loadAppSettings();
-        s.theme = choice;
-        this.persistenceService.saveAppSettings(s);
+        this.showMessage(`theme: ${this.themeSelection.family} / ${this.themeSelection.mode}`, "success");
       },
     });
 
@@ -1543,8 +1565,14 @@ export class BedevereApp implements EventHandler {
           const v = String(raw);
           if (!["light", "classic-light", "dark", "classic-dark", "github-light", "github-dark", "auto"].includes(v))
             throw new Error(`theme must be light|classic-light|dark|classic-dark|github-light|github-dark|auto, got '${v}'`);
-          settings.theme = v as "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto";
-          this.setTheme(v === "auto" ? this.detectTheme() : (v as "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark"));
+          // Route through the family/mode model (the source of truth now);
+          // mirror onto the local `settings` snapshot so the unconditional
+          // saveAppSettings below doesn't clobber what setThemeSelection
+          // just persisted.
+          const selection = themeSelectionFromLegacy(v);
+          this.setThemeSelection(selection);
+          settings.themeFamily = selection.family;
+          settings.themeMode = selection.mode;
           updates.push(`theme=${v}`);
           break;
         }
