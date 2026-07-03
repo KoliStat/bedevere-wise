@@ -161,6 +161,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "type": "module",
-  "types": "dist/index.d.ts"
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/source-serif-4": "^5.2.9"
+  }
 }
-

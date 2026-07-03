@@ -348,13 +348,14 @@ body.theme-dark {
 // Font stacks
 // ----------------------------------------------------------------------
 :root {
-  // Programming font for chrome and tabular data. Falls back through the
-  // common bundled-with-OS stack — no Nerd Font dependency.
-  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro",
-               "SF Mono", "Consolas", "Monaco", "Menlo", "Courier New", monospace;
+  // Apparatus face: chrome, data, editor. Plex Mono ships bundled; the
+  // rest of the stack is the no-download fallback.
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", "Cascadia Code",
+               "SF Mono", "Consolas", "Menlo", monospace;
 
-  // Sans-serif kept for prose blocks (HelpPanel tutorial body) where dense
-  // monospace would feel cramped.
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Inter",
-               "Helvetica Neue", sans-serif;
+  // Prose face. NOTE: the NAME stays --font-sans (every consumer keeps
+  // working) but the FACE is now a serif — the website pulls the same
+  // trick. Serif is seasoning: dialog titles, empty states, help prose.
+  --font-sans: "Source Serif 4", "Iowan Old Style", Georgia,
+               "Times New Roman", serif;
 }

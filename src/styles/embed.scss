@@ -45,7 +45,7 @@
   .cm-editor {
     flex: 1 1 auto;
     height: 100%;
-    font-family: Consolas, "Courier New", monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     background: var(--bg);
     color: var(--fg);
