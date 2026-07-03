@@ -3,8 +3,8 @@
 /** KoliStat umbrella site. */
 export const KOLISTAT_URL = "https://kolistat.com";
 
-/** bedevere-desktop download page. Placeholder until the page is live. */
-export const DESKTOP_DOWNLOAD_URL = "https://kolistat.com/bedevere-wise";
+/** bedevere-desktop download page on kolistat.com. */
+export const DESKTOP_DOWNLOAD_URL = "https://kolistat.com/products/bedevere";
 
 /** Contact / support page (KoliStat). */
 export const CONTACT_URL = "https://kolistat.com/contact";

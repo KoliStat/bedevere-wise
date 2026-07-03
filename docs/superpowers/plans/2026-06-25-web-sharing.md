@@ -14,7 +14,7 @@
 - `tsc --noEmit` must stay clean; tests run with `bun run test:run`.
 - Embed URLs: base is the constant `EMBED_BASE_URL` (never `window.location.origin`); all params live in the URL **fragment** (`#…`), matching `parseEmbedConfig`.
 - Analytics: cookieless, **main app only** — never added to the `/embed` HTML or its CSP.
-- `DESKTOP_DOWNLOAD_URL` is a placeholder (`https://kolistat.com/bedevere-wise`) until the real page is live.
+- `DESKTOP_DOWNLOAD_URL` is a placeholder (`https://kolistat.com/products/bedevere`) until the real page is live.
 - Commit after each task. Branch: `feature/web-sharing`.
 
 ---
@@ -37,7 +37,7 @@
 export const KOLISTAT_URL = "https://kolistat.com";
 
 /** bedevere-desktop download page. Placeholder until the page is live. */
-export const DESKTOP_DOWNLOAD_URL = "https://kolistat.com/bedevere-wise";
+export const DESKTOP_DOWNLOAD_URL = "https://kolistat.com/products/bedevere";
 
 /** Production /embed origin. Constant, not window.location.origin — the
  *  builder runs in the app (any origin / file:// on desktop) but the embed

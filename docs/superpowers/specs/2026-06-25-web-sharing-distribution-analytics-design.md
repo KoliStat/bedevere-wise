@@ -32,7 +32,7 @@ New module `src/appLinks.ts`:
 ```ts
 export const KOLISTAT_URL = "https://kolistat.com";
 // Placeholder until the kolistat.com desktop page is live — confirm exact path.
-export const DESKTOP_DOWNLOAD_URL = "https://kolistat.com/bedevere-wise";
+export const DESKTOP_DOWNLOAD_URL = "https://kolistat.com/products/bedevere";
 export const EMBED_BASE_URL = "https://bedeverewise.app/embed";
 ```
 
