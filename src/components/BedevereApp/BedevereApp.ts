@@ -442,7 +442,10 @@ export class BedevereApp implements EventHandler {
       },
       onRecentFolderClick: (id: string) => this.leftPanel?.openRecentFolder(id),
       supportedFormats: this.fileImportService.getSupportedExtensions(),
-      initialThemeSelection: themeSelectionFromSettings(this.persistenceService.loadAppSettings()),
+      // Live getter (see HelpPanel.HelpPanelOptions.getThemeSelection) so the
+      // Settings tab reflects the *current* selection on every open, not just
+      // whatever was persisted when this HelpPanel was constructed.
+      getThemeSelection: () => this.themeSelection,
       onThemeSelectionChange: (selection) => this.setThemeSelection(selection),
       onResetKeymap: () => keymapService.resetToDefaults(),
       onClearAllData: () => this.persistenceService.clearAll(),

@@ -30,7 +30,13 @@ export interface HelpPanelOptions {
   onBrowseFolder?: () => void;
   onFilesReceived?: (files: File[]) => void | Promise<void>;
   supportedFormats?: string[];
-  initialThemeSelection?: { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" };
+  // Live getter (not a captured value) — mirrors getCopyOptions below, so a
+  // hide()/show() rebuild always reflects the *current* selection, including
+  // theme changes made via the `.theme` shell command while the panel was
+  // closed. A one-time captured value would go stale the moment the theme
+  // changed through any path other than this panel's own buttons (found via
+  // Task 12's dialog walkthrough: Settings kept showing the boot-time mode).
+  getThemeSelection?: () => { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" };
   onThemeSelectionChange?: (selection: { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" }) => void;
   onResetKeymap?: () => void;
   onClearAllData?: () => Promise<void> | void;
@@ -830,7 +836,7 @@ export class HelpPanel {
 
     // --- Theme ---
     body.appendChild(this.buildSettingsSection("Theme", (section) => {
-      const current = this.options.initialThemeSelection ?? { family: "paper", mode: "auto" };
+      const current = this.options.getThemeSelection?.() ?? { family: "paper", mode: "auto" };
       let selection = { ...current };
 
       const mkRow = <T extends string>(

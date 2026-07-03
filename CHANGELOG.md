@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- [Feature] **KoliStat "Statistical Report" restyle.** New default **Paper** theme family (warm paper/ink, booktabs result grid, IBM Plex Mono chrome, Source Serif 4 accents, duck-yellow highlights) matching kolistat.com; themes are now a family (Paper / Tokyonight / Github) × mode (Light / Dark / Auto) selection. Existing light/dark users move to Paper; classic-* users stay on Tokyonight; the 0.14 look lives on as the Github family. `/embed` accepts additive `github-light` / `github-dark` theme values; all previous values keep working. Fonts are self-hosted (@fontsource) — no runtime dependency on kolistat.com.
+
 ## v0.14-and-this
 
 - [Breaking] **`BedevereApp` requires `options.backend`.** The app shell no longer constructs a default `DuckDBService` when you omit a backend — that hidden default was the last static edge pulling DuckDB-WASM into every consumer of the shell. Pass the engine explicitly: `import { DuckDBService } from "@kolistat/bedevere-wise/duckdb"` and hand it `new DuckDBService()` (the in-browser default), or an `IpcBackend` / remote relay. The standalone web app and the desktop renderer already injected their backend, so nothing user-facing changed; only the zero-arg `new BedevereApp(el, ver)` path is gone. The gate that decides whether to run the WASM extension probe now keys off `backend.id === "duckdb-wasm"` instead of `instanceof DuckDBService`, so the shell module never references the `DuckDBService` value.
