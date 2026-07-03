@@ -11,10 +11,12 @@ export interface EmbedBuilderDialogArgs {
 
 const THEME_OPTIONS: { value: "" | EmbedTheme; label: string }[] = [
   { value: "", label: "Auto (follow the reader's system)" },
-  { value: "light", label: "Light" },
-  { value: "classic-light", label: "Classic Light" },
-  { value: "dark", label: "Dark" },
-  { value: "classic-dark", label: "Classic Dark" },
+  { value: "light", label: "Paper light" },
+  { value: "dark", label: "Paper dark" },
+  { value: "classic-light", label: "Tokyonight light" },
+  { value: "classic-dark", label: "Tokyonight dark" },
+  { value: "github-light", label: "Github light" },
+  { value: "github-dark", label: "Github dark" },
 ];
 
 const NOTE =
