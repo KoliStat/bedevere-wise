@@ -41,6 +41,9 @@ public/extensions/*
 # sigillo MCP local index
 .sigillo/
 
+# superpowers brainstorm sessions (visual-companion mockups)
+.superpowers/
+
 # Temp
 src/data.ts
 # Local-only test data; embed harness fixtures are excepted so the
