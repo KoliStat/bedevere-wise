@@ -11,9 +11,8 @@
   flex-direction: column;
   background: var(--bg-float);
   color: var(--fg);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--rule);
   border-radius: 0;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4), 0 -2px 8px rgba(0, 0, 0, 0.2);
   z-index: 1100;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -173,8 +172,7 @@
   flex-direction: column;
   background: var(--bg-float);
   color: var(--fg);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4), 0 -2px 8px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--rule);
   z-index: 1100;
   font-family: var(--font-mono);
   font-size: 12px;

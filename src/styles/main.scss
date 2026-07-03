@@ -47,7 +47,7 @@
   border-radius: 0;
 
   &:hover {
-    background: var(--border-strong);
+    background: var(--fg-muted);
   }
 }
 
@@ -70,4 +70,15 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+// Statistical-Report interaction affordances.
+:focus-visible {
+  outline: 2px solid var(--rule);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--sel-tint);
+  color: var(--fg);
 }

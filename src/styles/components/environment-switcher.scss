@@ -64,9 +64,8 @@
     max-height: 60vh;
     overflow-y: auto;
     background: var(--bg-float);
-    border: 1px solid var(--border-strong);
+    border: 1px solid var(--rule);
     border-top: 2px solid var(--blue);
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
     padding: 4px 0;
   }
 
@@ -103,7 +102,7 @@
     height: 6px;
     margin-right: 6px;
     background: var(--blue);
-    border-radius: 50%;
+    border-radius: 0;
     vertical-align: middle;
   }
 
