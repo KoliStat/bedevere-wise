@@ -163,5 +163,5 @@
   background: var(--error-bg);
   border-bottom: 1px solid var(--red);
   white-space: pre-wrap;
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
 }
