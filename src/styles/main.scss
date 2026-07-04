@@ -29,17 +29,17 @@
 
   // Firefox scrollbars match the canvas-rendered ones in SpreadsheetVisualizer.
   scrollbar-width: thin;
-  scrollbar-color: var(--gutter) var(--bg-dark);
+  scrollbar-color: var(--gutter) var(--scroll-track);
 }
 
 // Webkit scrollbar styling (Chrome, Edge, Safari).
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-dark);
+  background: var(--scroll-track);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -59,7 +59,7 @@
 }
 
 ::-webkit-scrollbar-corner {
-  background: var(--bg-dark);
+  background: var(--scroll-track);
 }
 
 body {

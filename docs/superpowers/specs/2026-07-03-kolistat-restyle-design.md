@@ -193,3 +193,13 @@ additions. Light/dark/auto switching mechanism stays. Brand stays.
 4. **JS surfaces**: spreadsheet `theme.ts` palettes + booktabs, chart config
    + Ramp A, loading screens, ExportHub.
 5. **Verify battery** (§8) + screenshots.
+
+## Follow-ups (2026-07-04)
+
+Round A (this commit): `--scroll-track` added to all six palettes (synced to canvas `theme.ts` scrollbarColor); webkit scrollbars 12px → 10px; track/corner/Firefox now read `--scroll-track` instead of `--bg-dark`.
+
+Serif is Paper-only: `:root --font-sans` stays serif, but the four non-Paper families (classic-light/dark, github-light/dark) each override `--font-sans` back to the original sans stack; `--font-mono` (Plex) is unchanged everywhere.
+
+Embed-builder `<select>` caret: hardcoded `stroke='%23888888'` SVG replaced with the `.sql-editor__indent-select` two-gradient chevron, themed via `var(--fg-muted)`.
+
+Round B (next): ballot-box-style checkboxes/radios; icons to mono `currentColor` (duck logo stays exempt).
