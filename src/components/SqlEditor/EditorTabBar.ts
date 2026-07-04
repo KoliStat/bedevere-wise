@@ -11,6 +11,8 @@
  * untitled query.
  */
 
+import { ICON_X } from "../icons";
+
 export interface EditorTabDescriptor {
   /** Stable id (matches `EnvironmentQuery.id` in the SqlEditor's caller). */
   id: string;
@@ -124,7 +126,7 @@ export class EditorTabBar {
     close.className = "editor-tab-bar__close";
     close.setAttribute("aria-label", `Close ${tab.name}`);
     close.title = "Close";
-    close.textContent = "✕";
+    close.innerHTML = ICON_X; // static literal, no user data
     close.addEventListener("click", (e) => {
       e.stopPropagation();
       this.options.onClose(tab.id);

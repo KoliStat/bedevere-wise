@@ -20,6 +20,7 @@ import {
   MIN_CELL_WIDTH_PRESETS,
 } from "./formatPresets";
 import { PENGUINS_TUTORIAL, TutorialNode } from "./tutorial";
+import { ICON_LOCK, ICON_SCALE } from "../icons";
 
 export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "settings" | "about";
 
@@ -248,11 +249,11 @@ export class HelpPanel {
 
     body.innerHTML = `
       <p class="help-panel__lead">
-        \uD83D\uDC4B Welcome to <strong>Bedevere Wise</strong> &mdash; a local-first SQL data viewer.
+        Welcome to <strong>Bedevere Wise</strong> &mdash; a local-first SQL data viewer.
       </p>
 
       <div class="help-panel__callout help-panel__callout--privacy">
-        <div class="help-panel__callout-title">\uD83D\uDD12 Your data stays on your device</div>
+        <div class="help-panel__callout-title">${ICON_LOCK} Your data stays on your device</div>
         <p>
           All parsing and querying happens locally in your browser via <strong>DuckDB-WASM</strong>.
           No telemetry, no uploads, nothing crosses the network unless you explicitly fetch a remote file.
@@ -260,7 +261,7 @@ export class HelpPanel {
       </div>
 
       <div class="help-panel__callout help-panel__callout--deps">
-        <div class="help-panel__callout-title">\u2696\uFE0F Minimal dependencies</div>
+        <div class="help-panel__callout-title">${ICON_SCALE} Minimal dependencies</div>
         <p>
           Built on four libraries:
           <a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a>

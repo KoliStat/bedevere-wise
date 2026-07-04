@@ -13,6 +13,7 @@ import { TabManager } from "../TabManager/TabManager";
 import { EnvironmentSwitcher } from "../EnvironmentSwitcher/EnvironmentSwitcher";
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
 import type { MessageOptions } from "../StatusBar/StatusBar";
+import { ICON_CHEVRON_RIGHT } from "../icons";
 
 export type ShowMessageFn = (
   message: string,
@@ -257,7 +258,8 @@ export class ControlPanel {
 
     const chevron = document.createElement("span");
     chevron.className = "control-panel__accordion-chevron";
-    chevron.textContent = "▶";
+    // Static literal defined in icons.ts, no user data — innerHTML is safe.
+    chevron.innerHTML = ICON_CHEVRON_RIGHT;
     if (expanded) chevron.classList.add("control-panel__accordion-chevron--expanded");
 
     const titleEl = document.createElement("span");

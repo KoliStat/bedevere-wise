@@ -87,7 +87,9 @@
 .file-tree__chevron {
   font-size: 8px;
   width: 14px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   transition: transform 0.15s ease;
   color: var(--fg-muted);

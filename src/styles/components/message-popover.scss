@@ -34,6 +34,8 @@
   &__icon {
     font-size: 14px;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
   }
 
   &__label {

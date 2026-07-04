@@ -1,9 +1,6 @@
 import { environmentService } from "../../data/environments/EnvironmentService";
 import type { Environment } from "../../data/environments/types";
-
-// Monochrome globe glyph — currentColor, sized to the trigger's icon slot.
-const ICON_GLOBE =
-  '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="6.5" ry="2.2"/><path d="M8 1.5v13"/></svg>';
+import { ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_X } from "../icons";
 
 export interface EnvironmentSwitcherOptions {
   /**
@@ -55,7 +52,7 @@ export class EnvironmentSwitcher {
 
     const icon = document.createElement("span");
     icon.className = "env-switcher__icon";
-    icon.innerHTML = ICON_GLOBE; // static literal defined above, no user data
+    icon.innerHTML = ICON_GLOBE; // static literal from icons.ts, no user data
     icon.setAttribute("aria-hidden", "true");
     this.trigger.appendChild(icon);
 
@@ -65,7 +62,7 @@ export class EnvironmentSwitcher {
 
     const chevron = document.createElement("span");
     chevron.className = "env-switcher__chevron";
-    chevron.textContent = "▾";
+    chevron.innerHTML = ICON_CHEVRON_DOWN; // static literal, no user data
     chevron.setAttribute("aria-hidden", "true");
     this.trigger.appendChild(chevron);
 
@@ -199,7 +196,7 @@ export class EnvironmentSwitcher {
       deleteBtn.className = "env-switcher__action env-switcher__action--delete";
       deleteBtn.setAttribute("aria-label", `Delete ${env.name}`);
       deleteBtn.title = "Delete";
-      deleteBtn.textContent = "✕";
+      deleteBtn.innerHTML = ICON_X; // static literal, no user data
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.deleteEnv(env);

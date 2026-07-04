@@ -135,7 +135,9 @@
     margin-right: 8px;
     transition: transform 0.2s ease;
     color: var(--fg-muted);
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 
     &--expanded { transform: rotate(90deg); }
   }
