@@ -64,6 +64,8 @@ body.theme-light {
   --rule:            #1a1917;   // booktabs heavy rule = ink
   --duck:            #ffd939;   // the one accent
   --duck-ink:        #1a1917;   // text on a duck fill (both modes)
+  // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
+  --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%231a1917' stroke-width='1.8'/%3E%3C/svg%3E");
   --sel-tint:        rgba(255, 217, 57, 0.4);
   --accent:          #1a1917;   // primary button fill (ink)
   --accent-hover:    #000000;
@@ -121,6 +123,8 @@ body.theme-classic-light {
   --rule:            var(--fg);
   --duck:            var(--blue);
   --duck-ink:        #ffffff;
+  // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
+  --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%23ffffff' stroke-width='1.8'/%3E%3C/svg%3E");
   --sel-tint:        var(--selection-bg);
   --accent:          var(--blue);
   --accent-hover:    var(--cyan);
@@ -182,6 +186,8 @@ body.theme-classic-dark {
   --rule:            var(--fg);
   --duck:            var(--blue);
   --duck-ink:        #16161e;
+  // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
+  --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%2316161e' stroke-width='1.8'/%3E%3C/svg%3E");
   --sel-tint:        var(--selection-bg);
   --accent:          var(--blue);
   --accent-hover:    var(--cyan);
@@ -244,6 +250,8 @@ body.theme-github-light {
   --rule:            var(--fg);
   --duck:            var(--blue);
   --duck-ink:        #ffffff;
+  // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
+  --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%23ffffff' stroke-width='1.8'/%3E%3C/svg%3E");
   --sel-tint:        var(--selection-bg);
   --accent:          var(--blue);
   --accent-hover:    var(--cyan);
@@ -307,6 +315,8 @@ body.theme-github-dark {
   --rule:            var(--fg);
   --duck:            var(--blue);
   --duck-ink:        #1f1f1f;
+  // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
+  --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%231f1f1f' stroke-width='1.8'/%3E%3C/svg%3E");
   --sel-tint:        var(--selection-bg);
   --accent:          var(--blue);
   --accent-hover:    var(--cyan);
@@ -370,6 +380,8 @@ body.theme-dark {
   --rule:            #ece7da;
   --duck:            #ffd939;
   --duck-ink:        #1a1917;
+  // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
+  --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%231a1917' stroke-width='1.8'/%3E%3C/svg%3E");
   --sel-tint:        rgba(255, 217, 57, 0.22);
   --accent:          #ece7da;
   --accent-hover:    #fff8e8;

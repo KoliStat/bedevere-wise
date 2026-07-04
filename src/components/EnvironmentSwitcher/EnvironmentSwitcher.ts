@@ -1,6 +1,10 @@
 import { environmentService } from "../../data/environments/EnvironmentService";
 import type { Environment } from "../../data/environments/types";
 
+// Monochrome globe glyph — currentColor, sized to the trigger's icon slot.
+const ICON_GLOBE =
+  '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="6.5" ry="2.2"/><path d="M8 1.5v13"/></svg>';
+
 export interface EnvironmentSwitcherOptions {
   /**
    * Fired when the user picks a different environment from the list.
@@ -51,7 +55,7 @@ export class EnvironmentSwitcher {
 
     const icon = document.createElement("span");
     icon.className = "env-switcher__icon";
-    icon.textContent = "🌐";
+    icon.innerHTML = ICON_GLOBE; // static literal defined above, no user data
     icon.setAttribute("aria-hidden", "true");
     this.trigger.appendChild(icon);
 

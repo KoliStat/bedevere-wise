@@ -6,19 +6,31 @@ export interface FileTreeCallbacks {
   onAliasChange: (node: FileTreeNode, alias: string) => void;
 }
 
+// Monochrome file-type glyphs — 14x14, currentColor stroke (the file tree
+// colors them via `.file-tree__icon { color: var(--fg-muted) }`). The duck
+// is the app's one splash of color; these stay line-art on purpose.
+const ICON_FOLDER =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5h4l1.2 1.5H14v7.5H2z"/></svg>';
+const ICON_FILE_LINES =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5l3 3v10h-8z"/><path d="M9 1.5v3h3"/><path d="M6 8.25h4"/><path d="M6 11h4"/></svg>';
+const ICON_TABLE_GRID =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10"/><path d="M2 8h12M8 3v10"/></svg>';
+const ICON_CHART =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5l3 3v10h-8z"/><path d="M9 1.5v3h3"/><polyline points="6,11 8,9 10,10 12,6.5"/></svg>';
+
 const FILE_ICONS: Record<string, string> = {
-  folder: "📁",
-  csv: "📄",
-  tsv: "📄",
+  folder: ICON_FOLDER,
+  csv: ICON_FILE_LINES,
+  tsv: ICON_FILE_LINES,
   json: "{}",
   parquet: "⬡",
-  xlsx: "📊",
-  xls: "📊",
-  sas7bdat: "📈",
-  xpt: "📈",
-  sav: "📈",
-  dta: "📈",
-  sheet: "📋",
+  xlsx: ICON_TABLE_GRID,
+  xls: ICON_TABLE_GRID,
+  sas7bdat: ICON_CHART,
+  xpt: ICON_CHART,
+  sav: ICON_CHART,
+  dta: ICON_CHART,
+  sheet: ICON_TABLE_GRID,
 };
 
 export class FileTreeRenderer {
@@ -261,7 +273,9 @@ export class FileTreeRenderer {
     const icon = document.createElement("span");
     icon.className = "file-tree__icon";
     const iconKey = node.kind === "folder" ? "folder" : (node.kind === "sheet" ? "sheet" : (node.fileType || "csv"));
-    icon.textContent = FILE_ICONS[iconKey] || "📄";
+    // Icons are static inline SVG literals defined above (no user data),
+    // so innerHTML is safe here — textContent would render the markup as text.
+    icon.innerHTML = FILE_ICONS[iconKey] || ICON_FILE_LINES;
     row.appendChild(icon);
 
     // Name

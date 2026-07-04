@@ -597,10 +597,6 @@
     &--checkbox {
       cursor: pointer;
       user-select: none;
-
-      input[type="checkbox"] {
-        accent-color: var(--blue);
-      }
     }
   }
 
