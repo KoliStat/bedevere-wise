@@ -302,30 +302,30 @@
     color: var(--fg);
     font-family: var(--font-mono);
 
-    &:focus {
-      outline: none;
-      border-color: var(--blue);
-    }
+    // No outline suppression: the global :focus-visible ink ring applies.
   }
 
   &__filter-apply {
     width: 100%;
     padding: 4px 10px;
-    border: 1px solid var(--blue);
+    border: 1px solid var(--accent);
     border-radius: 0;
-    background: var(--blue);
-    color: var(--bg-dark);
+    background: var(--accent);
+    color: var(--accent-text);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
     cursor: pointer;
     margin-top: 0.4rem;
     font-family: var(--font-mono);
 
+    // Primary-button idiom: ink fill in Paper (hover deepens to black);
+    // in Tokyonight/Github --accent/--accent-hover alias the family's own
+    // blue/cyan, so those keep their previous look exactly.
     &:hover {
-      background: var(--cyan);
-      border-color: var(--cyan);
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
     }
   }
 }
