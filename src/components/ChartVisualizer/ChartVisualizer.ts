@@ -1,4 +1,10 @@
 import vegaEmbed, { type Result, type VisualizationSpec } from "vega-embed";
+// CSP-safe expression evaluation. The deployed Content-Security-Policy has a
+// strict `script-src` with no `'unsafe-eval'`, so Vega's default expression
+// compiler (a `Function` constructor) is blocked and charts fail to render.
+// `vega-interpreter` evaluates the parsed AST instead (see `ast` + `expr` in
+// the vegaEmbed call below), needing no eval.
+import { expressionInterpreter } from "vega-interpreter";
 import { listenForThemeChanges, detectCurrentTheme } from "../SpreadsheetVisualizer/utils/theme";
 
 /**
@@ -92,6 +98,10 @@ export class ChartVisualizer {
       // end user, and a needless surface on the embed path.
       actions: { export: true, source: false, compiled: false, editor: false },
       renderer: "canvas",
+      // Parse to AST and evaluate expressions with the interpreter (no eval)
+      // so charts render under the CSP's `script-src` (no 'unsafe-eval').
+      ast: true,
+      expr: expressionInterpreter,
     });
   }
 
