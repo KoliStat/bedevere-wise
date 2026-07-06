@@ -10,10 +10,9 @@
   max-width: 280px;
   background: var(--bg-float);
   color: var(--fg);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--rule);
   padding: 4px 0;
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 13px;
   animation: contextMenuFadeIn 0.1s ease-out;
 

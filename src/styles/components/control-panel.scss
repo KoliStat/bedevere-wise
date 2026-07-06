@@ -36,7 +36,7 @@
     justify-content: space-between;
     padding: 6px 10px;
     background: var(--bg-dark);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--rule);
     min-height: 36px;
     flex-shrink: 0;
   }
@@ -125,6 +125,7 @@
     top: 0;
     z-index: 2;
     background: var(--bg-dark);
+    border-bottom: 2px solid var(--rule);
 
     &:hover { background: var(--bg-highlight); }
   }
@@ -134,17 +135,21 @@
     margin-right: 8px;
     transition: transform 0.2s ease;
     color: var(--fg-muted);
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 
     &--expanded { transform: rotate(90deg); }
   }
 
   &__accordion-title {
-    font-size: 11px;
+    // Eyebrow label — small mono caps sitting over the section body,
+    // apparatus-style (matches the heavy rule on __accordion-header).
+    font-size: 10px;
     font-weight: 700;
     color: var(--fg-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.18em;
     font-family: var(--font-mono);
   }
 

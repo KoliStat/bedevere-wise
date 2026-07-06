@@ -17,9 +17,8 @@
 .html-paste {
   background: var(--bg-float);
   color: var(--fg);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--rule);
   border-top: 3px solid var(--blue);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   width: min(560px, 100%);
   max-height: 85vh;
   display: flex;
@@ -133,7 +132,6 @@
   &__radio {
     margin: 3px 0 0 0;
     cursor: pointer;
-    accent-color: var(--blue);
     flex-shrink: 0;
   }
 

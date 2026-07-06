@@ -31,6 +31,8 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
     "@duckdb/duckdb-wasm": "1.32.0",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/source-serif-4": "^5.2.9",
     "@lezer/highlight": "^1.2.3",
     "@types/node": "^20.11.19",
     "@vitest/ui": "^3.2.4",
@@ -163,4 +165,3 @@
   "type": "module",
   "types": "dist/index.d.ts"
 }
-

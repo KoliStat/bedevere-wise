@@ -10,7 +10,7 @@ export interface EmbedConfig {
   /** Optional SQL to prefill the editor. */
   query: string | null;
   /** Explicit theme, or null to follow prefers-color-scheme. */
-  theme: "light" | "classic-light" | "dark" | "classic-dark" | null;
+  theme: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | null;
   /** Auto-run the prefilled query once all datasets are loaded. */
   autorun: boolean;
   /** Opaque tag from the parent — echoed back in postMessage payloads
@@ -18,13 +18,14 @@ export interface EmbedConfig {
   id: string | null;
 }
 
+const EMBED_THEMES = ["light", "classic-light", "dark", "classic-dark", "github-light", "github-dark"] as const;
+
 export function parseEmbedConfig(search: string): EmbedConfig {
   const params = new URLSearchParams(search);
   const themeRaw = params.get("theme");
-  const theme =
-    themeRaw === "light" || themeRaw === "classic-light" || themeRaw === "dark" || themeRaw === "classic-dark"
-      ? themeRaw
-      : null;
+  const theme = (EMBED_THEMES as readonly string[]).includes(themeRaw ?? "")
+    ? (themeRaw as EmbedConfig["theme"])
+    : null;
   return {
     datasets: params.getAll("dataset"),
     query: params.get("query"),

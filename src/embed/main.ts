@@ -1,3 +1,11 @@
+// Self-hosted fonts (Statistical-Report identity). Static weights only:
+// mono 400/600 for chrome+data+editor, serif 400/400i/600 for prose accents.
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/400-italic.css";
+import "@fontsource/source-serif-4/600.css";
+
 import "../styles/main.scss";
 import "../styles/embed.scss";
 import { DuckDBService } from "../data/DuckDBService";

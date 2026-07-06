@@ -1,3 +1,11 @@
+// Self-hosted fonts (Statistical-Report identity). Static weights only:
+// mono 400/600 for chrome+data+editor, serif 400/400i/600 for prose accents.
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/400-italic.css";
+import "@fontsource/source-serif-4/600.css";
+
 import "./styles/main.scss";
 import { BedevereApp } from "./components/BedevereApp/BedevereApp";
 import { DuckDBService } from "./data/DuckDBService.ts";
@@ -38,8 +46,10 @@ async function initApplication() {
   // Mount the app against the DuckDB-WASM engine constructed above.
   const app = new BedevereApp(appContainer, appVersion, {
     backend: duckDBService,
-    theme: "auto", // Automatically detect user's preferred theme
-    // theme: "light",
+    // No explicit `theme` — BedevereApp defaults to Paper+Auto on a fresh
+    // profile and restores the persisted family/mode selection otherwise.
+    // (An explicit value here would win every time and permanently block
+    // that restore — see BedevereApp.setupTheme / initAsync.)
     showLeftPanel: true,
     statusBarVisible: true,
     spreadsheetOptions: {

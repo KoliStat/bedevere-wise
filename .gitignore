@@ -38,8 +38,8 @@ public/extensions/*
 # Claude Code local settings
 .claude/
 
-# sigillo MCP local index
-.sigillo/
+# superpowers brainstorm sessions (visual-companion mockups)
+.superpowers/
 
 # Temp
 src/data.ts
@@ -49,3 +49,4 @@ testfiles/*
 !testfiles/embed-demo.csv
 !testfiles/embed-demo.parquet
 !testfiles/embed-harness.html
+!testfiles/embed-kinship.html

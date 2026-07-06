@@ -133,8 +133,7 @@
   color: var(--fg);
   background: var(--bg-highlight);
   border: 1px solid var(--blue);
-  border-radius: 2px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  border-radius: 0;
   opacity: 0.92;
   max-width: 200px;
   overflow: hidden;
@@ -151,5 +150,6 @@
   z-index: 9998;
   width: 2px;
   background: var(--blue);
-  box-shadow: 0 0 4px var(--blue);
+  box-shadow: none;
+  outline: 2px solid var(--duck);
 }

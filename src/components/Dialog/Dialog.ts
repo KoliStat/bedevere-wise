@@ -27,6 +27,8 @@
  * the BEM names used for every element the base creates, so styling
  * stays per-subclass.
  */
+import { ICON_X } from "../icons";
+
 export interface DialogOptions {
   /** Title text shown in the header. */
   title: string;
@@ -135,7 +137,7 @@ export abstract class Dialog {
     close.className = `${this.classPrefix}__close`;
     close.setAttribute("aria-label", "Close");
     close.title = "Close (Esc)";
-    close.textContent = "✕";
+    close.innerHTML = ICON_X; // static literal, no user data
     close.addEventListener("click", () => this.dismiss());
     header.appendChild(close);
 

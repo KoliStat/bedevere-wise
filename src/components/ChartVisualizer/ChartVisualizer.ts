@@ -137,7 +137,7 @@ export class ChartVisualizer {
   }
 
   /**
-   * Inject a Tokyonight-flavoured `config` block (background, axis, view…)
+   * Inject a Statistical-Report `config` block (background, axis, view…)
    * built from the active CSS custom properties. Reads computed styles
    * once per re-embed; values match what the spreadsheet uses.
    */
@@ -145,23 +145,38 @@ export class ChartVisualizer {
     const css = getComputedStyle(document.body);
     const v = (name: string) => css.getPropertyValue(name).trim();
     const ct = detectCurrentTheme();
-    const isLight = ct === "light" || ct === "classic-light";
+    const isLight = ct === "light" || ct === "classic-light" || ct === "github-light";
 
     const themeConfig = {
-      background: v("--bg") || (isLight ? "#f5f5f3" : "#1f1f1f"),
-      view: { stroke: v("--border") || "#3b4261" },
+      background: v("--bg") || (isLight ? "#f7f5ef" : "#171511"),
+      // Ramp A "Field Notes": duck first (the report's marker), ink second
+      // (theme-resolved via --rule), then four fixed mid-tone hues that hold
+      // ≥3:1 on both paper and night. Danger/success are semantic-only.
+      range: {
+        category: [
+          v("--duck") || "#ffd939",
+          v("--rule") || (isLight ? "#1a1917" : "#ece7da"),
+          "#c65d3b", "#4e7f71", "#6b7fb3", "#9a6d9e",
+        ],
+      },
+      font: v("--font-mono") || "monospace",
+      view: { stroke: v("--border") || "#d9d5c9" },
       axis: {
-        domainColor: v("--border") || "#3b4261",
-        gridColor:   v("--border") || "#292e42",
-        labelColor:  v("--fg-dark") || "#a9b1d6",
-        titleColor:  v("--fg") || "#c0caf5",
-        tickColor:   v("--border") || "#3b4261",
+        domainColor: v("--rule") || "#1a1917",
+        gridColor:   v("--border") || "#d9d5c9",
+        labelColor:  v("--fg-dark") || "#3d3a33",
+        titleColor:  v("--fg") || "#1a1917",
+        tickColor:   v("--rule") || "#1a1917",
+        labelFont:   v("--font-mono") || "monospace",
+        titleFont:   v("--font-mono") || "monospace",
       },
       legend: {
-        labelColor: v("--fg-dark") || "#a9b1d6",
-        titleColor: v("--fg") || "#c0caf5",
+        labelColor: v("--fg-dark") || "#3d3a33",
+        titleColor: v("--fg") || "#1a1917",
+        labelFont:  v("--font-mono") || "monospace",
+        titleFont:  v("--font-mono") || "monospace",
       },
-      title: { color: v("--fg") || "#c0caf5" },
+      title: { color: v("--fg") || "#1a1917", font: v("--font-mono") || "monospace" },
     };
 
     // Merge with any user-provided config in the spec; user wins.

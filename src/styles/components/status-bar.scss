@@ -72,6 +72,8 @@
         font-weight: 700;
         font-size: 12px;
         flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
       }
 
       .status-bar__msg-text {

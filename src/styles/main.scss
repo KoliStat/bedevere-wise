@@ -29,17 +29,17 @@
 
   // Firefox scrollbars match the canvas-rendered ones in SpreadsheetVisualizer.
   scrollbar-width: thin;
-  scrollbar-color: var(--gutter) var(--bg-dark);
+  scrollbar-color: var(--gutter) var(--scroll-track);
 }
 
 // Webkit scrollbar styling (Chrome, Edge, Safari).
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-dark);
+  background: var(--scroll-track);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -47,7 +47,7 @@
   border-radius: 0;
 
   &:hover {
-    background: var(--border-strong);
+    background: var(--fg-muted);
   }
 }
 
@@ -59,7 +59,51 @@
 }
 
 ::-webkit-scrollbar-corner {
-  background: var(--bg-dark);
+  background: var(--scroll-track);
+}
+
+// Statistical-Report form controls — ballot boxes, not platform widgets.
+// Radios stay square too (radius-0 law); they differ by their inner mark:
+// checkbox = duck fill + check, radio = inset ink square.
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  vertical-align: -2px;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--checkmark) center / 10px 10px no-repeat var(--duck);
+}
+
+input[type="checkbox"]:indeterminate {
+  background-color: var(--duck);
+  background-image: linear-gradient(var(--duck-ink), var(--duck-ink));
+  background-size: 8px 2px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+input[type="radio"] {
+  padding: 3px;
+  background-clip: content-box;
+}
+
+input[type="radio"]:checked {
+  background-color: var(--fg);
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 body {
@@ -70,4 +114,15 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+// Statistical-Report interaction affordances.
+:focus-visible {
+  outline: 2px solid var(--rule);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--sel-tint);
+  color: var(--fg);
 }
