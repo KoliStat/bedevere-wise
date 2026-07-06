@@ -1,5 +1,5 @@
 // Six resolved theme variants: Paper (light/dark), Tokyonight (classic-*),
-// GitHub (github-*, the pre-0.15 defaults kept selectable). This module
+// GitHub (github-*, the pre-restyle defaults kept selectable). This module
 // keeps its own literal palette mirror rather than importing
 // BedevereApp's `ResolvedTheme` — documented sync with `_tokens.scss`.
 export type SpreadsheetTheme =
@@ -159,7 +159,7 @@ export function getThemeColors(theme?: SpreadsheetTheme): ThemeColors {
     };
   } else if (currentTheme === "github-dark") {
     colors = {
-      // GitHub Dark — pre-0.15 default dark, kept selectable. Text + accents
+      // GitHub Dark — pre-restyle default dark, kept selectable. Text + accents
       // match the blog's github-dark code blocks; surfaces are neutral dark
       // greys (the #1f1f1f bg the editor asked for, cleaner than GitHub's
       // blue-tinted #24292e).
@@ -245,7 +245,7 @@ export function getThemeColors(theme?: SpreadsheetTheme): ThemeColors {
     };
   } else if (currentTheme === "github-light") {
     colors = {
-      // GitHub Light — pre-0.15 default light, kept selectable (warm neutral surfaces)
+      // GitHub Light — pre-restyle default light, kept selectable (warm neutral surfaces)
       headerBackgroundColor: "#e8e8e4",
       headerTextColor: "#3760bf",
 

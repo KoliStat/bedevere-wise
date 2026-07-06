@@ -877,7 +877,7 @@ export class HelpPanel {
       mkRow("Family", [
         { value: "paper", label: "Paper", title: "The Statistical Report — matches kolistat.com (default)" },
         { value: "tokyonight", label: "Tokyonight", title: "Day / Storm — the classic Bedevere palettes" },
-        { value: "github", label: "Github", title: "The pre-0.15 default look" },
+        { value: "github", label: "Github", title: "The previous default look" },
       ] as const, selection.family, (v) => { selection = { ...selection, family: v }; this.options.onThemeSelectionChange?.(selection); });
 
       mkRow("Mode", [

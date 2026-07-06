@@ -1,7 +1,7 @@
 # KoliStat "Statistical Report" restyle — design
 
 **Date**: 2026-07-03
-**Branch**: `feature/kolistat-restyle` (off `dev-0.14`; targets the post-0.14 cycle)
+**Branch**: `feature/kolistat-restyle` (off `dev-0.14`; ships in the 0.14 release)
 **Status**: approved (direction mockup + chart ramp validated in visual-companion session; theme model and design sections approved in terminal)
 **Reference**: kolistat.com redesign — `~/source/repos/kolistat/website/src/styles/{tokens,typography,components}.css` (uncommitted; token values copied verbatim below so this spec stands alone)
 

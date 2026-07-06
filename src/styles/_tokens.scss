@@ -2,7 +2,7 @@
 //
 // Paper (light/dark) — default, new statistical-report aesthetic.
 // Tokyonight (classic-light/classic-dark) — original upstream themes, kept selectable.
-// GitHub (github-light/github-dark) — pre-0.15 defaults, kept selectable.
+// GitHub (github-light/github-dark) — pre-restyle defaults, kept selectable.
 //
 // Tokens are exposed as CSS custom properties on the body so the entire
 // stylesheet tree can pick them up via var(--bg) etc. — switching themes is
@@ -200,7 +200,7 @@ body.theme-classic-dark {
 }
 
 // ----------------------------------------------------------------------
-// Github Light — the pre-0.15 default light, kept selectable
+// Github Light — the pre-restyle default light, kept selectable
 // ----------------------------------------------------------------------
 body.theme-github-light {
   // Surfaces
@@ -264,7 +264,7 @@ body.theme-github-light {
 }
 
 // ----------------------------------------------------------------------
-// Github Dark — the pre-0.15 default dark, kept selectable
+// Github Dark — the pre-restyle default dark, kept selectable
 // ----------------------------------------------------------------------
 body.theme-github-dark {
   // Surfaces — neutral dark greys. #1f1f1f reads cleaner than GitHub's
