@@ -23,6 +23,7 @@
     "access": "public"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260706.1",
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-sql": "^6.10.0",
@@ -153,7 +154,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && node scripts/verify-build.mjs",
+    "build": "tsc && tsc -p worker/tsconfig.json && vite build && node scripts/verify-build.mjs",
     "build:lib": "rm -rf dist && vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
     "prepublishOnly": "bun run build:lib",
     "preview": "vite preview",
