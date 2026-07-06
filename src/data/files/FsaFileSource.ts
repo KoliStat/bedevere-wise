@@ -113,6 +113,20 @@ export class FsaFileSource implements FileSource {
     if (!handle) return [];
     return collectFolderFiles(handle);
   }
+
+  /**
+   * Unsupported on FSA: the File System Access API can't read an
+   * arbitrary host path, and the web never needs it — FSA picker nodes
+   * carry a `File` (kind `"blob"`), so ControlPanel reads bytes off the
+   * handle directly and never calls this. Throwing keeps the contract
+   * honest if a future caller reaches it on the web.
+   */
+  async readFile(_path: string): Promise<Uint8Array> {
+    throw new Error(
+      "FsaFileSource.readFile is unsupported — the web reads bytes from the " +
+        "picked File handle, not by host path.",
+    );
+  }
 }
 
 // ----- IDB helpers (single-use storage for opaque FSA handles) --------------

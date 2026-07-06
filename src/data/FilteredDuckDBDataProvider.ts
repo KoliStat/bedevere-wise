@@ -1,7 +1,7 @@
 import type { Backend } from "./Backend";
 import { Column, ColumnStats, DataProvider, DatasetMetadata, normalizeDuckDBType } from "./types";
 import { ColumnFilterManager } from "./ColumnFilterManager";
-import { unwrapArrowValue } from "./arrowUnwrap";
+import { unwrapArrowRows } from "./arrowUnwrap";
 import { parseDuckDBType, TypeNode } from "./duckdbTypeParser";
 import { quoteIdent } from "./sqlIdent";
 
@@ -121,14 +121,14 @@ export class FilteredDuckDBDataProvider implements DataProvider {
   public async fetchData(startRow: number, endRow: number): Promise<any[][]> {
     const visible = await this.getVisibleColumns();
     const projection = visible.length > 0
-      ? visible.map((c: any) => `"${c.column_name}"`).join(", ")
+      ? visible.map((c: any) => quoteIdent(c.column_name)).join(", ")
       : "*";
 
     const where = this.filterManager.buildWhereClause(this.name);
     const orderBy = this.filterManager.buildOrderByClause(this.name);
 
     const query =
-      `SELECT ${projection} FROM "${this.sourceTableName}" ${where} ${orderBy} ` +
+      `SELECT ${projection} FROM ${quoteIdent(this.sourceTableName)} ${where} ${orderBy} ` +
       `LIMIT ${endRow - startRow} OFFSET ${startRow}`;
     const [rows, allTypes, sourceColumns] = await Promise.all([
       this.backend.executeQuery(query),
@@ -136,14 +136,12 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       this.ensureSourceColumns(),
     ]);
     // `allTypes` is keyed by the source table's column order; filter to
-    // the visible-projection order so unwrapArrowValue lines up.
+    // the visible-projection order so the cell types line up.
     const visibleSet = new Set(visible.map((c: any) => c.column_name));
     const types = sourceColumns
       .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
       .filter((t): t is TypeNode | undefined => t !== null);
-    return rows.map((row: any) =>
-      (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, types[i])),
-    );
+    return unwrapArrowRows(rows, types);
   }
 
   public async fetchDataColumnRange(
@@ -153,13 +151,13 @@ export class FilteredDuckDBDataProvider implements DataProvider {
     endCol: number
   ): Promise<any[][]> {
     const visible = await this.getVisibleColumns();
-    const columnNames = visible.map((c: any) => `"${c.column_name}"`).slice(startCol, endCol);
+    const columnNames = visible.map((c: any) => quoteIdent(c.column_name)).slice(startCol, endCol);
     const columnNamesString = columnNames.join(", ");
 
     const where = this.filterManager.buildWhereClause(this.name);
     const orderBy = this.filterManager.buildOrderByClause(this.name);
 
-    const query = `SELECT ${columnNamesString} FROM "${this.sourceTableName}" ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
+    const query = `SELECT ${columnNamesString} FROM ${quoteIdent(this.sourceTableName)} ${where} ${orderBy} LIMIT ${endRow - startRow} OFFSET ${startRow}`;
     const [rows, allTypes, sourceColumns] = await Promise.all([
       this.backend.executeQuery(query),
       this.ensureColumnTypes(),
@@ -170,9 +168,7 @@ export class FilteredDuckDBDataProvider implements DataProvider {
       .map((c: any, idx: number) => (visibleSet.has(c.column_name) ? allTypes[idx] : null))
       .filter((t): t is TypeNode | undefined => t !== null);
     const sliceTypes = visibleTypes.slice(startCol, endCol);
-    return rows.map((row: any) =>
-      (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, sliceTypes[i])),
-    );
+    return unwrapArrowRows(rows, sliceTypes);
   }
 
   /**

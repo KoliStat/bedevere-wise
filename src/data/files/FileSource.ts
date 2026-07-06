@@ -14,10 +14,11 @@
  * before BedevereApp constructs, just like {@link Backend} and
  * {@link PersistenceBackend}.
  *
- * Status (v0.13): the interface is defined and FSA + IPC
- * implementations exist (FsaFileSource, IpcFileSource — Step 12).
- * ControlPanel hasn't been migrated to use them yet; that's a v0.14
- * follow-up. The shape is locked here so the migration is mechanical.
+ * Status: ControlPanel and the import paths route folder/file picking
+ * through an injected FileSource when the host supplies a non-FSA one
+ * (the desktop's IpcFileSource); the standalone web app keeps calling
+ * the File System Access API directly. FsaFileSource wraps that FSA
+ * surface for hosts that want a uniform abstraction.
  */
 
 /**
@@ -104,4 +105,18 @@ export interface FileSource {
    * files) are host-specific.
    */
   listFolderFiles(folder: FileSourceFolder): Promise<FileSourceFile[]>;
+
+  /**
+   * Read the raw bytes of a host file by its absolute path. Only the
+   * IPC source needs this: its picker nodes carry a host `filePath`
+   * (kind `"path"`) with no browser bytes, yet some JS-side readers must
+   * parse the file themselves — notably `.xlsx` sheet enumeration, which
+   * unzips `xl/workbook.xml` in the renderer. The FSA source can't read
+   * arbitrary host paths (and never needs to — its nodes carry a `File`),
+   * so it throws an "unsupported" error.
+   *
+   * Large data files do NOT come here; they import via
+   * `backend.registerFileURL` by path so the host reads them directly.
+   */
+  readFile(path: string): Promise<Uint8Array>;
 }

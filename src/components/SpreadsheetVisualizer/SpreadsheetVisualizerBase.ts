@@ -1003,44 +1003,107 @@ export class SpreadsheetVisualizerBase {
       iy += ch;
     }
 
-    // ---- 7. Single-pass crisp gridlines ----
-    // One Path2D, one stroke. Lines at integer + 0.5 offsets so 1px lines
-    // hit a single physical pixel row. Eliminates the double-border fuzz
-    // from the per-cell strokeRect calls in the previous revision.
+    // ---- 7. Gridlines ----
+    // Split into a few small stroke() passes rather than the prior single
+    // Path2D — booktabs themes (Paper/Night) need per-rule colors/widths a
+    // single path can't carry. The passes still draw disjoint pixels, so
+    // this doesn't reintroduce the double-border fuzz the single-pass
+    // rewrite fixed (that was about overlapping per-cell strokeRects, not
+    // stroke() call count). 1px lines stay at integer + 0.5 offsets for
+    // crispness; the 2px booktabs rules use integer offsets (see 7c).
+    const t = getThemeColors();
+
+    // ---- 7a. Header bottom + row separators (borderColor) ----
     ctx.strokeStyle = o.borderColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
 
-    // Header bottom (full width)
-    ctx.moveTo(0, ch + 0.5);
-    ctx.lineTo(width, ch + 0.5);
+    // Header bottom (full width) — booktabs themes recolor this via
+    // headerBottomRuleColor in pass 7c instead, so skip it here to avoid
+    // painting the same line twice.
+    if (!t.headerBottomRuleColor) {
+      ctx.moveTo(0, ch + 0.5);
+      ctx.lineTo(width, ch + 0.5);
+    }
 
     // Row separators (under each body row, across the full width including
     // the row-index gutter so the gutter rows match the cell rows visually).
+    // Always borderColor — booktabs themes carry their structure in the
+    // header/frame rules, not by recoloring every hairline.
     let gy = ch * 2;
     for (let row = startRow; row < endRow; row++) {
       ctx.moveTo(0, gy + 0.5);
       ctx.lineTo(width, gy + 0.5);
       gy += ch;
     }
-
-    // Row gutter right edge (full height)
-    ctx.moveTo(rhw + 0.5, 0);
-    ctx.lineTo(rhw + 0.5, height);
-
-    // Column separators (right edge of each visible column). Skip lines
-    // whose right edge falls inside the gutter — when the user has
-    // scrolled right past col 0, the right edges of partially-scrolled
-    // columns can land at x < rhw and paint over the gutter mask.
-    let gx = this.colOffsets[fvc] - this.scrollX;
-    for (let col = fvc; col <= lvc; col++) {
-      gx += this.colWidths[col];
-      if (gx > rhw) {
-        ctx.moveTo(gx + 0.5, 0);
-        ctx.lineTo(gx + 0.5, height);
-      }
-    }
+    const lastRowBottomY = gy - ch; // bottom edge of the last row drawn above
 
     ctx.stroke();
+
+    // ---- 7b. Vertical separators (row-gutter edge + column boundaries) ----
+    // "transparent" hides them outright (the booktabs palettes' whole
+    // point is no verticals); a set, non-transparent value recolors them;
+    // unset keeps the pre-restyle borderColor behavior.
+    const vGridColor = t.verticalGridColor === "transparent" ? null : t.verticalGridColor ?? o.borderColor;
+    if (vGridColor !== null) {
+      ctx.strokeStyle = vGridColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+
+      // Row gutter right edge (full height)
+      ctx.moveTo(rhw + 0.5, 0);
+      ctx.lineTo(rhw + 0.5, height);
+
+      // Column separators (right edge of each visible column). Skip lines
+      // whose right edge falls inside the gutter — when the user has
+      // scrolled right past col 0, the right edges of partially-scrolled
+      // columns can land at x < rhw and paint over the gutter mask.
+      let gx = this.colOffsets[fvc] - this.scrollX;
+      for (let col = fvc; col <= lvc; col++) {
+        gx += this.colWidths[col];
+        if (gx > rhw) {
+          ctx.moveTo(gx + 0.5, 0);
+          ctx.lineTo(gx + 0.5, height);
+        }
+      }
+
+      ctx.stroke();
+    }
+
+    // ---- 7c. Booktabs rules ----
+    // Additive color-driven overlays painted on the existing edge
+    // coordinates (no layout shift). Absent fields are a no-op, so
+    // github/classic palettes never reach these branches — zero visual
+    // change from pre-restyle. The 2px rules use integer (not +0.5)
+    // offsets and grow inward from their edge so the full 2px stays
+    // inside the canvas instead of being clipped at y=0 / y=height.
+    if (t.headerTopRuleColor) {
+      ctx.strokeStyle = t.headerTopRuleColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 1);
+      ctx.lineTo(width, 1);
+      ctx.stroke();
+    }
+    if (t.headerBottomRuleColor) {
+      ctx.strokeStyle = t.headerBottomRuleColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, ch + 0.5);
+      ctx.lineTo(width, ch + 0.5);
+      ctx.stroke();
+    }
+    // Only when the final row of the whole dataset is actually visible in
+    // this batch (endRow is clamped to totalRows by the caller — see
+    // SpreadsheetVisualizerSelection.draw) — not just "the last row of an
+    // arbitrary scroll chunk".
+    if (t.frameBottomRuleColor && endRow > startRow && endRow >= this.totalRows) {
+      ctx.strokeStyle = t.frameBottomRuleColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, lastRowBottomY - 1);
+      ctx.lineTo(width, lastRowBottomY - 1);
+      ctx.stroke();
+    }
   }
 }

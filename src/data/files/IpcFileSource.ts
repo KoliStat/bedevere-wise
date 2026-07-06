@@ -111,6 +111,18 @@ export class IpcFileSource implements FileSource {
   }
 
   /**
+   * Pull a host file's bytes across the IPC channel via the `readFile`
+   * RPC (host returns base64; we decode). Used by ControlPanel to feed
+   * `getSheetNames` for desktop xlsx nodes, which have a `filePath` but
+   * no browser `File`. Rejects (rather than returning empty) on failure
+   * so the caller can surface a real error to the user.
+   */
+  async readFile(path: string): Promise<Uint8Array> {
+    const { data } = await this.bridge.call("readFile", { path });
+    return base64ToBytes(data);
+  }
+
+  /**
    * Returns `true` if `err` was a recoverable UNKNOWN_METHOD response
    * — caller should surface the empty / null fallback. Returns `false`
    * for any other error so the caller can rethrow. Marks the method
@@ -131,4 +143,15 @@ export class IpcFileSource implements FileSource {
     }
     return false;
   }
+}
+
+/** base64 (ORIGINAL alphabet) → Uint8Array. Inverse of IpcBackend's
+ *  `bytesToBase64`; matches the host's libsodium ORIGINAL-variant output. */
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }

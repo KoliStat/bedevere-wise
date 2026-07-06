@@ -82,6 +82,19 @@ export function unwrapArrowValue(value: any, typeNode?: TypeNode): any {
 }
 
 /**
+ * Unwrap a batch of Arrow row proxies (as returned by `Backend.executeQuery`)
+ * into plain JS 2-D arrays, applying {@link unwrapArrowValue} to every cell
+ * with its column's parsed {@link TypeNode}. `types[i]` aligns with the row's
+ * column order; pass a sliced `types` for a column-range fetch. Shared by the
+ * DuckDB DataProviders' `fetchData` / `fetchDataColumnRange`.
+ */
+export function unwrapArrowRows(rows: any[], types: Array<TypeNode | undefined>): any[][] {
+  return rows.map((row: any) =>
+    (row.toArray() as any[]).map((cell, i) => unwrapArrowValue(cell, types[i])),
+  );
+}
+
+/**
  * Attempt to extract a decimal scalar (as Number or BigInt, before scaling).
  * Handles the two Arrow shapes we've seen:
  *   (a) typed-array-like with 2 or 4 little-endian Int32/Uint32 words, and
@@ -167,4 +180,43 @@ function applyScale(v: any, divisor: number): any {
     if (!Number.isNaN(n)) return n / divisor;
   }
   return v;
+}
+
+/**
+ * Best-effort lift of a DECIMAL scale from an Apache Arrow schema field's
+ * type. Different builds of duckdb-wasm / apache-arrow expose the scale
+ * differently; tries `type.scale` first (apache-arrow's typed Decimal class)
+ * and falls back to parsing the `toString()` form (`Decimal128<p,s>` /
+ * `Decimal(p,s)`) for builds that wrap the type in an opaque object.
+ */
+function inferDecimalScale(t: any): number | undefined {
+  if (!t || typeof t !== "object") return undefined;
+  if (typeof t.scale === "number") return t.scale;
+  if (typeof t.toString === "function") {
+    const s = String(t);
+    const m = /Decimal\d*\s*[<(]\s*\d+\s*,\s*(\d+)/i.exec(s);
+    if (m) return Number(m[1]);
+  }
+  return undefined;
+}
+
+/**
+ * Build the per-column DECIMAL scale map `runVisualize` uses to scale Decimal
+ * cells back to plain numbers. Walks an Arrow schema's fields, keeping only
+ * columns with a positive scale. Shared by every Backend's
+ * `executeQueryWithSchema` so they agree on how scale is detected.
+ */
+export function extractDecimalScales(
+  fields: Array<{ name?: unknown; type?: unknown }> | undefined,
+): Record<string, number> {
+  const scales: Record<string, number> = {};
+  for (const field of fields ?? []) {
+    const name = String((field as any)?.name ?? "");
+    if (!name) continue;
+    const scale = inferDecimalScale((field as any)?.type);
+    if (typeof scale === "number" && scale > 0) {
+      scales[name] = scale;
+    }
+  }
+  return scales;
 }

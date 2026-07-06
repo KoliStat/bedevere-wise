@@ -1,6 +1,6 @@
 {
   "name": "@kolistat/bedevere-wise",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "author": "Massimo Meneghello",
   "repository": {
     "type": "git",
@@ -30,7 +30,9 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
-    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@duckdb/duckdb-wasm": "1.32.0",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/source-serif-4": "^5.2.9",
     "@lezer/highlight": "^1.2.3",
     "@types/node": "^20.11.19",
     "@vitest/ui": "^3.2.4",
@@ -50,7 +52,7 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
-    "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
+    "@duckdb/duckdb-wasm": "1.32.0",
     "@lezer/highlight": "^1.2.0",
     "apache-arrow": "^17.0.0",
     "codemirror": "^6.0.0",
@@ -100,6 +102,10 @@
       "types": "./dist/ui.d.ts",
       "import": "./dist/ui.es.js"
     },
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.es.js"
+    },
     "./duckdb": {
       "types": "./dist/duckdb.d.ts",
       "import": "./dist/duckdb.es.js"
@@ -114,7 +120,8 @@
   "files": [
     "dist",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "homepage": "https://github.com/KoliStat/bedevere-wise",
   "keywords": [
@@ -158,4 +165,3 @@
   "type": "module",
   "types": "dist/index.d.ts"
 }
-

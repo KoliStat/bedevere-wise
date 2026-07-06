@@ -53,15 +53,17 @@
       color: var(--fg-dark);
     }
 
-    // Active tab: solid bg with blue accent on the TOP edge, matching
-    // the SQL editor tab strip so both tab rows feel like a single
-    // visual language.
+    // Active tab: a solid duck-gold chip with ink text — a persistent
+    // marker of which query is in focus, matching the SQL editor tab
+    // strip so both tab rows feel like a single visual language.
     &--active {
-      background-color: var(--bg);
-      color: var(--fg);
-      box-shadow: inset 0 2px 0 0 var(--blue);
+      background-color: var(--duck);
+      color: var(--duck-ink);
 
-      &:hover { background-color: var(--bg); }
+      &:hover { background-color: var(--duck); color: var(--duck-ink); }
+
+      .tab-manager__tab-title { font-weight: 600; }
+      .tab-manager__tab-close { color: var(--duck-ink); }
     }
 
     &-title {

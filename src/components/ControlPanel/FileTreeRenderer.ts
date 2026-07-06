@@ -1,4 +1,12 @@
 import { FileTreeNode } from "../../data/FileTreeTypes";
+import {
+  ICON_FOLDER,
+  ICON_FILE_LINES,
+  ICON_TABLE_GRID,
+  ICON_CHART,
+  ICON_CHEVRON_RIGHT,
+  ICON_WARNING,
+} from "../icons";
 
 export interface FileTreeCallbacks {
   onNodeClick: (node: FileTreeNode) => void;
@@ -6,19 +14,22 @@ export interface FileTreeCallbacks {
   onAliasChange: (node: FileTreeNode, alias: string) => void;
 }
 
+// File-type glyphs — currentColor stroke (the file tree colors them via
+// `.file-tree__icon { color: var(--fg-muted) }`). The duck is the app's
+// one splash of color; these stay line-art on purpose.
 const FILE_ICONS: Record<string, string> = {
-  folder: "📁",
-  csv: "📄",
-  tsv: "📄",
+  folder: ICON_FOLDER,
+  csv: ICON_FILE_LINES,
+  tsv: ICON_FILE_LINES,
   json: "{}",
   parquet: "⬡",
-  xlsx: "📊",
-  xls: "📊",
-  sas7bdat: "📈",
-  xpt: "📈",
-  sav: "📈",
-  dta: "📈",
-  sheet: "📋",
+  xlsx: ICON_TABLE_GRID,
+  xls: ICON_TABLE_GRID,
+  sas7bdat: ICON_CHART,
+  xpt: ICON_CHART,
+  sav: ICON_CHART,
+  dta: ICON_CHART,
+  sheet: ICON_TABLE_GRID,
 };
 
 export class FileTreeRenderer {
@@ -242,7 +253,8 @@ export class FileTreeRenderer {
     if (hasChildren) {
       const chevron = document.createElement("span");
       chevron.className = "file-tree__chevron";
-      chevron.textContent = "▶";
+      // Static literal defined in icons.ts, no user data — innerHTML is safe.
+      chevron.innerHTML = ICON_CHEVRON_RIGHT;
       if (expanded) chevron.classList.add("file-tree__chevron--expanded");
       chevron.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -261,7 +273,9 @@ export class FileTreeRenderer {
     const icon = document.createElement("span");
     icon.className = "file-tree__icon";
     const iconKey = node.kind === "folder" ? "folder" : (node.kind === "sheet" ? "sheet" : (node.fileType || "csv"));
-    icon.textContent = FILE_ICONS[iconKey] || "📄";
+    // Icons are static inline SVG literals defined above (no user data),
+    // so innerHTML is safe here — textContent would render the markup as text.
+    icon.innerHTML = FILE_ICONS[iconKey] || ICON_FILE_LINES;
     row.appendChild(icon);
 
     // Name
@@ -290,7 +304,8 @@ export class FileTreeRenderer {
       if (isOversized && !node.isImported && !isExcel) {
         const warn = document.createElement("span");
         warn.className = "file-tree__warn";
-        warn.textContent = "⚠";
+        // Static literal defined in icons.ts, no user data — innerHTML is safe.
+        warn.innerHTML = ICON_WARNING;
         warn.title = "Above auto-import threshold — click to open.";
         row.appendChild(warn);
       }

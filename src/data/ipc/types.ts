@@ -131,6 +131,7 @@ export type IpcMethod =
   | "setLabel"
   // Session
   | "registerFile"
+  | "readFile"
   | "registerFileText"
   | "registerFileBuffer"
   | "executeQuery"
@@ -231,11 +232,37 @@ export type SetMutatorResult = Record<string, never>;
 export interface RegisterFileParams {
   path: string;
   tableName: string;
+  /**
+   * Optional worksheet name for multi-sheet `.xlsx` workbooks. When set,
+   * the host emits `read_xlsx('<path>', sheet='<sheet>')` so the chosen
+   * sheet is imported instead of the default first one. Ignored for every
+   * non-xlsx reader. See docs/backend-protocol.md §5.3.1.
+   */
+  sheet?: string;
 }
 export interface RegisterFileResult {
   tableName: string;
   totalRows: number;
   totalColumns: number;
+}
+
+/**
+ * Read a host file's raw bytes, base64-encoded in the result. Used by the
+ * desktop renderer when a file-tree node carries a host `filePath` (folder
+ * / file picker) rather than browser bytes, but a JS-side reader needs the
+ * bytes to parse the file itself — e.g. enumerating `.xlsx` worksheets by
+ * unzipping `xl/workbook.xml`. Large data files never use this; they go
+ * through {@link RegisterFileParams} by path so the host reads them
+ * directly. The host confines `path` to the file-access grant ledger
+ * (same gate as `registerFile`) and bounds the size. See
+ * docs/backend-protocol.md §5.3.1a.
+ */
+export interface ReadFileParams {
+  path: string;
+}
+export interface ReadFileResult {
+  /** base64-encoded file bytes (ORIGINAL alphabet, decode with `atob`). */
+  data: string;
 }
 
 /**
@@ -453,6 +480,7 @@ export interface IpcMethodMap {
   setDescription: { params: SetDescriptionParams; result: SetMutatorResult };
   setLabel: { params: SetLabelParams; result: SetMutatorResult };
   registerFile: { params: RegisterFileParams; result: RegisterFileResult };
+  readFile: { params: ReadFileParams; result: ReadFileResult };
   registerFileText: { params: RegisterFileTextParams; result: RegisterUploadResult };
   registerFileBuffer: { params: RegisterFileBufferParams; result: RegisterUploadResult };
   executeQuery: { params: ExecuteQueryParams; result: ExecuteQueryResult };

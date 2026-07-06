@@ -13,6 +13,7 @@ import { TabManager } from "../TabManager/TabManager";
 import { EnvironmentSwitcher } from "../EnvironmentSwitcher/EnvironmentSwitcher";
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
 import type { MessageOptions } from "../StatusBar/StatusBar";
+import { ICON_CHEVRON_RIGHT } from "../icons";
 
 export type ShowMessageFn = (
   message: string,
@@ -257,7 +258,8 @@ export class ControlPanel {
 
     const chevron = document.createElement("span");
     chevron.className = "control-panel__accordion-chevron";
-    chevron.textContent = "▶";
+    // Static literal defined in icons.ts, no user data — innerHTML is safe.
+    chevron.innerHTML = ICON_CHEVRON_RIGHT;
     if (expanded) chevron.classList.add("control-panel__accordion-chevron--expanded");
 
     const titleEl = document.createElement("span");
@@ -603,30 +605,56 @@ export class ControlPanel {
    * handlers.
    */
   private buildIpcFolderTree(folder: FileSourceFolder, files: FileSourceFile[]): FileTreeNode {
-    const importable = files.filter((f) => {
-      if (f.kind !== "path") return false;
-      return detectFileType(f.name) !== null;
-    });
-    const children: FileTreeNode[] = importable.map((f) => {
-      const file = f as Extract<typeof f, { kind: "path" }>;
-      return {
-        id: `ipc/${folder.id}/${file.name}`,
-        name: file.name,
-        kind: "file" as const,
-        filePath: file.path,
-        fileType: detectFileType(file.name) ?? undefined,
-        isImported: false,
-        isExpanded: false,
-      };
-    });
-    return {
+    const root: FileTreeNode = {
       id: `ipc/${folder.id}`,
       name: folder.name,
       kind: "folder",
-      children,
+      children: [],
       isImported: false,
       isExpanded: true,
     };
+
+    // The host returns every importable file in the tree (recursive walk)
+    // with an absolute path. Rebuild the folder hierarchy from each file's
+    // path relative to the opened root, minting intermediate folder nodes
+    // on demand (and de-duping them) so nested study folders show as a
+    // real tree rather than a flat list of top-level files.
+    for (const f of files) {
+      if (f.kind !== "path") continue;
+      const fileType = detectFileType(f.name);
+      if (fileType === null) continue;
+
+      // Path relative to the opened folder, normalized to "/".
+      let rel = f.path.startsWith(folder.id) ? f.path.slice(folder.id.length) : f.path;
+      rel = rel.replace(/^[\\/]+/, "").replace(/\\/g, "/");
+      const segments = rel.split("/").filter((s) => s.length > 0);
+      const fileSeg = segments.pop() ?? f.name;
+
+      // Walk/create the folder chain down to the file's parent.
+      let parent = root;
+      let idPath = `ipc/${folder.id}`;
+      for (const seg of segments) {
+        idPath += `/${seg}`;
+        let dir = parent.children?.find((c) => c.kind === "folder" && c.name === seg);
+        if (!dir) {
+          dir = { id: idPath, name: seg, kind: "folder", children: [], isImported: false, isExpanded: false };
+          parent.children!.push(dir);
+        }
+        parent = dir;
+      }
+
+      parent.children!.push({
+        id: `ipc/${folder.id}/${rel}`,
+        name: fileSeg,
+        kind: "file",
+        filePath: f.path,
+        fileType: fileType ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      });
+    }
+
+    return root;
   }
 
   /**
@@ -1193,13 +1221,22 @@ export class ControlPanel {
     // Native-path mode: the host owns the bytes. Skip the format-handler
     // dispatch entirely — backend.registerFileURL hits the host's
     // registerFile RPC which dispatches read_csv_auto / read_parquet /
-    // read_json_auto based on the extension. Sheet picking (Excel) +
-    // multi-table HTML aren't supported on this path yet; they need
-    // host-side support that doesn't exist in the v1.0 protocol.
+    // read_json_auto / read_xlsx based on the extension. For a `sheet`
+    // node we thread its sheetName through so the host imports that
+    // worksheet (read_xlsx sheet=); multi-table HTML still isn't
+    // supported on this path.
     if (node.filePath) {
       try {
-        const baseName = node.alias || stripExt(node.name);
-        const result = await this.fileImportService.importPath(node.filePath, baseName);
+        // Sheet nodes carry the worksheet in `node.name`; build the table
+        // name from the workbook's filename + sheet (matching the web's
+        // `<fileBase>__<sheet>`) so different workbooks' same-named sheets
+        // don't collide. Plain file nodes keep their alias/basename.
+        const baseName =
+          node.kind === "sheet" && node.sheetName
+            ? `${node.alias || stripExt(node.filePath.split(/[\\/]/).pop() || node.name)}__${node.sheetName}`
+            : node.alias || stripExt(node.name);
+        const sheet = node.kind === "sheet" ? node.sheetName : undefined;
+        const result = await this.fileImportService.importPath(node.filePath, baseName, sheet);
         const metadata = await result.getMetadata();
         node.isImported = true;
         node.tableName = metadata.name;
@@ -1335,6 +1372,13 @@ export class ControlPanel {
           file = node.fileHandle;
         } else if (node.fileHandle && "getFile" in node.fileHandle) {
           file = await (node.fileHandle as FileSystemFileHandle).getFile();
+        } else if (node.filePath && this.fileSource) {
+          // Desktop / IPC node: the host owns the bytes (the node carries
+          // a `filePath`, not a browser File). getSheetNames parses the
+          // xlsx zip in JS, so pull the bytes across via the FileSource's
+          // readFile RPC and wrap them in a File for the format handler.
+          const bytes = await this.fileSource.readFile(node.filePath);
+          file = new File([bytes as BlobPart], node.name);
         } else {
           return;
         }
@@ -1344,7 +1388,11 @@ export class ControlPanel {
           id: `${node.id}/${sheetName}`,
           name: sheetName,
           kind: "sheet" as const,
+          // Carry whichever source the parent had: a browser handle on the
+          // web, or the host `filePath` on desktop (so the sheet imports
+          // by-path through registerFile with sheet=, not via JS bytes).
           fileHandle: node.fileHandle,
+          filePath: node.filePath,
           fileType: node.fileType,
           sheetName,
           isImported: false,

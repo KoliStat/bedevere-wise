@@ -1,11 +1,9 @@
 # Deploying Bedevere Wise
 
-The app is a static SPA (DuckDB runs in the browser via WASM) plus an
-optional Cloudflare Worker for in-app feedback collection. There's no
+The app is a static SPA (DuckDB runs in the browser via WASM). There's no
 "backend server" — everything user-data-related lives in the browser.
 
-This document covers the recommended Cloudflare Workers Builds path and
-the optional feedback worker.
+This document covers the recommended Cloudflare Workers Builds path.
 
 ## Cloudflare Workers Builds (the deploy target)
 
@@ -32,16 +30,12 @@ configuration story is slightly different.
    serve `index.html` so client-side routes resolve). If you renamed
    the Cloudflare project, update the `name` field to match its slug.
 
-4. **Environment variables** (Settings → Variables and Secrets):
-   - `VITE_FEEDBACK_URL` = the URL of your deployed feedback worker
-     (see § B below). Leave unset until the worker exists.
-
-5. **Custom domain** (Custom domains → Add): point a CNAME at
+4. **Custom domain** (Custom domains → Add): point a CNAME at
    `<project>.workers.dev` (Cloudflare manages the TLS cert
    automatically). If you registered the domain through Cloudflare
    Registrar, the DNS record is created with one click.
 
-6. **Push to your production branch** — the build runs in ~1 min.
+5. **Push to your production branch** — the build runs in ~1 min.
 
 ### Token gotcha
 
@@ -57,48 +51,6 @@ add **Account → Workers Scripts: Edit**.
 - Domain: depends on registrar. Cloudflare Registrar charges at-cost
   (about $9.15/yr for `.com`, $13/yr for `.dev`, $32.99/yr for `.io`).
 - TLS cert: $0 (Cloudflare-issued).
-
-## B. Optional: feedback worker on Cloudflare Workers
-
-Subdirectory: `cloudflare/feedback-worker/`. See its
-[README](cloudflare/feedback-worker/README.md) for the step-by-step
-deploy. Summary:
-
-```bash
-cd cloudflare/feedback-worker
-bun install
-bunx wrangler login
-bunx wrangler d1 create bedevere-feedback   # paste id into wrangler.toml
-bun run schema:apply
-bunx wrangler secret put FEEDBACK_ADMIN_SECRET
-bunx wrangler secret put ALLOWED_ORIGIN     # e.g. https://bedevere.example.com
-bun run deploy
-```
-
-The deploy prints a URL (e.g.
-`https://bedevere-feedback.<your-subdomain>.workers.dev`); copy that
-into `VITE_FEEDBACK_URL` in the Workers env config and redeploy.
-
-### Feedback costs
-
-- Workers free tier: 100k requests/day, 10ms CPU/request. Won't bill
-  unless you grow into a high-volume product.
-- D1 free tier: 5 GB storage, 5M reads/day, 100k writes/day, 1 DB.
-- Custom domain on the worker (optional): $0 cert, point a CNAME.
-
-To read submissions:
-
-```bash
-curl "https://bedevere-feedback.<your-subdomain>.workers.dev/admin/feedback?secret=$FEEDBACK_ADMIN_SECRET&limit=50" | jq
-```
-
-Or query D1 directly:
-
-```bash
-cd cloudflare/feedback-worker
-bunx wrangler d1 execute bedevere-feedback --remote \
-  --command "SELECT id, datetime(created_at/1000,'unixepoch') AS at, category, email, message FROM feedback ORDER BY created_at DESC LIMIT 50"
-```
 
 ## When to consider a real server
 

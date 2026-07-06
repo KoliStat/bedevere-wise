@@ -10,13 +10,18 @@ desktop host was the first implementer)
 
 ## 1. Overview
 
-A host process — the original target was bedevere-desktop's C++ shell;
-the protocol generalizes to any host (a `pip install bedeverer-py`
-kernel, an R session, a remote relay) — and the Bedevere webview
-renderer exchange RPC requests, RPC responses, server-pushed events,
-and Arrow IPC streaming bytes over a **single localhost WebSocket
-connection**. JSON travels in text frames; Arrow chunks travel in
-binary frames prefixed with an 8-byte routing header.
+A host process and the Bedevere renderer (the web UI) exchange RPC
+requests, RPC responses, host-pushed events, and Arrow IPC streaming
+bytes over a **single WebSocket connection**. JSON travels in text
+frames; Arrow chunks travel in binary frames prefixed with an 8-byte
+routing header.
+
+The original host is bedevere-desktop's C++ shell — today the sole
+implementer — and §2 describes its transport: a localhost socket with
+loopback-only binding and an out-of-band token. The wire contract
+itself (§3 onward) is host-agnostic: any process that speaks these
+frames (a future Python or R kernel, a remote relay) could drive the
+same renderer.
 
 This document is the canonical wire reference. The TypeScript
 declarations in [`src/data/ipc/types.ts`](../src/data/ipc/types.ts)
@@ -27,7 +32,7 @@ to the wire shapes.
 
 The protocol was originally born inside bedevere-desktop as
 `ipc-protocol.md`. It moved to bedevere-wise in v0.13 alongside the
-Backend abstraction (see [`feature/backend-abstraction`](../CHANGELOG.md))
+Backend abstraction (see the [CHANGELOG](../CHANGELOG.md))
 so the contract has a single home and a versioning home that's
 independent of any particular host implementation.
 
@@ -39,57 +44,81 @@ independent of any particular host implementation.
 
 1. **Shell startup**: bind a `websocketpp` server to `127.0.0.1:0` (OS-
    assigned port). Generate a 32-byte cryptographic random token; base64-
-   encode it. Resolve the bound port via `acceptor::local_endpoint()`.
-2. **Webview launch**: the shell navigates the webview to its index URL with
-   the IPC parameters injected via the URL query string:
-   `…/index.html?ipcPort=<n>&ipcToken=<base64>` (dev mode points at
-   `http://localhost:5173?ipcPort=…&ipcToken=…`).
-3. **Renderer connect**: on boot the renderer reads the two query params and
-   opens `ws://127.0.0.1:<n>/?token=<base64>`. The token is also
-   re-asserted on the first JSON frame (see §2.3) so that any intermediary
-   that strips the query string still gets authenticated.
-4. **Server validates** the token (constant-time compare against the in-
-   memory value) on `on_open`. On mismatch the server sends a close frame
-   with status `4401` and the message `UNAUTHORIZED`; no further frames are
-   accepted. On match it transitions to the dispatching state.
+   encode it (URL-safe, no padding). Resolve the bound port via
+   `acceptor::local_endpoint()`.
+2. **Webview launch**: the shell injects the IPC parameters *out of band* —
+   as a frozen JS global evaluated before the page's own scripts
+   (`webview::init`), not in the URL:
+
+   ```js
+   window.__BEDEVERE_IPC__ = Object.freeze({ port: <n>, token: "<base64>" });
+   ```
+
+   The navigation URL carries only the (non-secret) port as a fallback
+   (`…/index.html?ipcPort=<n>`; dev mode points at
+   `http://localhost:5173?ipcPort=…`). Keeping the token out of the URL
+   stops it leaking via referrer headers, webview diagnostic logs, or the
+   address bar / DevTools network panel.
+3. **Renderer connect**: on boot the renderer reads `window.__BEDEVERE_IPC__`
+   (falling back to the `ipcPort` query param for the port) and opens
+   `ws://127.0.0.1:<n>/`. The token is asserted on the first JSON frame
+   (see §2.3).
+4. **Server validates** the upgrade, then the token:
+   - **Handshake** (`validate` handler): the upgrade is rejected unless the
+     `Host` header names the loopback interface on our port
+     (`127.0.0.1:<n>` or `localhost:<n>`) **and** the `Origin` header is the
+     bundled webview (`file://…`, `null`, or absent) or the dev Vite origin.
+     See §2.2.
+   - **First frame**: constant-time compare of `auth` against the in-memory
+     token. On mismatch the server sends close `4401` `UNAUTHORIZED`; no
+     further frames are accepted. On match it transitions to dispatching.
 5. **Steady state**: bidirectional text + binary frames flow until either
-   side closes the connection. The shell tears down the WebSocket server
-   on app exit; the renderer tears down on `window.beforeunload`.
+   side closes the connection. The shell tears down the WebSocket server on
+   app exit; the renderer tears down on `window.beforeunload`. Inbound
+   frames are capped (32 MB) and in-memory uploads are bounded per session.
 
 ### 2.2 Security model
 
-- **127.0.0.1 binding only.** Never `0.0.0.0`. Multiple users on the same
-  workstation already have separate user sessions; same-machine same-user
+- **127.0.0.1 binding only.** Never `0.0.0.0`. Same-machine same-user
   isolation is the threat model.
 - **32-byte random token.** Generated by the shell at startup (libsodium
-  `randombytes_buf`), base64-encoded, never logged. Required on every
-  connection. Without it, any local process can scrape the WebSocket port
-  out of `/proc/net/tcp` and read the dataset.
-- **No persistence**: the token is in-memory only; a fresh one is minted
-  per app launch.
-- **No origin check** is performed by the shell — webviews vary in how they
-  populate the `Origin` header (WebView2 emits a `file://` or `https://`
-  origin depending on navigation source; WKWebView and WebKitGTK differ).
-  Authentication relies solely on the token.
+  `randombytes_buf`), base64-encoded, never logged, in-memory only (a fresh
+  one is minted per launch). Required on the first frame of every
+  connection — without it, any local process can scrape the port out of the
+  OS connection table and read the dataset.
+- **Token delivered out of band.** Injected as `window.__BEDEVERE_IPC__`
+  (see §2.1); never placed in the navigation or `ws://` URL, so it can't
+  leak through referrer / logs / the address bar.
+- **Origin + Host validation on the upgrade.** The shell rejects the
+  handshake unless `Host` names the loopback interface on our port and
+  `Origin` is the webview (`file://`/`null`/absent) or the dev Vite origin.
+  This defeats DNS-rebinding (a rebinding attacker's browser still sends the
+  attacker's own hostname in `Host`) and stops an unrelated page the user
+  has open from driving the engine. It is defense-in-depth layered on the
+  token, not a replacement. Webviews vary in how they populate `Origin`
+  (WebView2 / WKWebView / WebKitGTK differ); a host whose webview emits an
+  unexpected origin must add it to the allowlist in `websocket_server.cpp`.
+- **DevTools** (webview debug mode) is compiled in for dev builds only, so a
+  packaged build doesn't expose the injected token via the inspector.
 
 ### 2.3 Auth frame format
 
-The renderer MUST send the token both as the `?token=…` query parameter on
-the WebSocket URL **and** as a top-level `auth` field on the first JSON
+The renderer asserts the token as a top-level `auth` field on the first JSON
 frame it sends:
 
 ```jsonc
 { "id": "boot-001", "method": "getProtocolVersion", "auth": "<base64-token>" }
 ```
 
-The shell accepts the first frame only if `auth` matches. Subsequent frames
-need not repeat `auth`; the validated connection is trusted for its lifetime.
+The shell accepts the first frame only if `auth` matches (constant-time).
+Subsequent frames need not repeat `auth`; the validated connection is
+trusted for its lifetime.
 
-> Rationale for sending the token twice: belt-and-braces against the small
-> chance that an OS webview implementation drops the query string when
-> navigating to a `ws://` URL from a privileged HTML context. If a future
-> implementer wants to switch to a `Sec-WebSocket-Protocol` subprotocol-
-> based handshake instead, that's a forward-compatible v1.x change.
+> Earlier revisions also sent the token as a `?token=…` query parameter on
+> the `ws://` URL; that's been dropped now the token is delivered out of band
+> (§2.1) — the `auth` frame is the sole carrier. A future revision could move
+> it into a `Sec-WebSocket-Protocol` subprotocol handshake; that's a
+> forward-compatible v1.x change.
 
 ### 2.4 Reconnect policy
 
@@ -398,13 +427,62 @@ Open a file path with the appropriate DuckDB reader (`read_parquet`,
 { "tableName": "adsl", "totalRows": 1234, "totalColumns": 17 }
 ```
 
+The optional `sheet` param picks a worksheet of a multi-sheet `.xlsx`
+workbook. When present and non-empty, the host emits
+`read_xlsx('<path>', sheet='<sheet>')` (single-quote-escaping the sheet
+name); every non-xlsx reader ignores it. This is how the desktop
+imports a chosen Excel sheet — its file-tree sheet nodes carry the
+parent workbook's `path` plus the `sheet` name, since the bytes never
+cross the wire for picker-opened files.
+
+```jsonc
+{ "path": "/abs/path/book.xlsx", "tableName": "adsl_summary", "sheet": "Summary" }
+// result
+{ "tableName": "adsl_summary", "totalRows": 1234, "totalColumns": 17 }
+```
+
+The host MUST confine `path` to the file-access grant ledger (a file the
+user opened via the native picker, or one beneath a picked folder); a
+path outside it is rejected with `NOT_FOUND`. This stops a peer that
+reached the sidecar from registering an arbitrary file the user can read.
+
 Errors:
 
-- `NOT_FOUND` — path does not resolve
+- `NOT_FOUND` — path does not resolve, or is outside the grant ledger
 - `DUCKDB_ERROR` — reader failed (corrupt file, unsupported extension)
 - `INVALID_PARAMS` — `tableName` is empty or contains illegal characters
 - `UNLICENSED` — file format requires a commercial reader extension the
   user has not licensed (e.g. future paid format support)
+
+#### 5.3.1a `readFile`
+
+Return the raw bytes of a host file, **base64-encoded** in the JSON
+result. The renderer uses this when a file-tree node carries a host
+`path` (folder / file picker) instead of browser bytes, but a JS-side
+reader must parse the file itself — notably `.xlsx` worksheet
+enumeration, which unzips `xl/workbook.xml` in the renderer to list
+sheet names. Bulk data files do NOT use this; they import via
+`registerFile` by path so the host reads them directly and the bytes
+never travel the wire.
+
+```jsonc
+{ "path": "/abs/path/book.xlsx" }
+// result
+{ "data": "<base64 of the file bytes>" }
+```
+
+Confinement is identical to `registerFile`: the host MUST reject a
+`path` outside the file-access grant ledger with `NOT_FOUND`, so this
+can't be used to exfiltrate arbitrary files. The host MUST also bound
+the size (the reference host caps a single read at 256 MiB, refusing
+larger files with `INVALID_PARAMS`) so a huge file can't exhaust host
+memory or overflow the response frame.
+
+Errors:
+
+- `NOT_FOUND` — path does not resolve, or is outside the grant ledger
+- `INVALID_PARAMS` — `path` missing/empty, or file exceeds the size cap
+- `INTERNAL` — I/O failure opening or reading the file
 
 #### 5.3.2 `executeQuery`
 
@@ -517,7 +595,7 @@ Mirrors `PluginManager::describe_catalog()` in
     "manifest": {
       "name": "stats_duck",
       "displayName": "Stats Duck",
-      "version": "0.4.2",
+      "version": "0.7.0",
       "description": "Statistical helpers, VISUALIZE … DRAW chart syntax, …",
       "licenseRequired": false,
       "dependsOn": [],
@@ -798,7 +876,7 @@ JSON-optional (absent when empty).
 {
   "name": "stats_duck",
   "displayName": "Stats Duck",
-  "version": "0.4.2",
+  "version": "0.7.0",
   "description": "...",
   "licenseRequired": false,
   "dependsOn": [],
@@ -851,7 +929,7 @@ round-trip.
 ### 6.12 `WireLicenseToken` (signed JSON token)
 
 The full token format documented in
-[`PROJECT_PLAN.md` §2.6](../PROJECT_PLAN.md). Fields use snake_case (as
+`PROJECT_PLAN.md` §2.6 (in the bedevere-desktop repo). Fields use snake_case (as
 issued by the offline signing tool); the renderer never inspects them
 directly, but the shape is normative for the issuer:
 

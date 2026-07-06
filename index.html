@@ -62,8 +62,15 @@
       }
 
       body {
-        background-color: #1e1e1e;
-        color: #cccccc;
+        background-color: #f7f5ef;
+        color: #1a1917;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #171511;
+          color: #ece7da;
+        }
       }
 
       #app {
@@ -78,9 +85,16 @@
         align-items: center;
         justify-content: center;
         height: 100vh;
-        background-color: #1e1e1e;
-        color: #cccccc;
+        background-color: #f7f5ef;
+        color: #1a1917;
         font-size: 14px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .loading {
+          background-color: #171511;
+          color: #ece7da;
+        }
       }
 
       .loading::after {
@@ -88,10 +102,17 @@
         width: 20px;
         height: 20px;
         margin-left: 10px;
-        border: 2px solid #3c3c3c;
-        border-top: 2px solid #007acc;
+        border: 2px solid #d9d5c9;
+        border-top: 2px solid #ffd939;
         border-radius: 50%;
         animation: spin 1s linear infinite;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .loading::after {
+          border-color: #35322a;
+          border-top-color: #ffd939;
+        }
       }
 
       @keyframes spin {
@@ -118,5 +139,11 @@
       <div class="loading">Loading Bedevere Wise...</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
+    <!-- Cloudflare Web Analytics — cookieless, main app only (never /embed). -->
+    <script
+      defer
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "32a2238b944240a08ab2dae3726b3b4f"}'
+    ></script>
   </body>
 </html>

@@ -218,15 +218,6 @@ export class TabManager {
     // Wire filter manager for header indicators
     spreadsheetVisualizer.setFilterManager(this.filterManager, metadata.name);
 
-    // Connect selection change to cell value bar
-    spreadsheetVisualizer.addOnSelectionChangeSubscription((selection) => {
-      if (this.commandBar && selection) {
-        this.commandBar.updateCell(selection);
-      } else if (this.commandBar) {
-        this.commandBar.updateCell(undefined);
-      }
-    });
-
     // Wire the external cell-selection callback exactly once per dataset. Doing
     // this in activateTab would add a new subscription every time the user
     // switches to this tab, causing the callback to fire N times after N
@@ -805,8 +796,8 @@ export class TabManager {
     // the tab would paint stale rows. Close it and fall through to the
     // fresh-tab path, which re-reads metadata and rebuilds the cache.
     // Trade-off: scroll position / selection / local filter+sort don't
-    // survive the rebuild — acceptable for v0.12; a v0.13 follow-up can
-    // add an in-place refresh that preserves view state.
+    // survive the rebuild. A future enhancement could add an in-place
+    // refresh that preserves view state.
     if (this.getDatasetIds().includes(name)) {
       this.closeDataset(name);
     }

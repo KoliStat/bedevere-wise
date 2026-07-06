@@ -4,6 +4,7 @@ import { MessagePopover } from "./MessagePopover";
 import { CellValuePopover } from "./CellValuePopover";
 import { ComplexKind, getComplexKind, isComplexType } from "../../data/types";
 import { escapeHtml } from "../../utils/html";
+import { MESSAGE_ICONS, ICON_CLOCK } from "../icons";
 
 export interface MessageOptions {
   /** Duration in ms; 0 means persistent until dismissed. Defaults per type. */
@@ -32,13 +33,6 @@ const DEFAULT_DURATIONS: Record<BedevereAppMessageType, number> = {
   warning: 6_000,
   success: 3_000,
   info: 3_000,
-};
-
-const MESSAGE_ICONS: Record<BedevereAppMessageType, string> = {
-  error: "\u2716", // ✖
-  warning: "\u26A0", // ⚠
-  success: "\u2713", // ✓
-  info: "\u2139", // ℹ
 };
 
 interface ActiveMessage {
@@ -130,7 +124,7 @@ export class StatusBar {
    */
   public updateQueryTime(elapsedMs: number, success: boolean): void {
     const formatted = formatElapsed(elapsedMs);
-    const icon = success ? "\u23F1" : "\u2716"; // ⏱ / ✖
+    const icon = success ? ICON_CLOCK : MESSAGE_ICONS.error;
     const label = success ? `Query ${formatted}` : `Failed after ${formatted}`;
     const html =
       `<span class="status-bar__msg-icon">${icon}</span>` +

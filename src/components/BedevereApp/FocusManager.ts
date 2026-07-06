@@ -65,13 +65,6 @@ export class FocusManager implements IFocusManager {
     this.focusChangeCallbacks.push(callback);
   }
 
-  public removeFocusChangeCallback(callback: (current: FocusableComponent | null, previous: FocusableComponent | null) => void): void {
-    const index = this.focusChangeCallbacks.indexOf(callback);
-    if (index > -1) {
-      this.focusChangeCallbacks.splice(index, 1);
-    }
-  }
-
   public hasFocus(component: FocusableComponent): boolean {
     return this.focusedComponent?.componentId === component.componentId;
   }
@@ -96,18 +89,5 @@ export class FocusManager implements IFocusManager {
         console.error("Error in focus change callback:", error);
       }
     }
-  }
-
-  // Helper methods for debugging
-  public getDebugInfo(): object {
-    return {
-      focusedComponent: this.focusedComponent,
-      focusStack: this.focusStack,
-      callbackCount: this.focusChangeCallbacks.length,
-    };
-  }
-
-  public setDebugMode(enabled: boolean): void {
-    this.debugMode = enabled;
   }
 }

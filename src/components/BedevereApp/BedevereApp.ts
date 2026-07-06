@@ -19,6 +19,11 @@ import { FsaFileSource } from "../../data/files/FsaFileSource";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
+import {
+  applyThemeClasses, resolveThemeVariant, splitResolvedTheme,
+  themeSelectionFromLegacy, themeSelectionFromSettings,
+  type ResolvedTheme, type ThemeFamily, type ThemeMode, type ThemeSelection,
+} from "./themeClasses";
 import { downloadBinaryFile, exportAsHTML, exportAsMarkdown, exportAsText } from "./ExportHub";
 import {
   EXPORT_FORMATS,
@@ -26,11 +31,13 @@ import {
   isExportFormat,
   type ExportFormat,
 } from "@/data/exportFormats";
-import { DuckDBService } from "@/data/DuckDBService";
-// NOTE: DuckDBService stays imported for the no-options default — when a
-// host doesn't pass `options.backend` we construct one for them. Hosts
-// that bring their own (IpcBackend in bedevere-desktop, future remote
-// backends) pass it via options and the DuckDB-WASM tree-shakes out.
+// DuckDBService is intentionally NOT imported here. BedevereApp is
+// backend-agnostic: the embedder supplies `options.backend` (a
+// DuckDBService from "@kolistat/bedevere-wise/duckdb" for the in-browser
+// default, an IpcBackend for the desktop, a remote relay, …). Keeping the
+// DuckDB-WASM worker chain out of this module's static graph is what lets
+// a non-WASM host bundle the app shell without shipping ~3 MB of unused
+// DuckDB workers.
 import { PersistenceService, persistenceService } from "@/data/PersistenceService";
 import { keymapService } from "@/data/KeymapService";
 import { commandRegistry } from "@/data/CommandRegistry";
@@ -48,6 +55,9 @@ import { setStatsDuckFailureReason } from "@/data/statsDuckStatus";
 import { resolveStatsDuckUrl } from "@/data/statsDuckUrl";
 import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
 import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
+import { EmbedBuilderDialog } from "../EmbedBuilderDialog/EmbedBuilderDialog";
+import { shouldShowDesktopHint, renderDesktopHint } from "./desktopHint";
+import { DESKTOP_DOWNLOAD_URL } from "../../appLinks";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -79,18 +89,21 @@ DRAW point
 ;
 `;
 
-export type BedevereAppTheme = "light" | "classic-light" | "dark" | "classic-dark" | "auto";
+export type BedevereAppTheme =
+  | "light" | "classic-light" | "dark" | "classic-dark"
+  | "github-light" | "github-dark" | "auto";
 
 export type BedevereAppMessageType = "info" | "warning" | "error" | "success";
 
 export interface BedevereAppOptions {
   /**
-   * Engine that runs SQL on behalf of the app. Defaults to a fresh
-   * `DuckDBService` (in-browser DuckDB-WASM) so the standalone web app
-   * keeps working with zero config. Pass an `IpcBackend` to point the
-   * UI at a native DuckDB sitting in another process.
+   * Engine that runs SQL on behalf of the app. Required — BedevereApp
+   * has no built-in default so the app shell carries no hard DuckDB-WASM
+   * dependency. For the in-browser default, import `DuckDBService` from
+   * `@kolistat/bedevere-wise/duckdb` and pass `new DuckDBService()`; pass
+   * an `IpcBackend` to point the UI at a native DuckDB in another process.
    */
-  backend?: Backend;
+  backend: Backend;
   /**
    * File picker source — folder + file dialogs, recent-folders
    * enumeration. Defaults to {@link FsaFileSource} (the File System
@@ -121,7 +134,8 @@ export class BedevereApp implements EventHandler {
   private helpPanel!: HelpPanel;
 
   private options: BedevereAppOptions;
-  private theme: BedevereAppTheme = "dark";
+  private themeSelection: ThemeSelection = { family: "paper", mode: "auto" };
+  private theme: ResolvedTheme = "light";
   private version: string;
 
   // Persistence, views, and import
@@ -134,9 +148,8 @@ export class BedevereApp implements EventHandler {
   private focusManager: FocusManager;
   private eventDispatcher: EventDispatcher;
 
-  constructor(parent: HTMLElement, version: string, options: BedevereAppOptions = {}) {
+  constructor(parent: HTMLElement, version: string, options: BedevereAppOptions) {
     this.options = {
-      theme: "dark",
       showLeftPanel: true,
       statusBarVisible: true,
       ...options,
@@ -146,10 +159,18 @@ export class BedevereApp implements EventHandler {
     this.container.className = "bedevere-app";
     this.setupTheme();
 
-    // Default to in-browser DuckDB-WASM when the embedder didn't supply
-    // a backend. Hosts that bring their own (bedevere-desktop's
-    // IpcBackend, future remote backends) pass it via options.
-    this.backend = options.backend ?? new DuckDBService();
+    // The embedder owns the engine. There is no built-in default so the
+    // app shell stays free of any hard DuckDB-WASM dependency — the web
+    // app passes a DuckDBService, the desktop passes an IpcBackend.
+    if (!options.backend) {
+      throw new Error(
+        "BedevereApp requires options.backend. For the in-browser default, " +
+          'import { DuckDBService } from "@kolistat/bedevere-wise/duckdb" and ' +
+          "pass `new DuckDBService()`; or supply your own Backend " +
+          "(IpcBackend, a remote relay, …).",
+      );
+    }
+    this.backend = options.backend;
     // Default to the browser File System Access API. Desktop / future
     // remote hosts substitute an IpcFileSource so picks go through
     // the native OS dialog.
@@ -158,14 +179,15 @@ export class BedevereApp implements EventHandler {
 
     // Initialize persistence, view management, and import service.
     // DuckDBExtensionLoader is DuckDB-WASM-specific (INSTALL FROM URL is
-    // a WASM-only concept) and only runs when the backend is the
-    // bundled DuckDBService. Other backends (IpcBackend, …) are
-    // responsible for loading their own extensions on the host side
-    // before BedevereApp constructs; `initAsync` skips the WASM
-    // extension probe when the backend isn't DuckDBService.
+    // a WASM-only concept) and only runs against the bundled DuckDBService.
+    // Gate on the backend's `id` marker rather than `instanceof DuckDBService`
+    // so this module never references the DuckDBService value (which would
+    // drag the WASM worker chain back into the static graph). Other backends
+    // (IpcBackend, …) load their own extensions host-side before BedevereApp
+    // constructs; `initAsync` skips the WASM extension probe for them.
     this.persistenceService = persistenceService;
     this.extensionLoader =
-      this.backend instanceof DuckDBService ? new DuckDBExtensionLoader(this.backend) : null;
+      this.backend.id === "duckdb-wasm" ? new DuckDBExtensionLoader(this.backend) : null;
     this.fileImportService = new FileImportService(this.backend);
     this.aliasManager = new AliasManager(this.backend);
 
@@ -194,9 +216,9 @@ export class BedevereApp implements EventHandler {
         "SELECT * FROM read_xlsx('__probe_nonexistent__.xlsx') LIMIT 0",
       ]);
 
-      // stats_duck (ggsql VISUALIZE parser). URL resolution is shared with
-      // the /embed bootstrap via resolveStatsDuckUrl so the two never drift —
-      // see .env.example for the local-build setup.
+      // stats_duck (ggsql VISUALIZE parser + stats table functions). URL
+      // resolution is shared with the /embed bootstrap via resolveStatsDuckUrl
+      // so the two never drift — see .env.example for the local-build setup.
       const statsDuckUrl = resolveStatsDuckUrl();
       const installOk = await this.extensionLoader.tryLoad("stats_duck", statsDuckUrl);
       if (!installOk) {
@@ -233,17 +255,32 @@ export class BedevereApp implements EventHandler {
         }
       }
 
-      // Register extension-based handlers (they self-check if extension loaded)
-      this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
-      this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
     }
+    // Excel + Stat handlers register regardless of backend: on DuckDB-WASM
+    // they gate on the loaded extension; on IPC (extensionLoader null) they
+    // defer to the host's native read_xlsx / read_stat. Without registering
+    // them for IPC, the desktop had no handler for xlsx / xpt / sav / sas7bdat / dta
+    // (drag-dropped stat files hit "No handler registered for file type").
+    this.fileImportService.register(new ExcelFormatHandler(this.extensionLoader));
+    this.fileImportService.register(new StatFormatHandler(this.extensionLoader));
     // HTML import is pure DOM parsing in the main thread — no extension required.
     this.fileImportService.register(new HtmlFormatHandler());
 
     // Restore app settings
     const settings = this.persistenceService.loadAppSettings();
-    if (settings.theme && settings.theme !== "auto") {
-      this.setTheme(settings.theme);
+    // Theme: new family/mode keys win; a legacy single `theme` value migrates
+    // (light/dark/auto → Paper; classic-* → Tokyonight). Only apply when it
+    // differs from what the constructor already resolved, and only persist via
+    // setThemeSelection (which writes the new keys).
+    const persisted = themeSelectionFromSettings(settings);
+    if (!this.options.theme) {
+      this.setThemeSelection(persisted);
+      // Mirror onto this local snapshot too: the onboarding-flag save a few
+      // lines below persists this same `settings` object, and without this
+      // it would clobber what setThemeSelection just wrote (loaded/saved on
+      // its own fresh copy) back to whatever was on disk before this call.
+      settings.themeFamily = persisted.family;
+      settings.themeMode = persisted.mode;
     }
     if (settings.panelMinimized && this.leftPanel && !this.leftPanel.getIsMinimized()) {
       this.leftPanel.toggleMinimize();
@@ -267,6 +304,13 @@ export class BedevereApp implements EventHandler {
       this.persistenceService.saveAppSettings(settings);
     } else {
       this.helpPanel.show("import");
+      if (shouldShowDesktopHint(settings, this.backend.id)) {
+        renderDesktopHint(this.container, DESKTOP_DOWNLOAD_URL, () => {
+          const s = this.persistenceService.loadAppSettings();
+          s.hasSeenDesktopHint = true;
+          this.persistenceService.saveAppSettings(s);
+        });
+      }
     }
   }
 
@@ -286,18 +330,18 @@ export class BedevereApp implements EventHandler {
     return this.focusManager;
   }
 
-  public setTheme(theme: "light" | "classic-light" | "dark" | "classic-dark"): void {
-    this.container.classList.remove(`bedevere-app--${this.theme}`);
-    document.body.classList.remove(`theme-${this.theme}`);
-
-    this.theme = theme;
-    this.container.classList.add(`bedevere-app--${this.theme}`);
-    document.body.classList.add(`theme-${this.theme}`);
-
-    // Persist theme setting
+  public setThemeSelection(selection: ThemeSelection): void {
+    this.themeSelection = selection;
+    this.theme = resolveThemeVariant(selection, this.systemPrefersDark());
+    applyThemeClasses(this.container, this.theme);
     const settings = this.persistenceService.loadAppSettings();
-    settings.theme = theme;
+    settings.themeFamily = selection.family;
+    settings.themeMode = selection.mode;
     this.persistenceService.saveAppSettings(settings);
+  }
+
+  public setTheme(theme: ResolvedTheme): void {
+    this.setThemeSelection(splitResolvedTheme(theme));
   }
 
   public showMessage(
@@ -398,16 +442,11 @@ export class BedevereApp implements EventHandler {
       },
       onRecentFolderClick: (id: string) => this.leftPanel?.openRecentFolder(id),
       supportedFormats: this.fileImportService.getSupportedExtensions(),
-      initialTheme: this.persistenceService.loadAppSettings().theme ?? "auto",
-      onThemeChange: (theme) => {
-        const resolved = theme === "auto" ? this.detectTheme() : theme;
-        this.setTheme(resolved);
-        // setTheme persists the resolved value; re-save to preserve "auto"
-        // intent so reloads keep following OS preference.
-        const s = this.persistenceService.loadAppSettings();
-        s.theme = theme;
-        this.persistenceService.saveAppSettings(s);
-      },
+      // Live getter (see HelpPanel.HelpPanelOptions.getThemeSelection) so the
+      // Settings tab reflects the *current* selection on every open, not just
+      // whatever was persisted when this HelpPanel was constructed.
+      getThemeSelection: () => this.themeSelection,
+      onThemeSelectionChange: (selection) => this.setThemeSelection(selection),
       onResetKeymap: () => keymapService.resetToDefaults(),
       onClearAllData: () => this.persistenceService.clearAll(),
       getCopyOptions: () => {
@@ -605,28 +644,29 @@ export class BedevereApp implements EventHandler {
   }
 
   private setupTheme(): void {
-    this.theme = this.options.theme === "auto" ? this.detectTheme() : this.options.theme || "dark";
-    this.container.classList.add(`bedevere-app--${this.theme}`);
-    document.body.classList.add(`theme-${this.theme}`);
+    // Explicit option wins (legacy single-value contract); otherwise Paper+Auto.
+    this.themeSelection = this.options.theme
+      ? themeSelectionFromLegacy(this.options.theme)
+      : { family: "paper", mode: "auto" };
+    this.theme = resolveThemeVariant(this.themeSelection, this.systemPrefersDark());
+    applyThemeClasses(this.container, this.theme);
   }
 
-  private detectTheme(): "light" | "dark" {
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      return "dark";
-    }
-    return "light";
+  private systemPrefersDark(): boolean {
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
   }
 
   private setupEventSystem(): void {
     // Register BedevereApp as a global event handler
     this.eventDispatcher.addGlobalEventHandler(this);
 
-    // Theme change detection
-    if (this.options.theme === "auto") {
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-        this.setTheme(e.matches ? "dark" : "light");
-      });
-    }
+    // Follow OS light/dark while mode is "auto" (any family).
+    window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if (this.themeSelection.mode === "auto") {
+        this.theme = resolveThemeVariant(this.themeSelection, this.systemPrefersDark());
+        applyThemeClasses(this.container, this.theme);
+      }
+    });
 
     // Body-level drag-drop: users can drop files anywhere on the page as a
     // shortcut, without opening Help → Import. The files route to ControlPanel
@@ -752,7 +792,6 @@ export class BedevereApp implements EventHandler {
     const HELP_TAB_COMMANDS: Array<[id: string, shellName: string, tab: HelpPanelTab, title: string]> = [
       ["help.howto",     "how-to",    "howto",     "Open How-To"],
       ["help.shortcuts", "shortcuts", "shortcuts", "Open Shortcuts"],
-      ["help.feedback",  "feedback",  "feedback",  "Open Feedback"],
       ["help.about",     "about",     "about",     "Open About"],
     ];
     for (const [id, shellName, tab, title] of HELP_TAB_COMMANDS) {
@@ -879,27 +918,48 @@ export class BedevereApp implements EventHandler {
       id: "view.setTheme",
       shellName: "theme",
       title: "Set Theme",
-      description: "Set light / dark / auto",
+      description: "Set the theme: a family (paper / tokyonight / github), a mode (light / dark / auto), or a full variant",
       category: "View",
       parameters: [
         {
           name: "theme",
           type: "string",
           required: true,
-          description: "light | classic-light | dark | classic-dark | auto",
-          options: () => ["light", "classic-light", "dark", "classic-dark", "auto"],
+          description: "paper | tokyonight | github | light | dark | auto | classic-light | classic-dark | github-light | github-dark",
+          options: () => ["paper", "tokyonight", "github", "light", "dark", "auto",
+                          "classic-light", "classic-dark", "github-light", "github-dark"],
         },
       ],
       execute: (params) => {
-        const choice = params?.theme as "light" | "classic-light" | "dark" | "classic-dark" | "auto" | undefined;
-        if (!choice || !["light", "classic-light", "dark", "classic-dark", "auto"].includes(choice)) {
-          throw new Error(".theme requires one of: light, classic-light, dark, classic-dark, auto");
+        const choice = params?.theme as string | undefined;
+        const FAMILIES = ["paper", "tokyonight", "github"] as const;
+        const MODES = ["light", "dark", "auto"] as const;
+        const VARIANTS = ["classic-light", "classic-dark", "github-light", "github-dark"] as const;
+        if (!choice) throw new Error(".theme requires a family (paper/tokyonight/github), a mode (light/dark/auto), or a variant");
+        if ((FAMILIES as readonly string[]).includes(choice)) {
+          this.setThemeSelection({ family: choice as ThemeFamily, mode: this.themeSelection.mode });
+        } else if ((MODES as readonly string[]).includes(choice)) {
+          this.setThemeSelection({ family: this.themeSelection.family, mode: choice as ThemeMode });
+        } else if ((VARIANTS as readonly string[]).includes(choice)) {
+          this.setThemeSelection(themeSelectionFromLegacy(choice));
+        } else {
+          throw new Error(`.theme: unknown value '${choice}'`);
         }
-        const resolved = choice === "auto" ? this.detectTheme() : choice;
-        this.setTheme(resolved);
-        const s = this.persistenceService.loadAppSettings();
-        s.theme = choice;
-        this.persistenceService.saveAppSettings(s);
+        this.showMessage(`theme: ${this.themeSelection.family} / ${this.themeSelection.mode}`, "success");
+      },
+    });
+
+    commandRegistry.register({
+      id: "view.createEmbed",
+      shellName: "embed",
+      title: "Create Embed",
+      description: "Compose an embeddable URL + <iframe> for the current query",
+      category: "View",
+      execute: () => {
+        EmbedBuilderDialog.show({
+          query: this.tabManager.getSqlEditor()?.getQuery() ?? "",
+          theme: this.theme,
+        });
       },
     });
 
@@ -1506,10 +1566,16 @@ export class BedevereApp implements EventHandler {
       switch (key) {
         case "theme": {
           const v = String(raw);
-          if (!["light", "classic-light", "dark", "classic-dark", "auto"].includes(v))
-            throw new Error(`theme must be light|classic-light|dark|classic-dark|auto, got '${v}'`);
-          settings.theme = v as "light" | "classic-light" | "dark" | "classic-dark" | "auto";
-          this.setTheme(v === "auto" ? this.detectTheme() : (v as "light" | "classic-light" | "dark" | "classic-dark"));
+          if (!["light", "classic-light", "dark", "classic-dark", "github-light", "github-dark", "auto"].includes(v))
+            throw new Error(`theme must be light|classic-light|dark|classic-dark|github-light|github-dark|auto, got '${v}'`);
+          // Route through the family/mode model (the source of truth now);
+          // mirror onto the local `settings` snapshot so the unconditional
+          // saveAppSettings below doesn't clobber what setThemeSelection
+          // just persisted.
+          const selection = themeSelectionFromLegacy(v);
+          this.setThemeSelection(selection);
+          settings.themeFamily = selection.family;
+          settings.themeMode = selection.mode;
           updates.push(`theme=${v}`);
           break;
         }

@@ -73,7 +73,7 @@ export class EmbedResultPanel {
     this.surface.appendChild(banner);
   }
 
-  public async showResult(provider: DuckDBDataProvider, _name: string): Promise<void> {
+  public async showResult(provider: DuckDBDataProvider): Promise<void> {
     this.disposeCurrent();
     this.surface.textContent = "";
 
@@ -118,7 +118,7 @@ export class EmbedResultPanel {
    * so this method's first call is what loads the chart bundle —
    * downstream pages that never run VISUALIZE pay nothing for it.
    */
-  public async showChart(visualizeResult: VisualizeResult, _name: string): Promise<void> {
+  public async showChart(visualizeResult: VisualizeResult): Promise<void> {
     this.disposeCurrent();
     this.surface.textContent = "";
 

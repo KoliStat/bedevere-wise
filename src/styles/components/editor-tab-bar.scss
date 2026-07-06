@@ -48,12 +48,19 @@
     }
 
     &--active {
-      background: var(--bg);
-      color: var(--fg);
-      // Blue accent on the top edge to match the dialog convention.
-      box-shadow: inset 0 2px 0 0 var(--blue);
+      // Duck-gold chip — same treatment as the TabManager's active tab,
+      // so both tab rows read as one visual language.
+      background: var(--duck);
+      color: var(--duck-ink);
 
-      .editor-tab-bar__close { opacity: 1; }
+      &:hover { background: var(--duck); color: var(--duck-ink); }
+
+      .editor-tab-bar__name { font-weight: 600; }
+
+      .editor-tab-bar__close {
+        opacity: 1;
+        color: var(--duck-ink);
+      }
     }
   }
 

@@ -3,17 +3,14 @@
  *
  * The same Bedevere UI works against multiple Backend implementations:
  *
- *   - DuckDBService — DuckDB-WASM in the browser (the default, ships
- *     with the web app at bedeverewise.app and any consumer importing
- *     `@kolistat/bedevere-wise` and constructing BedevereApp
- *     without specifying a backend).
+ *   - DuckDBService — DuckDB-WASM in the browser. The web app at
+ *     bedeverewise.app injects it, as does most any consumer importing
+ *     `@kolistat/bedevere-wise`; BedevereApp now requires a backend
+ *     explicitly (there is no built-in default).
  *   - IpcBackend — talks to a native DuckDB sitting in a separate
  *     process over a localhost WebSocket. Used by bedevere-desktop
- *     (C++ shell) and any future host process — `pip install
- *     bedevere-py`, `install.packages("bedeverer")`, a remote DuckDB
- *     fronted by a relay.
- *   - MockBackend (test only) — short-circuits queries with canned
- *     results for component tests.
+ *     (C++ shell); a future host (a Python or R kernel, a remote
+ *     DuckDB fronted by a relay) would slot in the same way.
  *
  * Whatever engine sits behind the Backend, the contract assumes
  * DuckDB-flavored SQL plus the C Data Interface (Arrow) for results
@@ -36,7 +33,7 @@ export interface Backend {
    * Stable identifier for the backend kind. Used for diagnostics +
    * conditional behavior on the caller side ("only flip on the Arrow-
    * streamy path when backend.id === 'ipc'"). Should be a short
-   * lowercase token: `"duckdb-wasm"`, `"ipc"`, `"mock"`, etc.
+   * lowercase token: `"duckdb-wasm"`, `"ipc"`, etc.
    */
   readonly id: string;
 
@@ -162,8 +159,14 @@ export interface Backend {
    * DuckDBDataProtocol.HTTP). The URL must be reachable from wherever
    * the backend lives — a desktop backend won't necessarily resolve
    * the same URLs a browser can.
+   *
+   * `sheet` is an optional worksheet selector for multi-sheet `.xlsx`
+   * workbooks. The out-of-process host forwards it to `read_xlsx`'s
+   * `sheet=` argument so the chosen sheet is imported; backends that
+   * decode bytes in-process (DuckDB-WASM) read sheets through
+   * registerFileBuffer + a SQL `sheet=` instead and ignore it here.
    */
-  registerFileURL(name: string, url: string): Promise<void>;
+  registerFileURL(name: string, url: string, sheet?: string): Promise<void>;
 
   /**
    * Register an in-memory text blob as a virtual file. Backends that

@@ -100,7 +100,7 @@ export const exportAsHTML = async (
     headers.unshift("Index");
   }
 
-  const header = headers.map((header) => `<th style="background-color: #f2f2f2; padding: 8px; text-align: left;">${header}</th>`).join("");
+  const header = headers.map((header) => `<th style="background-color: #efece1; padding: 8px; text-align: left;">${header}</th>`).join(""); // paper-raised; exported HTML is standalone, so a literal (not a var)
   const thead = `<thead><tr>${header}</tr></thead>`;
 
   // Create HTML table

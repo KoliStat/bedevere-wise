@@ -7,17 +7,19 @@
  * bootstrap so the two paths can never drift — if only one of them resolved
  * the URL, the embed could silently load a different (or no) extension.
  *
- * `VITE_STATS_DUCK_URL` is inlined at build time (see `.env.example`): it can
- * be absolute (the published GitHub Pages repo, used as the fallback) or
- * page-relative. Page-relative paths get `window.location.origin` prefixed
- * because DuckDB-WASM's `INSTALL … FROM` requires an absolute URL. In
- * production the same-origin bundled build under
- * `public/extensions/stats-duck/...` is served, so the embed loads it from
- * the same Cloudflare origin it is framed from.
+ * The default is the bundled copy committed under
+ * `public/extensions/stats-duck/`, served same-origin at
+ * `/extensions/stats-duck` by the dev server and the production build alike
+ * (the build copies it into `dist/`; Cloudflare serves it from the edge
+ * cache — no external repository to be down or rate-limited).
+ * `VITE_STATS_DUCK_URL` (inlined at build time, see `.env.example`)
+ * overrides it, absolute or page-relative. Page-relative paths (starting
+ * `/`) get `window.location.origin` prefixed because DuckDB-WASM's
+ * `INSTALL … FROM` requires an absolute URL.
  */
 export function resolveStatsDuckUrl(): string {
   const raw =
     (import.meta.env.VITE_STATS_DUCK_URL as string | undefined) ||
-    "https://kolistat.github.io/the-stats-duck";
+    "/extensions/stats-duck";
   return raw.startsWith("/") ? `${window.location.origin}${raw}` : raw;
 }

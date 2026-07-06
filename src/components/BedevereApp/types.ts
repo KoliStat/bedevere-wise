@@ -13,8 +13,6 @@ export interface EventHandler {
   // Keyboard events
   handleKeyDown?(event: KeyboardEvent): Promise<boolean>;
   handleKeyUp?(event: KeyboardEvent): Promise<boolean>;
-  handleKeyPress?(event: KeyboardEvent): Promise<boolean>;
-  handleInput?(event: InputEvent): Promise<boolean>;
 
   // Focus events
   handleFocus?(event: FocusEvent): Promise<boolean>;

@@ -1,5 +1,3 @@
-import { getThemeColors, ThemeColors } from "./utils/theme";
-
 export const DEFAULT_MAX_HEIGHT = Number.MAX_SAFE_INTEGER;
 export const DEFAULT_MAX_WIDTH = Number.MAX_SAFE_INTEGER;
 
@@ -51,12 +49,3 @@ export const DEFAULT_INITIAL_CACHE_SIZE = 200;
 export const DEFAULT_CACHE_CHUNK_SIZE = 50;
 export const DEFAULT_MAX_CACHE_SIZE = 1000;
 export const DEFAULT_CACHE_TIME_TO_LIVE = 1000 * 60 * 5; // 5 minutes
-
-/**
- * Returns the full theme-aware defaults object. This is cached inside
- * {@link getThemeColors} and invalidated on theme change, so calling this
- * per-cell is cheap.
- */
-export function getThemeDefaults(): ThemeColors {
-  return getThemeColors();
-}

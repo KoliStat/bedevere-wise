@@ -1,17 +1,7 @@
 import type { Backend } from "../Backend";
 import { SupportedFileType } from "../FileTreeTypes";
-import { quoteIdent } from "../sqlIdent";
+import { quoteIdent, quoteLiteral } from "../sqlIdent";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
-
-/**
- * Quote a string literal for safe interpolation into a SQL statement.
- * Single quotes are doubled per the SQL standard; we control the inputs
- * (registered filename + caller-chosen delimiter) but defensive quoting
- * keeps the code resilient to filenames with apostrophes etc.
- */
-function quoteLit(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
 
 /**
  * Resilient CSV-text → table import. Used by `CsvFormatHandler` for
@@ -47,7 +37,7 @@ export async function importCsvText(
 
   const baseOptions: Record<string, string> = {
     header: opts?.hasHeader === false ? "false" : "true",
-    delim: quoteLit(opts?.delimiter ?? ","),
+    delim: quoteLiteral(opts?.delimiter ?? ","),
     sample_size: "-1",
   };
 
@@ -57,7 +47,7 @@ export async function importCsvText(
       .join(", ");
     return (
       `CREATE TABLE ${quoteIdent(tableName)} AS ` +
-      `SELECT * FROM read_csv_auto(${quoteLit(effectiveName)}, ${optsSql})`
+      `SELECT * FROM read_csv_auto(${quoteLiteral(effectiveName)}, ${optsSql})`
     );
   };
 

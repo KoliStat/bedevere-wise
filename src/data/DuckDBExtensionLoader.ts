@@ -1,29 +1,32 @@
-import { DuckDBService } from "./DuckDBService";
+// Types only: the loader runs `INSTALL`/`LOAD` via `executeQuery`, which is
+// a Backend method. Typing against the Backend interface (not DuckDBService)
+// keeps the DuckDB-WASM worker chain out of the static graph of anything
+// that imports the loader (e.g. BedevereApp). Construction is still gated on
+// `backend.id === "duckdb-wasm"` by the caller, since INSTALL FROM URL is a
+// WASM-only concept.
+import type { Backend } from "./Backend";
 
 export class DuckDBExtensionLoader {
   private loaded: Set<string> = new Set();
-  private duckDBService: DuckDBService;
+  private backend: Backend;
   private customRepository?: string;
 
-  constructor(duckDBService: DuckDBService, customRepository?: string) {
-    this.duckDBService = duckDBService;
+  constructor(backend: Backend, customRepository?: string) {
+    this.backend = backend;
     this.customRepository = customRepository;
   }
 
   /**
-   * Try to install and load a DuckDB extension.
-   * Returns true if the extension loaded successfully, false otherwise.
-   * Failures are silent — the extension is simply marked as unavailable.
-   */
-  /**
-   * Try to install and load a DuckDB extension.
+   * Try to install and load a DuckDB extension. Returns true if it loaded,
+   * false otherwise — failures are silent (the extension is just marked
+   * unavailable).
    * @param probeQueries Optional SQL queries to verify functions work (catches WASM runtime errors)
    */
   public async tryLoad(name: string, source?: string, probeQueries?: string[]): Promise<boolean> {
     try {
       // If a custom repository is configured, set it before installing
       if (this.customRepository && !source) {
-        await this.duckDBService.executeQuery(
+        await this.backend.executeQuery(
           `SET custom_extension_repository = '${this.customRepository}'`
         );
       }
@@ -31,8 +34,8 @@ export class DuckDBExtensionLoader {
       const installCmd = source
         ? `INSTALL ${name} FROM '${source}'`
         : `INSTALL ${name}`;
-      await this.duckDBService.executeQuery(installCmd);
-      await this.duckDBService.executeQuery(`LOAD ${name}`);
+      await this.backend.executeQuery(installCmd);
+      await this.backend.executeQuery(`LOAD ${name}`);
       this.loaded.add(name);
 
       if (import.meta.env.DEV) {
@@ -46,7 +49,7 @@ export class DuckDBExtensionLoader {
       if (probeQueries) {
         for (const probe of probeQueries) {
           try {
-            await this.duckDBService.executeQuery(probe);
+            await this.backend.executeQuery(probe);
           } catch (probeError) {
             const msg = probeError instanceof Error ? probeError.message : String(probeError);
             const isWasmCrash =

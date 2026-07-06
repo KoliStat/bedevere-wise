@@ -1,0 +1,202 @@
+// "Create embed" modal — shares the overlay / accent / typography of the
+// save-query + hide-columns dialogs so the modal family feels like one.
+
+.embed-builder-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.embed-builder {
+  background: var(--bg-float);
+  color: var(--fg);
+  border: 1px solid var(--rule);
+  border-top: 3px solid var(--blue);
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--font-sans);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  &__title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    font-family: var(--font-mono);
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 2px 8px;
+    line-height: 1;
+
+    &:hover {
+      background: var(--bg-highlight);
+      color: var(--fg);
+    }
+  }
+
+  &__body {
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  &__label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+
+  &__input,
+  &__select {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    width: 100%;
+    box-sizing: border-box;
+
+    &:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+  }
+
+  &__textarea {
+    resize: vertical;
+  }
+
+  // Native caret sits flush against the border; swap in a custom chevron
+  // with breathing room on the right. Same two-gradient technique as
+  // .sql-editor__indent-select (sql-editor.scss) — colors via
+  // var(--fg-muted) instead of a hardcoded SVG stroke, so the caret
+  // follows the theme. Box metrics (padding-right/appearance/min-height)
+  // stay this dialog's own.
+  &__select {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 32px;
+    padding-right: 28px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--fg-muted) 50%),
+                      linear-gradient(135deg, var(--fg-muted) 50%, transparent 50%);
+    background-position: calc(100% - 10px) 50%, calc(100% - 6px) 50%;
+    background-size: 4px 4px;
+    background-repeat: no-repeat;
+  }
+
+  &__note {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--fg-muted);
+  }
+
+  &__row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  &__checkbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    // Match the select's height so the two controls' centers line up when
+    // the row bottom-aligns them.
+    min-height: 32px;
+    font-size: 12px;
+    color: var(--fg);
+    font-family: var(--font-mono);
+    cursor: pointer;
+  }
+
+  &__output {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+  }
+
+  &__output-label {
+    font-size: 12px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+  }
+
+  &__output-text {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  &__btn {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--bg-highlight);
+      border-color: var(--border-strong);
+    }
+
+    &--secondary {
+      align-self: flex-start;
+    }
+
+    &--primary {
+      background: var(--blue);
+      color: var(--bg);
+      border-color: var(--blue);
+
+      &:hover:not(:disabled) {
+        background: var(--fg);
+        border-color: var(--fg);
+      }
+    }
+  }
+}

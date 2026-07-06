@@ -1,12 +1,6 @@
 import { BedevereAppMessageType } from "../BedevereApp/BedevereApp";
 import { escapeHtml } from "../../utils/html";
-
-const ICONS: Record<BedevereAppMessageType, string> = {
-  error: "\u2716", // ✖
-  warning: "\u26A0", // ⚠
-  success: "\u2713", // ✓
-  info: "\u2139", // ℹ
-};
+import { MESSAGE_ICONS, ICON_X } from "../icons";
 
 const LABELS: Record<BedevereAppMessageType, string> = {
   error: "ERROR",
@@ -132,7 +126,7 @@ export class MessagePopover {
   }
 
   private renderHTML(args: MessagePopoverArgs): string {
-    const icon = ICONS[args.type] || "";
+    const icon = MESSAGE_ICONS[args.type] || "";
     const label = args.title || LABELS[args.type];
     const time = formatTime(args.timestamp);
     const message = escapeHtml(args.message);
@@ -143,7 +137,7 @@ export class MessagePopover {
         <span class="message-popover__icon">${icon}</span>
         <span class="message-popover__label">${escapeHtml(label)}</span>
         <span class="message-popover__time">${escapeHtml(time)}</span>
-        <button class="message-popover__close" title="Close (Esc)" aria-label="Close">\u2715</button>
+        <button class="message-popover__close" title="Close (Esc)" aria-label="Close">${ICON_X}</button>
       </div>
       <div class="message-popover__body">
         <div class="message-popover__message">${message}</div>

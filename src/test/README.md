@@ -28,7 +28,7 @@ src/test/
 ### Development Mode
 
 ```bash
-npm run test
+bun run test
 ```
 
 Runs tests in watch mode, re-running when files change.
@@ -36,7 +36,7 @@ Runs tests in watch mode, re-running when files change.
 ### Run Once
 
 ```bash
-npm run test:run
+bun run test:run
 ```
 
 Runs all tests once and exits.
@@ -44,7 +44,7 @@ Runs all tests once and exits.
 ### UI Mode
 
 ```bash
-npm run test:ui
+bun run test:ui
 ```
 
 Opens the Vitest UI for interactive test development.
@@ -52,7 +52,7 @@ Opens the Vitest UI for interactive test development.
 ### Coverage Report
 
 ```bash
-npm run test:coverage
+bun run test:coverage
 ```
 
 Generates a coverage report for all tests.

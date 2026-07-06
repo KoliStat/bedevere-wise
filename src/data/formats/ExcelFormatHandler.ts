@@ -2,16 +2,19 @@ import type { Backend } from "../Backend";
 import { DuckDBExtensionLoader } from "../DuckDBExtensionLoader";
 import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
+import { quoteIdent } from "../sqlIdent";
 
 export class ExcelFormatHandler implements FormatHandler {
-  private extensionLoader: DuckDBExtensionLoader;
+  private extensionLoader: DuckDBExtensionLoader | null;
 
-  constructor(extensionLoader: DuckDBExtensionLoader) {
+  constructor(extensionLoader: DuckDBExtensionLoader | null) {
     this.extensionLoader = extensionLoader;
   }
 
   canHandle(fileType: SupportedFileType): boolean {
-    return (fileType === "xlsx" || fileType === "xls") && this.extensionLoader.isLoaded("excel");
+    // DuckDB-WASM gates on the loaded extension; an IPC backend (loader
+    // null) defers to the host's native read_xlsx.
+    return (fileType === "xlsx" || fileType === "xls") && (this.extensionLoader?.isLoaded("excel") ?? true);
   }
 
   async import(file: File, tableName: string, backend: Backend, options?: ImportFileOptions): Promise<void> {
@@ -39,19 +42,19 @@ export class ExcelFormatHandler implements FormatHandler {
     const attempts: Array<{ label: string; sql: string }> = [
       {
         label: "read_xlsx",
-        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${fname}'${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}'${sheet})`,
       },
       {
         label: "read_xlsx ignore_errors",
-        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${fname}', ignore_errors=true${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}', ignore_errors=true${sheet})`,
       },
       {
         label: "read_xlsx all_varchar",
-        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM read_xlsx('${fname}', all_varchar=true${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}', all_varchar=true${sheet})`,
       },
       {
         label: "st_read",
-        sql: `CREATE OR REPLACE TABLE "${tableName}" AS SELECT * FROM st_read('${fname}'${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM st_read('${fname}'${sheet})`,
       },
     ];
 

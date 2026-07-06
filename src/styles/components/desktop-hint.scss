@@ -1,0 +1,44 @@
+// One-time "get the desktop app" hint — a small dismissible bar, bottom-right,
+// below the modal dialogs. Web app only (see desktopHint.ts).
+
+.desktop-hint {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9000; // under the dialogs (10001), over the app chrome
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  padding: 8px 12px;
+  background: var(--bg-float);
+  color: var(--fg);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--blue);
+  font-family: var(--font-sans);
+  font-size: 12px;
+
+  &__link {
+    color: var(--blue);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__dismiss {
+    background: none;
+    border: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    margin-left: auto;
+
+    &:hover {
+      color: var(--fg);
+    }
+  }
+}

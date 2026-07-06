@@ -10,7 +10,7 @@ Embeddable browser components for DuckDB-WASM-backed data exploration:
 
 These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). Also consumed by [tlf-studio](https://github.com/KoliStat/tlf-studio) for clinical-trial pipeline inspection.
 
-> **Status**: pre-stable. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes possible before `0.13.0`. Pin to an exact version in production.
+> **Status**: pre-1.0. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes are possible between `0.x` minor versions (the CHANGELOG flags them). Pin to an exact version in production.
 
 ## Install
 
@@ -25,7 +25,7 @@ bun add @duckdb/duckdb-wasm \
   vega-embed
 ```
 
-All peer deps are required if you `import` from the package's main entry today. See [Bundler compatibility](#bundler-compatibility) for the rationale and the planned UI/DuckDB entry split.
+All peer deps are required if you `import` from the package's main entry today. See [Bundler compatibility](#bundler-compatibility) for the rationale and the WASM-free entry split (`/ui`, `/app`, `/ipc`).
 
 ## Quick start
 
@@ -87,24 +87,45 @@ Components in this tier accept their dependencies via constructor; no module-lev
 
 The UI components (`SpreadsheetVisualizer`, `ColumnStatsVisualizer`, `ChartVisualizer`, `EmbedSqlEditor`) **have no hard dependency on DuckDB-WASM** — they consume the `DataProvider` interface and Vega specs respectively. A consumer can ignore `DuckDBService` / `DuckDBDataProvider` entirely and supply their own `DataProvider` over an alternative backend (HTTP API, native IPC, an in-memory pipeline, …).
 
-### App tier — not recommended for embedding
+### App-shell tier — `@kolistat/bedevere-wise/app`
 
-Top-level shells that compose the standalone web app: `BedevereApp`, `TabManager`, `ControlPanel`, `StatusBar`, `CommandBar`. They assume module-level singletons (`CommandRegistry`, `EnvironmentService`, `KeymapService`, `PersistenceService`) that aren't exposed cleanly via the package. Exported for completeness, but the embedding tier is the contract you want.
+The full standalone-app shell as composable pieces: `BedevereApp`, `TabManager`, `ControlPanel`, `StatusBar`, `CommandBar`, plus the `PersistenceService` singleton. `BedevereApp` is **backend-agnostic** — pass `options.backend` (there is no built-in default), so importing from `/app` pulls **no DuckDB-WASM**. Pair it with `/duckdb` for the in-browser engine, or hand it an `IpcBackend` / remote relay (this is exactly how bedevere-desktop drives the same UI against native DuckDB):
+
+```ts
+import { BedevereApp } from "@kolistat/bedevere-wise/app";
+import { DuckDBService } from "@kolistat/bedevere-wise/duckdb";
+import "@kolistat/bedevere-wise/style.css";
+
+const backend = new DuckDBService();
+await backend.initialize();
+const app = new BedevereApp(document.getElementById("app")!, "1.0.0", { backend });
+await app.initAsync();
+```
+
+These shells assume module-level singletons (`CommandRegistry`, `EnvironmentService`, `KeymapService`, `PersistenceService`) and expect one `BedevereApp` per page. If you only need a piece of the UI rather than the whole shell, prefer the component tier above.
 
 ## Theming
 
-The CSS uses tokyonight defaults wired to CSS custom properties. Override them in your own stylesheet, after importing the package CSS:
+The package ships four themes as CSS custom-property sets, selected by a single body class — exactly one is applied at a time:
+
+| Body class | Theme |
+| --- | --- |
+| `theme-dark` | GitHub-Dark — the default dark |
+| `theme-light` | Light (warm-neutral) |
+| `theme-classic-dark` | Tokyonight Storm |
+| `theme-classic-light` | Tokyonight Day |
+
+Override the tokens in your own stylesheet, after importing the package CSS (see `dist/style.css` for the full token list):
 
 ```css
-:root {
-  --bg: #fff;
-  --fg: #1a1a1a;
-  --magenta: #c0007a;
-  /* ... see dist/style.css for the full token list */
+body.theme-dark {
+  --bg: #1f1f1f;
+  --fg: #e1e4e8;
+  /* ... */
 }
 ```
 
-Body class `theme-light` / `theme-dark` triggers a re-render of theme-sensitive canvas surfaces (the spreadsheet repaints, the chart re-embeds with a matching Vega palette).
+Switching the body class re-renders theme-sensitive canvas surfaces (the spreadsheet repaints; the chart re-embeds with a matching Vega palette). `BedevereApp` manages this class for you and exposes `setTheme()`.
 
 ## Bundler compatibility
 
@@ -117,11 +138,19 @@ The package is **browser-only** and currently **Vite-friendly**. DuckDB-WASM, wh
 | Bun bundler / esbuild / Parcel | The `?url` suffix isn't resolved natively; needs custom plugins or loader config. Untested. |
 | SSR / Node / Bun runtime | Not supported. The DuckDB worker code requires browser APIs at module load. |
 
-If your stack can't handle `?url` and you only need the UI surfaces, the workaround today is to **omit `DuckDBService` / `DuckDBDataProvider` from your imports** — those are the chain that pulls in the worker URLs — and implement your own `DataProvider` over whatever backend you have. A future release will split the package into separate `/ui` and `/duckdb` entry points so the UI-only path doesn't drag DuckDB in at all.
+The `?url` worker chain lives **only** behind the `/duckdb` entry. If your bundler can't resolve `?url` (or you simply don't want DuckDB-WASM in your bundle), import from the WASM-free entries instead and bring your own engine:
+
+| Entry | Pulls DuckDB-WASM? | Use for |
+| --- | --- | --- |
+| `@kolistat/bedevere-wise/ui` | No | Individual UI components over your own `DataProvider`. |
+| `@kolistat/bedevere-wise/app` | No | The full app shell (`BedevereApp`) with an injected `Backend`. |
+| `@kolistat/bedevere-wise/duckdb` | **Yes** | The in-browser `DuckDBService` engine (the `?url` chain). |
+| `@kolistat/bedevere-wise/ipc` | No | `IpcBackend` for a native/remote DuckDB over WebSocket. |
+| `@kolistat/bedevere-wise` (root) | **Yes** | Back-compat barrel; re-exports `/duckdb`, so it pulls the chain. |
 
 ## Local development against this package
 
-The package's source lives in [bedevere-wise](https://github.com/KoliStat/bedevere-wise) on the `dev-0.12` branch. To hack on both this and a consumer at once:
+The package's source lives in [bedevere-wise](https://github.com/KoliStat/bedevere-wise) (active development happens on the current `dev-X.Y` branch). To hack on both this and a consumer at once:
 
 ```sh
 # in bedevere-wise/

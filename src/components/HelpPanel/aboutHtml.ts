@@ -1,3 +1,5 @@
+import { KOLISTAT_URL, DESKTOP_DOWNLOAD_URL, CONTACT_URL } from "../../appLinks";
+
 /**
  * Static HTML template for the About tab — version chip, "What's new"
  * highlights for the current release, shell intro, dependency list,
@@ -12,14 +14,15 @@
 export function renderAboutBody(version: string): string {
   return `
       <p class="help-panel__about-version">v${version}</p>
-      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, and CSV files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
+      <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, CSV, TSV, and JSON files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
       <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.13</h3>
+        <h3 class="help-panel__about-section-title">What's new in 0.14</h3>
         <ul class="help-panel__about-list">
-          <li><strong>Charts in <code>/embed</code>.</strong> The embed route now renders <code>VISUALIZE … DRAW</code> charts in addition to tables — same URL prefill protocol (<code>?dataset=…&amp;query=…</code>), same iframe height-report contract; chart data flows through the lazy-loaded <code>vega-embed</code> chunk so non-chart embeds stay slim.</li>
-          <li><strong>NPM package split.</strong> <code>@kolistat/bedevere-wise</code> now exposes <code>/ui</code> and <code>/duckdb</code> sub-entries. UI consumers (spreadsheet, column stats, chart, slim SQL editor) can import without dragging in the DuckDB-WASM worker URL chain — works in any browser bundler, not just Vite. The root entry still re-exports both for back-compat.</li>
-          <li><strong>Extractable <code>runVisualize</code> helper.</strong> The full <code>VISUALIZE … DRAW</code> pipeline (spec + layer SQL run + dataset materialization) is now a standalone helper exported from <code>/ui</code>. <code>TabManager</code> consumes it; embed consumes it; downstream tools (desktop, tlf-studio) can drive it against their own SQL executor.</li>
-          <li><strong>File export.</strong> <code>.export</code> now writes the whole table to <code>parquet</code> / <code>json</code> (any engine), plus <code>xpt</code> / <code>sav</code> / <code>por</code> / <code>sas7bdat</code> (SAS &amp; SPSS, when Stats Duck is loaded) — alongside the existing clipboard-friendly <code>csv</code> / <code>tsv</code> / <code>html</code> / <code>markdown</code> selection export.</li>
+          <li><strong>Embed builder.</strong> The <code>.embed</code> command opens a dialog that composes an <code>/embed</code> URL + <code>&lt;iframe&gt;</code> snippet from your query, a dataset URL, theme, and autorun — copy it straight into a blog or page.</li>
+          <li><strong>New themes.</strong> GitHub-Dark is the default dark theme; a Classic light and dark (Tokyonight Day / Storm) are selectable in Settings. Exactly one theme applies cleanly across every panel.</li>
+          <li><strong>Faster start-up.</strong> DuckDB-WASM now loads lazily — its worker bytes are fetched during init instead of up front, so the app appears sooner.</li>
+          <li><strong>Security hardening.</strong> A Content-Security-Policy now covers the app and the <code>/embed</code> route, and every generated query quotes table and column names so a crafted file can't break out of the SQL.</li>
+          <li><strong><code>table_one</code> &amp; stats fixed.</strong> The <code>stats_duck</code> aggregates (<code>table_one</code>, ANOVA, chi-square) work again in the browser after a WASM i64 ABI fix.</li>
         </ul>
       </div>
       <div class="help-panel__about-section">
@@ -35,7 +38,7 @@ export function renderAboutBody(version: string): string {
         <ul class="help-panel__about-list">
           <li><a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a> &mdash; in-browser SQL engine.</li>
           <li><a href="https://github.com/KoliStat/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a> &mdash; DuckDB extension that adds <code>VISUALIZE … DRAW</code> and stats helpers.</li>
-          <li><a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a> &mdash; SQL editor with autocomplete and tokyonight highlighting.</li>
+          <li><a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a> &mdash; SQL editor with autocomplete and theme-aware highlighting.</li>
           <li><a href="https://vega.github.io/vega-lite/" target="_blank" rel="noopener noreferrer">Vega-Lite</a> + <a href="https://github.com/vega/vega-embed" target="_blank" rel="noopener noreferrer">vega-embed</a> &mdash; chart rendering. Code-split: only loaded on first <code>VISUALIZE</code>.</li>
         </ul>
       </div>
@@ -45,8 +48,12 @@ export function renderAboutBody(version: string): string {
         <a href="https://github.com/KoliStat/bedevere-wise/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
         <span class="help-panel__about-separator">·</span>
         <a href="https://github.com/KoliStat/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+        <span class="help-panel__about-separator">·</span>
+        <a href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer">Download the desktop app</a>
+        <span class="help-panel__about-separator">·</span>
+        <a href="${CONTACT_URL}" target="_blank" rel="noopener noreferrer">Contact</a>
       </div>
-      <p class="help-panel__about-author">Made by <a href="https://github.com/KoliStat" target="_blank" rel="noopener noreferrer">KoliStat</a></p>
+      <p class="help-panel__about-author">Made by <a href="${KOLISTAT_URL}" target="_blank" rel="noopener noreferrer">KoliStat</a></p>
       <details class="help-panel__lore">
         <summary class="help-panel__lore-summary">Why a duck?</summary>
         <p class="help-panel__lore-body">

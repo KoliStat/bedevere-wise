@@ -1,5 +1,6 @@
 import { environmentService } from "../../data/environments/EnvironmentService";
 import type { Environment } from "../../data/environments/types";
+import { ICON_GLOBE, ICON_CHEVRON_DOWN, ICON_X } from "../icons";
 
 export interface EnvironmentSwitcherOptions {
   /**
@@ -51,7 +52,7 @@ export class EnvironmentSwitcher {
 
     const icon = document.createElement("span");
     icon.className = "env-switcher__icon";
-    icon.textContent = "🌐";
+    icon.innerHTML = ICON_GLOBE; // static literal from icons.ts, no user data
     icon.setAttribute("aria-hidden", "true");
     this.trigger.appendChild(icon);
 
@@ -61,7 +62,7 @@ export class EnvironmentSwitcher {
 
     const chevron = document.createElement("span");
     chevron.className = "env-switcher__chevron";
-    chevron.textContent = "▾";
+    chevron.innerHTML = ICON_CHEVRON_DOWN; // static literal, no user data
     chevron.setAttribute("aria-hidden", "true");
     this.trigger.appendChild(chevron);
 
@@ -195,7 +196,7 @@ export class EnvironmentSwitcher {
       deleteBtn.className = "env-switcher__action env-switcher__action--delete";
       deleteBtn.setAttribute("aria-label", `Delete ${env.name}`);
       deleteBtn.title = "Delete";
-      deleteBtn.textContent = "✕";
+      deleteBtn.innerHTML = ICON_X; // static literal, no user data
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.deleteEnv(env);

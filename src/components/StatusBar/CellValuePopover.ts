@@ -1,5 +1,6 @@
 import { ComplexKind } from "../../data/types";
 import { SpreadsheetOptions } from "../SpreadsheetVisualizer/types";
+import { ICON_X } from "../icons";
 
 export interface CellValuePopoverArgs {
   /** Column name, e.g. "stats". Becomes part of the popover title. */
@@ -110,7 +111,7 @@ export class CellValuePopover {
     close.className = "cell-value-popover__close";
     close.title = "Close (Esc)";
     close.setAttribute("aria-label", "Close");
-    close.textContent = "\u2715";
+    close.innerHTML = ICON_X; // static literal, no user data
     close.addEventListener("click", () => this.dismissByUser());
     header.appendChild(close);
 

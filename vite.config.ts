@@ -25,8 +25,18 @@ export default defineConfig(({ command }) => {
     },
     build: {
       outDir: "dist",
-      sourcemap: true,
+      // No source maps in the production app bundle — they bloat the deploy and
+      // expose source, and add nothing for the live site / embeds (a thrown
+      // error there is usually inside the third-party duckdb-wasm worker, which
+      // our maps don't cover anyway). The library build keeps maps for package
+      // consumers (desktop / tlf-studio).
+      sourcemap: false,
       target: "esnext",
+      // Drop Vite's inline modulepreload-polyfill <script>. It's the only
+      // inline script in the built HTML; removing it lets the CSP use a
+      // strict `script-src 'self'` (no 'unsafe-inline'). Native
+      // modulepreload is universal in the browsers this WASM app targets.
+      modulePreload: { polyfill: false },
       rollupOptions: {
         input: {
           main: resolve(__dirname, "index.html"),

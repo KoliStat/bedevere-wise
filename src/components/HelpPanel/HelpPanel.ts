@@ -6,15 +6,11 @@ import {
   keymapService,
   matchesBinding,
 } from "@/data/KeymapService";
-import {
-  FeedbackCategory,
-  isFeedbackConfigured,
-  submitFeedback,
-} from "@/data/FeedbackService";
 import { Command, commandRegistry } from "@/data/CommandRegistry";
 import { renderAboutBody } from "./aboutHtml";
 import {
   AUTO_IMPORT_THRESHOLD_PRESETS,
+  DEFAULT_AUTO_IMPORT_THRESHOLD,
   DATE_FORMAT_PRESETS,
   DATETIME_FORMAT_PRESETS,
   DECIMAL_PRESETS,
@@ -24,8 +20,9 @@ import {
   MIN_CELL_WIDTH_PRESETS,
 } from "./formatPresets";
 import { PENGUINS_TUTORIAL, TutorialNode } from "./tutorial";
+import { ICON_LOCK, ICON_SCALE } from "../icons";
 
-export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "feedback" | "settings" | "about";
+export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "settings" | "about";
 
 export interface HelpPanelOptions {
   version: string;
@@ -34,8 +31,14 @@ export interface HelpPanelOptions {
   onBrowseFolder?: () => void;
   onFilesReceived?: (files: File[]) => void | Promise<void>;
   supportedFormats?: string[];
-  initialTheme?: "light" | "classic-light" | "dark" | "classic-dark" | "auto";
-  onThemeChange?: (theme: "light" | "classic-light" | "dark" | "classic-dark" | "auto") => void;
+  // Live getter (not a captured value) — mirrors getCopyOptions below, so a
+  // hide()/show() rebuild always reflects the *current* selection, including
+  // theme changes made via the `.theme` shell command while the panel was
+  // closed. A one-time captured value would go stale the moment the theme
+  // changed through any path other than this panel's own buttons (found via
+  // Task 12's dialog walkthrough: Settings kept showing the boot-time mode).
+  getThemeSelection?: () => { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" };
+  onThemeSelectionChange?: (selection: { family: "paper" | "tokyonight" | "github"; mode: "light" | "dark" | "auto" }) => void;
   onResetKeymap?: () => void;
   onClearAllData?: () => Promise<void> | void;
   getCopyOptions?: () => { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" };
@@ -48,7 +51,7 @@ export interface HelpPanelOptions {
   onRecentFolderClick?: (id: string) => void;
 }
 
-const TAB_ORDER: HelpPanelTab[] = ["howto", "import", "shortcuts", "commands", "feedback", "settings", "about"];
+const TAB_ORDER: HelpPanelTab[] = ["howto", "import", "shortcuts", "commands", "settings", "about"];
 
 const SCOPE_LABELS: Record<string, string> = {
   global: "App",
@@ -184,7 +187,6 @@ export class HelpPanel {
     body.appendChild(this.buildImportBody());
     body.appendChild(this.buildShortcutsBody());
     body.appendChild(this.buildCommandsBody());
-    body.appendChild(this.buildFeedbackBody());
     body.appendChild(this.buildSettingsBody());
     body.appendChild(this.buildAboutBody());
     this.panel.appendChild(body);
@@ -221,7 +223,6 @@ export class HelpPanel {
       import: "Import",
       shortcuts: "Shortcuts",
       commands: "Commands",
-      feedback: "Feedback",
       settings: "Settings",
       about: "About",
     };
@@ -248,11 +249,11 @@ export class HelpPanel {
 
     body.innerHTML = `
       <p class="help-panel__lead">
-        \uD83D\uDC4B Welcome to <strong>Bedevere Wise</strong> &mdash; a local-first SQL data viewer.
+        Welcome to <strong>Bedevere Wise</strong> &mdash; a local-first SQL data viewer.
       </p>
 
       <div class="help-panel__callout help-panel__callout--privacy">
-        <div class="help-panel__callout-title">\uD83D\uDD12 Your data stays on your device</div>
+        <div class="help-panel__callout-title">${ICON_LOCK} Your data stays on your device</div>
         <p>
           All parsing and querying happens locally in your browser via <strong>DuckDB-WASM</strong>.
           No telemetry, no uploads, nothing crosses the network unless you explicitly fetch a remote file.
@@ -260,11 +261,13 @@ export class HelpPanel {
       </div>
 
       <div class="help-panel__callout help-panel__callout--deps">
-        <div class="help-panel__callout-title">\u2696\uFE0F Minimal dependencies</div>
+        <div class="help-panel__callout-title">${ICON_SCALE} Minimal dependencies</div>
         <p>
-          Built on three libraries:
+          Built on four libraries:
           <a href="https://duckdb.org/docs/api/wasm/overview" target="_blank" rel="noopener noreferrer">DuckDB-WASM</a>
           (SQL engine),
+          <a href="https://github.com/KoliStat/the-stats-duck" target="_blank" rel="noopener noreferrer">Stats Duck</a>
+          (DuckDB extension behind <code>VISUALIZE</code> + stats),
           <a href="https://codemirror.net/" target="_blank" rel="noopener noreferrer">CodeMirror 6</a>
           (editor), and
           <a href="https://vega.github.io/vega-lite/" target="_blank" rel="noopener noreferrer">Vega-Lite</a>
@@ -280,6 +283,7 @@ export class HelpPanel {
       <ol class="help-panel__steps">
         <li><strong>Drop a file</strong> &mdash; CSV, TSV, JSON, Parquet, Excel, SAS, Stata, SPSS &mdash; or use the <em>Browse</em> button.</li>
         <li><strong>Try a SQL query</strong> &mdash; press <kbd>Ctrl</kbd>+<kbd>E</kbd> for the editor; autocomplete knows your tables and columns.</li>
+        <li><strong>Use the command bar</strong> &mdash; the bar above the spreadsheet runs dot-commands (start with <code>.help</code>); plain lines run as SQL.</li>
         <li><strong>Save views &amp; queries</strong> &mdash; build up a workspace from the left panel.</li>
       </ol>
 
@@ -431,7 +435,7 @@ export class HelpPanel {
         Drag files here, or use the buttons below.
       </p>
       <p class="help-panel__import-formats">
-        Supported: ${formats.join(", ") || "CSV, TSV, JSON, Parquet, Excel, SAS, SPSS, Stata"}
+        Supported: ${formats.join(", ")}
       </p>
     `;
 
@@ -485,6 +489,13 @@ export class HelpPanel {
     actions.appendChild(folderBtn);
 
     body.appendChild(actions);
+
+    // Pointer to the command-bar import paths (remote URL + clipboard).
+    const moreHint = document.createElement("p");
+    moreHint.className = "help-panel__hint";
+    moreHint.innerHTML =
+      "Also from the command bar: <code>.fetch &lt;url&gt;</code> imports a remote CSV / JSON / Parquet / HTML file, and <code>.paste</code> imports an HTML table from your clipboard.";
+    body.appendChild(moreHint);
 
     // Recent folders shortcuts (only on browsers where the directory
     // handle could be persisted — `getRecentFolders` returns []
@@ -592,6 +603,8 @@ export class HelpPanel {
       // outside the keymap so not rebindable — show it read-only.
       if (scope === "global") {
         list.appendChild(this.buildStaticShortcutRow("Jump to tab N", "Alt+1 \u2026 Alt+9"));
+        list.appendChild(this.buildStaticShortcutRow("Cycle Help tabs", "Ctrl+Alt+\u2190 / \u2192"));
+        list.appendChild(this.buildStaticShortcutRow("Close this panel", "Esc"));
       }
 
       section.appendChild(list);
@@ -817,165 +830,6 @@ export class HelpPanel {
     }
   }
 
-  private buildFeedbackBody(): HTMLElement {
-    const body = document.createElement("div");
-    body.className = "help-panel__tab-body help-panel__tab-body--feedback";
-    this.tabBodies.set("feedback", body);
-
-    const configured = isFeedbackConfigured();
-
-    body.innerHTML = `
-      <p class="help-panel__lead">
-        Found a bug? Wanted feature? Just here to say hi? \u2014 send a note via the form
-        below, or email <a href="mailto:contact@bedeverewise.app">contact@bedeverewise.app</a>
-        directly. The form's email field is optional; leave it blank to stay anonymous.
-      </p>
-
-      ${
-        configured
-          ? ""
-          : `<div class="help-panel__callout help-panel__callout--deps">
-               <div class="help-panel__callout-title">Endpoint not configured</div>
-               <p>
-                 The feedback service URL hasn\u2019t been wired into this build (set
-                 <code>VITE_FEEDBACK_URL</code> at build time). Until it is, the form
-                 below falls back to opening your email client.
-               </p>
-             </div>`
-      }
-
-      <form class="help-panel__feedback-form" id="help-feedback-form" novalidate>
-        <label class="help-panel__feedback-row">
-          <span class="help-panel__feedback-label">Category</span>
-          <select class="help-panel__feedback-select" id="help-feedback-category">
-            <option value="bug">Bug</option>
-            <option value="feature">Feature request</option>
-            <option value="question">Question</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-
-        <label class="help-panel__feedback-row">
-          <span class="help-panel__feedback-label">Email <span class="help-panel__feedback-optional">(optional)</span></span>
-          <input class="help-panel__feedback-input" id="help-feedback-email" type="email"
-                 placeholder="you@example.com" autocomplete="email" />
-        </label>
-
-        <label class="help-panel__feedback-row help-panel__feedback-row--stack">
-          <span class="help-panel__feedback-label">Message</span>
-          <textarea class="help-panel__feedback-textarea" id="help-feedback-message"
-                    rows="6" maxlength="8000" required
-                    placeholder="What\u2019s on your mind?"></textarea>
-          <span class="help-panel__feedback-counter" id="help-feedback-counter">0 / 8000</span>
-        </label>
-
-        <!-- Honeypot — hidden from real users, bots fill it. -->
-        <label class="help-panel__feedback-honeypot" aria-hidden="true">
-          Don\u2019t fill this in:
-          <input type="text" id="help-feedback-honeypot" tabindex="-1" autocomplete="off" />
-        </label>
-
-        <div class="help-panel__feedback-actions">
-          <span class="help-panel__feedback-status" id="help-feedback-status"></span>
-          <button class="help-panel__feedback-submit" id="help-feedback-submit" type="submit">
-            Send
-          </button>
-        </div>
-      </form>
-    `;
-
-    this.wireFeedbackForm(body);
-    return body;
-  }
-
-  private wireFeedbackForm(body: HTMLElement): void {
-    const form = body.querySelector<HTMLFormElement>("#help-feedback-form");
-    const messageEl = body.querySelector<HTMLTextAreaElement>("#help-feedback-message");
-    const counterEl = body.querySelector<HTMLSpanElement>("#help-feedback-counter");
-    const statusEl = body.querySelector<HTMLSpanElement>("#help-feedback-status");
-    const submitBtn = body.querySelector<HTMLButtonElement>("#help-feedback-submit");
-    const categoryEl = body.querySelector<HTMLSelectElement>("#help-feedback-category");
-    const emailEl = body.querySelector<HTMLInputElement>("#help-feedback-email");
-    const honeypotEl = body.querySelector<HTMLInputElement>("#help-feedback-honeypot");
-    if (!form || !messageEl || !counterEl || !statusEl || !submitBtn || !categoryEl || !emailEl || !honeypotEl) {
-      return;
-    }
-
-    const updateCounter = (): void => {
-      counterEl.textContent = `${messageEl.value.length} / 8000`;
-    };
-    messageEl.addEventListener("input", updateCounter);
-    updateCounter();
-
-    const setStatus = (text: string, kind: "ok" | "error" | "info" | ""): void => {
-      statusEl.textContent = text;
-      statusEl.className = "help-panel__feedback-status";
-      if (kind) statusEl.classList.add(`help-panel__feedback-status--${kind}`);
-    };
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const message = messageEl.value.trim();
-      if (message.length === 0) {
-        setStatus("Message can\u2019t be empty.", "error");
-        messageEl.focus();
-        return;
-      }
-      const email = emailEl.value.trim();
-      const category = categoryEl.value as FeedbackCategory;
-
-      submitBtn.disabled = true;
-      setStatus("Sending\u2026", "info");
-
-      const result = await submitFeedback(
-        {
-          category,
-          message,
-          email: email || undefined,
-          honeypot: honeypotEl.value || undefined,
-        },
-        this.options.version,
-      );
-
-      submitBtn.disabled = false;
-
-      switch (result.kind) {
-        case "ok":
-          setStatus("Thanks \u2014 sent.", "ok");
-          form.reset();
-          updateCounter();
-          break;
-        case "rate-limited":
-          setStatus("Too many submissions in a row \u2014 wait a moment, then retry.", "error");
-          break;
-        case "validation-error":
-          setStatus(`Rejected: ${result.message}`, "error");
-          break;
-        case "network-error":
-          setStatus(`Network error: ${result.message}. Try again, or email me directly.`, "error");
-          break;
-        case "not-configured":
-          // Fall back to mailto: so the user isn't stuck.
-          this.openMailtoFallback(category, message, email);
-          setStatus("Opened your email client (no submit endpoint configured).", "info");
-          break;
-      }
-    });
-  }
-
-  private openMailtoFallback(category: FeedbackCategory, message: string, email: string): void {
-    const subject = `[bedevere-wise] ${category}`;
-    const lines = [
-      `Category: ${category}`,
-      `Version: ${this.options.version}`,
-      email ? `From: ${email}` : "",
-      "",
-      message,
-    ].filter(Boolean);
-    const href = `mailto:contact@bedeverewise.app?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
-    window.location.href = href;
-  }
-
   private buildSettingsBody(): HTMLElement {
     const body = document.createElement("div");
     body.className = "help-panel__tab-body help-panel__tab-body--settings";
@@ -983,36 +837,58 @@ export class HelpPanel {
 
     // --- Theme ---
     body.appendChild(this.buildSettingsSection("Theme", (section) => {
-      const seg = document.createElement("div");
-      seg.className = "help-panel__segmented";
-      const current = this.options.initialTheme ?? "auto";
-      const opts: Array<{ value: "light" | "classic-light" | "dark" | "classic-dark" | "auto"; label: string }> = [
-        { value: "light", label: "Light" },
-        { value: "classic-light", label: "Light (classic)" },
-        { value: "dark", label: "Dark" },
-        { value: "classic-dark", label: "Dark (classic)" },
-        { value: "auto", label: "Auto" },
-      ];
-      for (const opt of opts) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "help-panel__segmented-btn";
-        btn.textContent = opt.label;
-        if (opt.value === current) btn.classList.add("help-panel__segmented-btn--active");
-        btn.addEventListener("click", () => {
-          for (const sibling of seg.querySelectorAll("button")) {
-            sibling.classList.remove("help-panel__segmented-btn--active");
-          }
-          btn.classList.add("help-panel__segmented-btn--active");
-          this.options.onThemeChange?.(opt.value);
-        });
-        seg.appendChild(btn);
-      }
-      section.appendChild(seg);
+      const current = this.options.getThemeSelection?.() ?? { family: "paper", mode: "auto" };
+      let selection = { ...current };
+
+      const mkRow = <T extends string>(
+        label: string,
+        opts: Array<{ value: T; label: string; title: string }>,
+        active: T,
+        onPick: (v: T) => void,
+      ) => {
+        const row = document.createElement("div");
+        row.className = "help-panel__settings-row";
+        const lab = document.createElement("span");
+        lab.className = "help-panel__settings-label";
+        lab.textContent = label;
+        row.appendChild(lab);
+        const seg = document.createElement("div");
+        seg.className = "help-panel__segmented";
+        for (const opt of opts) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "help-panel__segmented-btn";
+          btn.textContent = opt.label;
+          btn.title = opt.title;
+          if (opt.value === active) btn.classList.add("help-panel__segmented-btn--active");
+          btn.addEventListener("click", () => {
+            for (const sibling of seg.querySelectorAll("button")) {
+              sibling.classList.remove("help-panel__segmented-btn--active");
+            }
+            btn.classList.add("help-panel__segmented-btn--active");
+            onPick(opt.value);
+          });
+          seg.appendChild(btn);
+        }
+        row.appendChild(seg);
+        section.appendChild(row);
+      };
+
+      mkRow("Family", [
+        { value: "paper", label: "Paper", title: "The Statistical Report — matches kolistat.com (default)" },
+        { value: "tokyonight", label: "Tokyonight", title: "Day / Storm — the classic Bedevere palettes" },
+        { value: "github", label: "Github", title: "The previous default look" },
+      ] as const, selection.family, (v) => { selection = { ...selection, family: v }; this.options.onThemeSelectionChange?.(selection); });
+
+      mkRow("Mode", [
+        { value: "light", label: "Light", title: "Always light" },
+        { value: "dark", label: "Dark", title: "Always dark" },
+        { value: "auto", label: "Auto", title: "Follow your system setting" },
+      ] as const, selection.mode, (v) => { selection = { ...selection, mode: v }; this.options.onThemeSelectionChange?.(selection); });
     }));
 
     // --- Copy & export format ---
-    body.appendChild(this.buildSettingsSection("Copy & export format", (section) => {
+    body.appendChild(this.buildSettingsSection("Copy & text export", (section) => {
       const defaults = { delimiter: "tab" as const, includeHeader: true, quoteEscape: "double" as const };
       const current = this.options.getCopyOptions?.() ?? defaults;
       const getLatest = () => this.options.getCopyOptions?.() ?? defaults;
@@ -1169,7 +1045,7 @@ export class HelpPanel {
       section.appendChild(hint);
 
       const initialThreshold = this.options.getFormatOptions?.().autoImportSizeThreshold
-        ?? AUTO_IMPORT_THRESHOLD_PRESETS[1];
+        ?? DEFAULT_AUTO_IMPORT_THRESHOLD;
       section.appendChild(this.buildLabeledRow(
         "Auto-import threshold",
         this.buildSegmented(

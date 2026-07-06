@@ -10,10 +10,16 @@ export interface QueryBookmark {
 }
 
 export interface AppSettings {
-  theme?: "light" | "classic-light" | "dark" | "classic-dark" | "auto";
+  /** Legacy single-value theme (pre-restyle). Read for migration only; the
+   *  family/mode pair below is the source of truth now. */
+  theme?: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | "auto";
+  themeFamily?: "paper" | "tokyonight" | "github";
+  themeMode?: "light" | "dark" | "auto";
   panelMinimized?: boolean;
   panelWidth?: number;
   hasSeenOnboarding?: boolean;
+  /** Set once the one-time "get the desktop app" hint has been shown. */
+  hasSeenDesktopHint?: boolean;
   copyDelimiter?: "tab" | "comma";
   copyIncludeHeader?: boolean;
   /**
@@ -78,7 +84,7 @@ export interface AppSettings {
    * DuckDB on drop / folder-scan — no spreadsheet tab opens, but the
    * table becomes available to SQL queries. Above this, the file
    * tree shows a warning glyph and the user clicks-to-open. Default
-   * 100 KB; `0` disables auto-import entirely.
+   * 1 MB; `0` disables auto-import entirely.
    */
   autoImportSizeThreshold?: number;
   /**

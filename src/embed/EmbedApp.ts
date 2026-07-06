@@ -167,9 +167,9 @@ export class EmbedApp {
     try {
       const result = await dispatchEmbedScript(sql, this.duck);
       if (result.kind === "table") {
-        await this.result.showResult(result.resultProvider, result.resultName);
+        await this.result.showResult(result.resultProvider);
       } else if (result.kind === "chart") {
-        await this.result.showChart(result.visualizeResult, result.resultName);
+        await this.result.showChart(result.visualizeResult);
       } else {
         this.result.showHint("Statement executed — no rows to display.");
       }

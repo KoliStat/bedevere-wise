@@ -1,6 +1,14 @@
+// Self-hosted fonts (Statistical-Report identity). Static weights only:
+// mono 400/600 for chrome+data+editor, serif 400/400i/600 for prose accents.
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/400-italic.css";
+import "@fontsource/source-serif-4/600.css";
+
 import "./styles/main.scss";
 import { BedevereApp } from "./components/BedevereApp/BedevereApp";
-import { duckDBService } from "./data/DuckDBService.ts";
+import { DuckDBService } from "./data/DuckDBService.ts";
 import { persistenceService } from "./data/PersistenceService.ts";
 import {
   DEFAULT_DATE_FORMAT,
@@ -13,7 +21,12 @@ import {
 // Initialize the Bedevere Wise application
 async function initApplication() {
   const debugMode = import.meta.env.DEV;
-  const appVersion = "0.13-i-am";
+  const appVersion = "0.14-and-this";
+
+  // The web app constructs its own engine and hands it to BedevereApp
+  // (which has no built-in default). Kept in a local so the debug handle
+  // below points at the very instance the app uses.
+  const duckDBService = new DuckDBService();
 
   // Initialize DuckDB first
   try {
@@ -30,16 +43,13 @@ async function initApplication() {
 
   const persistedSettings = persistenceService.loadAppSettings();
 
-  // Create the Bedevere Wise application. The default in-browser
-  // DuckDB-WASM backend is constructed inside BedevereApp when
-  // `options.backend` is omitted — but we still initialize the singleton
-  // here so the window-level `duckDBService` debug handle below stays
-  // pointed at the same instance the app uses. We pass that instance
-  // via options.
+  // Mount the app against the DuckDB-WASM engine constructed above.
   const app = new BedevereApp(appContainer, appVersion, {
     backend: duckDBService,
-    theme: "auto", // Automatically detect user's preferred theme
-    // theme: "light",
+    // No explicit `theme` — BedevereApp defaults to Paper+Auto on a fresh
+    // profile and restores the persisted family/mode selection otherwise.
+    // (An explicit value here would win every time and permanently block
+    // that restore — see BedevereApp.setupTheme / initAsync.)
     showLeftPanel: true,
     statusBarVisible: true,
     spreadsheetOptions: {

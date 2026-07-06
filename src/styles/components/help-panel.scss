@@ -15,9 +15,7 @@
 .help-panel {
   background: var(--bg-float);
   color: var(--fg);
-  border-top: 3px solid var(--yellow);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--rule);
   width: min(640px, 100%);
   max-height: 82vh;
   display: flex;
@@ -31,6 +29,7 @@
     justify-content: space-between;
     padding: 14px 20px 10px;
     flex-shrink: 0;
+    border-bottom: 2px solid var(--rule);
   }
 
   &__title {
@@ -155,6 +154,9 @@
     font-weight: 700;
     margin-bottom: 4px;
     color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   &__section-title {
@@ -598,10 +600,6 @@
     &--checkbox {
       cursor: pointer;
       user-select: none;
-
-      input[type="checkbox"] {
-        accent-color: var(--blue);
-      }
     }
   }
 
@@ -734,6 +732,7 @@
     display: flex;
     gap: 10px;
     margin-top: 16px;
+    margin-bottom: 16px;
     justify-content: center;
   }
 
@@ -794,7 +793,7 @@
     font-size: 12px;
     font-family: var(--font-mono);
     cursor: pointer;
-    border-radius: 2px;
+    border-radius: 0;
     max-width: 240px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -818,130 +817,6 @@
     &--loading { color: var(--cyan); }
     &--success { color: var(--green); }
     &--error   { color: var(--red); }
-  }
-
-  // ------- Feedback tab -------
-
-  &__feedback-form {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 4px;
-  }
-
-  &__feedback-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  &__feedback-row--stack {
-    position: relative;
-  }
-
-  &__feedback-label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--fg-muted);
-    font-family: var(--font-mono);
-  }
-
-  &__feedback-optional {
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: 0;
-    opacity: 0.7;
-  }
-
-  &__feedback-select,
-  &__feedback-input,
-  &__feedback-textarea {
-    background: var(--bg-dark);
-    border: 1px solid var(--border-strong);
-    border-radius: 0;
-    padding: 6px 8px;
-    color: var(--fg);
-    font-size: 12.5px;
-    font-family: var(--font-mono);
-    outline: none;
-    transition: border-color 0.12s ease;
-
-    &:focus {
-      border-color: var(--blue);
-    }
-
-    &::placeholder {
-      color: var(--fg-muted);
-      font-style: italic;
-    }
-  }
-
-  &__feedback-textarea {
-    resize: vertical;
-    min-height: 100px;
-    line-height: 1.45;
-  }
-
-  &__feedback-counter {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    font-size: 10px;
-    color: var(--fg-muted);
-    font-family: var(--font-mono);
-    pointer-events: none;
-  }
-
-  // Honeypot — visually hidden but reachable to bots that read the DOM.
-  &__feedback-honeypot {
-    position: absolute;
-    left: -9999px;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-  }
-
-  &__feedback-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    justify-content: flex-end;
-  }
-
-  &__feedback-status {
-    flex: 1;
-    font-size: 12px;
-    color: var(--fg-muted);
-    font-family: var(--font-mono);
-
-    &--ok    { color: var(--green); }
-    &--error { color: var(--red); }
-    &--info  { color: var(--cyan); }
-  }
-
-  &__feedback-submit {
-    background: var(--blue);
-    color: var(--bg-dark);
-    border: none;
-    padding: 6px 18px;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    cursor: pointer;
-    transition: background-color 0.12s ease;
-    font-family: var(--font-mono);
-
-    &:hover:not(:disabled) {
-      background: var(--cyan);
-    }
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
   }
 
   // ------- About lore + attribution -------

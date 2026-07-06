@@ -1,15 +1,16 @@
 /**
- * URL parameters the /embed route reads on load. See README / blog
- * integration spec — these match the names emitted by the
+ * Parameters the /embed route reads on load, taken from the URL fragment
+ * (`#…`) when present, else the query string (`?…`) for older links. See
+ * README / blog integration spec — these match the names emitted by the
  * caveofcaerbannog renderer.
  */
 export interface EmbedConfig {
-  /** Each `dataset=…` query-string entry, in order. */
+  /** Each `dataset=…` entry, in order. */
   datasets: string[];
   /** Optional SQL to prefill the editor. */
   query: string | null;
   /** Explicit theme, or null to follow prefers-color-scheme. */
-  theme: "light" | "classic-light" | "dark" | "classic-dark" | null;
+  theme: "light" | "classic-light" | "dark" | "classic-dark" | "github-light" | "github-dark" | null;
   /** Auto-run the prefilled query once all datasets are loaded. */
   autorun: boolean;
   /** Opaque tag from the parent — echoed back in postMessage payloads
@@ -17,13 +18,14 @@ export interface EmbedConfig {
   id: string | null;
 }
 
+const EMBED_THEMES = ["light", "classic-light", "dark", "classic-dark", "github-light", "github-dark"] as const;
+
 export function parseEmbedConfig(search: string): EmbedConfig {
   const params = new URLSearchParams(search);
   const themeRaw = params.get("theme");
-  const theme =
-    themeRaw === "light" || themeRaw === "classic-light" || themeRaw === "dark" || themeRaw === "classic-dark"
-      ? themeRaw
-      : null;
+  const theme = (EMBED_THEMES as readonly string[]).includes(themeRaw ?? "")
+    ? (themeRaw as EmbedConfig["theme"])
+    : null;
   return {
     datasets: params.getAll("dataset"),
     query: params.get("query"),
@@ -47,6 +49,21 @@ export function parseEmbedConfig(search: string): EmbedConfig {
 export function describeDatasetUrl(
   url: string,
 ): { fileName: string; tableName: string; readerSql: (registeredName: string) => string } | null {
+  // Scheme allowlist. The /embed host page is untrusted and controls this
+  // URL, so DuckDB-WASM would fetch whatever we hand it — reject anything
+  // that could reach loopback/internal services or smuggle bytes via
+  // file:/blob:/data:. Only https is allowed (http just for localhost dev).
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const isLocalDev = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && isLocalDev)) {
+    return null;
+  }
+
   // Strip query string + hash before extension sniffing so
   // /datasets/foo.parquet?v=2 still matches `.parquet`.
   const cleanPath = url.split("?")[0].split("#")[0];

@@ -22,6 +22,8 @@ import type { Backend, BackendCapabilities, BackendVisualizeResult, ExportResult
 import type { DataProvider } from "./types";
 import type { Bridge } from "./ipc/bridge";
 import { IpcDataProvider } from "./ipc/IpcDataProvider";
+import { quoteIdent } from "./sqlIdent";
+import { extractDecimalScales } from "./arrowUnwrap";
 
 export interface IpcBackendOptions {
   /**
@@ -154,15 +156,9 @@ export class IpcBackend implements Backend {
     const table = await this.bridge.awaitArrowStream(result.streamId);
     const rows = table.toArray();
     // Lift per-column DECIMAL scales off the Arrow schema. Used by
-    // runVisualize to scale Decimal values back to plain numbers. Other
-    // column types contribute nothing to this map.
-    const decimalScales: Record<string, number> = {};
-    for (const field of table.schema.fields) {
-      const t: any = field.type;
-      if (t && typeof t === "object" && typeof t.scale === "number") {
-        decimalScales[field.name] = t.scale;
-      }
-    }
+    // runVisualize to scale Decimal values back to plain numbers. Shared
+    // with DuckDBService so both backends detect scale the same way.
+    const decimalScales = extractDecimalScales(table.schema.fields);
     return { rows, decimalScales };
   }
 
@@ -216,27 +212,31 @@ export class IpcBackend implements Backend {
 
   // ─── ingest path ────────────────────────────────────────────────────
 
-  async registerFileURL(name: string, url: string): Promise<void> {
+  async registerFileURL(name: string, url: string, sheet?: string): Promise<void> {
     // The host's `registerFile` takes a path. For URL ingestion the
     // host needs to fetch + cache the bytes itself; today we route URLs
     // through the path channel verbatim (the host treats `http://…` as
     // a remote source it knows how to read). Adjust once a real
     // URL-fetch RPC exists on the wire.
-    await this.bridge.call("registerFile", { path: url, tableName: name });
+    //
+    // `sheet`, when set, picks a worksheet of a multi-sheet .xlsx; the
+    // host forwards it to read_xlsx's `sheet=` arg. Omitted from the
+    // params object when absent so non-xlsx imports stay unchanged.
+    await this.bridge.call("registerFile", {
+      path: url,
+      tableName: name,
+      ...(sheet ? { sheet } : {}),
+    });
   }
 
   async registerFileText(name: string, text: string): Promise<string> {
-    if (text.length > MAX_UPLOAD_BYTES) {
-      throw new Error(uploadTooLargeMessage(name, text.length));
-    }
+    ensureUploadFits(name, text.length);
     const { path } = await this.bridge.call("registerFileText", { name, text });
     return path;
   }
 
   async registerFileBuffer(name: string, buffer: Uint8Array): Promise<string> {
-    if (buffer.byteLength > MAX_UPLOAD_BYTES) {
-      throw new Error(uploadTooLargeMessage(name, buffer.byteLength));
-    }
+    ensureUploadFits(name, buffer.byteLength);
     const { path } = await this.bridge.call("registerFileBuffer", {
       name,
       contentBase64: bytesToBase64(buffer),
@@ -286,6 +286,13 @@ function uploadTooLargeMessage(name: string, size: number): string {
   );
 }
 
+/** Throw the over-the-wire upload-size error if `size` exceeds the cap. */
+function ensureUploadFits(name: string, size: number): void {
+  if (size > MAX_UPLOAD_BYTES) {
+    throw new Error(uploadTooLargeMessage(name, size));
+  }
+}
+
 /** Uint8Array → base64, chunked so large buffers don't overflow the arg list. */
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -294,9 +301,4 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
   return btoa(binary);
-}
-
-/** Local DuckDB identifier quoter — mirrors sqlIdent.quoteIdent. */
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
 }
