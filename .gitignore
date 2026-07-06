@@ -38,9 +38,6 @@ public/extensions/*
 # Claude Code local settings
 .claude/
 
-# sigillo MCP local index
-.sigillo/
-
 # superpowers brainstorm sessions (visual-companion mockups)
 .superpowers/
 
