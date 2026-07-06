@@ -105,7 +105,7 @@ export class IpcBackend implements Backend {
     if (!this.capabilities.visualize) {
       try {
         const rows = await this.executeQuery(
-          "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'ggsql_mark_v1_%'",
+          "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'visualize_mark_v1_%'",
         );
         const n = Number((rows?.[0] as { n?: unknown })?.n ?? 0);
         if (n > 0) this.capabilities.visualize = true;
