@@ -163,5 +163,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "type": "module",
-  "types": "dist/index.d.ts"
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "vega-interpreter": "^2.2.1"
+  }
 }
