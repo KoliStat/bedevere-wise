@@ -37,8 +37,21 @@ export class EnvironmentService {
   private environments: Environment[] = [];
   private activeId: string | null = null;
   private listeners: Set<() => void> = new Set();
+  private loaded = false;
 
-  constructor() {
+  /**
+   * Hydration is deferred to first use — NOT done in the constructor.
+   * The singleton below is constructed at module-import time, but hosts
+   * (bedevere-desktop's renderer) install their real persistence backend
+   * via `persistenceService.setBackend(...)` AFTER imports resolve.
+   * Loading eagerly here would read the wrong substrate (the webview's
+   * localStorage) while every later write goes to the host's file —
+   * a split brain where saved queries silently vanish on relaunch.
+   */
+  private ensureLoaded(): void {
+    if (this.loaded) return;
+    // Flip BEFORE load(): load() itself re-enters through getDefault().
+    this.loaded = true;
     this.load();
   }
 
@@ -47,18 +60,22 @@ export class EnvironmentService {
   /** Snapshot of the current list. Returns a fresh array; callers may
    *  iterate freely without mutating internal state. */
   public list(): Environment[] {
+    this.ensureLoaded();
     return this.environments.slice();
   }
 
   public get(id: string): Environment | null {
+    this.ensureLoaded();
     return this.environments.find((e) => e.id === id) ?? null;
   }
 
   public getActive(): Environment | null {
+    this.ensureLoaded();
     return this.activeId ? this.get(this.activeId) : null;
   }
 
   public getActiveId(): string | null {
+    this.ensureLoaded();
     return this.activeId;
   }
 
@@ -66,11 +83,13 @@ export class EnvironmentService {
    *  folder-import hook to reuse an existing env when the user
    *  re-opens the same folder. */
   public findByFolderHandleId(folderHandleId: string): Environment | null {
+    this.ensureLoaded();
     return this.environments.find((e) => e.folderHandleId === folderHandleId) ?? null;
   }
 
   /** The reserved default env — always present, never deleted. */
   public getDefault(): Environment {
+    this.ensureLoaded();
     const def = this.environments.find((e) => e.kind === "default");
     if (def) return def;
     // Defensive: re-create if somehow missing. Persists immediately
@@ -102,6 +121,7 @@ export class EnvironmentService {
     kind: Exclude<EnvironmentKind, "default">;
     folderHandleId?: string;
   }): Environment {
+    this.ensureLoaded();
     const env: Environment = {
       schemaVersion: 1,
       id: generateId("env"),

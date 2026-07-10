@@ -293,6 +293,16 @@ export class SqlEditor implements FocusableComponent {
       scope: "sqlEditor",
       execute: () => this.openSaveDialog(),
     });
+
+    // Flush the autosave debounce when the page is going away —
+    // otherwise up to AUTOSAVE_DEBOUNCE_MS of typing is silently lost
+    // on close. Both events on purpose: `pagehide` is the reliable
+    // end-of-life signal (fires after `beforeunload`, including on the
+    // desktop webview), `beforeunload` covers hosts where pagehide
+    // doesn't fire. flushAutoSave is a no-op when nothing is pending.
+    const flushOnUnload = (): void => this.flushAutoSave();
+    window.addEventListener("beforeunload", flushOnUnload);
+    window.addEventListener("pagehide", flushOnUnload);
   }
 
   // ---- Public API ----------------------------------------------------
@@ -849,10 +859,17 @@ export class SqlEditor implements FocusableComponent {
    * outgoing tab record, then `view.setState` the incoming tab's
    * stored state. Resets `lastAutoSavedText` so the autosave
    * comparator doesn't see the new tab's existing text as "unsaved".
+   *
+   * The snapshot runs even when re-activating the CURRENT tab
+   * (queryId === activeQueryId — e.g. clicking the active query's row
+   * in the Saved Queries panel). Skipping it would setState() the
+   * tab's stale stored state and visually revert everything typed
+   * since the tab was last activated — and reset lastAutoSavedText to
+   * that stale text, letting a later autosave overwrite the good copy.
    */
   private activateInternal(queryId: string): void {
     if (!this.editorView) return;
-    if (this.activeQueryId && this.activeQueryId !== queryId) {
+    if (this.activeQueryId) {
       const idx = this.tabs.findIndex((t) => t.queryId === this.activeQueryId);
       if (idx >= 0) this.tabs[idx].state = this.editorView.state;
     }

@@ -95,26 +95,38 @@ const DEFAULT_KEYMAP: KeymapEntry[] = [
 // ─── KeymapService ─────────────────────────────────────────────────
 
 export class KeymapService {
-  private entries: KeymapEntry[];
+  /**
+   * Lazily hydrated on first use — NOT in the constructor. The module
+   * singleton below is constructed at import time, before hosts
+   * (bedevere-desktop) install their persistence backend via
+   * `persistenceService.setBackend(...)`; loading eagerly would read
+   * keymap overrides from the wrong substrate. Same fix as
+   * EnvironmentService.ensureLoaded.
+   */
+  private entries: KeymapEntry[] | null = null;
 
-  constructor() {
-    this.entries = this.loadKeymap();
+  private ensureLoaded(): KeymapEntry[] {
+    if (this.entries === null) {
+      this.entries = this.loadKeymap();
+    }
+    return this.entries;
   }
 
   /** Get all entries, optionally filtered by scope */
   public getEntries(scope?: string): KeymapEntry[] {
-    if (!scope) return [...this.entries];
-    return this.entries.filter((e) => e.scope === scope);
+    const entries = this.ensureLoaded();
+    if (!scope) return [...entries];
+    return entries.filter((e) => e.scope === scope);
   }
 
   /** Get the binding for a specific action */
   public getBinding(action: string): KeyBinding | null {
-    return this.entries.find((e) => e.action === action)?.binding ?? null;
+    return this.ensureLoaded().find((e) => e.action === action)?.binding ?? null;
   }
 
   /** Find which action (if any) matches a keyboard event within a given scope */
   public matchEvent(event: KeyboardEvent, scope: string): string | null {
-    for (const entry of this.entries) {
+    for (const entry of this.ensureLoaded()) {
       if (entry.scope === scope && matchesBinding(event, entry.binding)) {
         return entry.action;
       }
@@ -124,7 +136,7 @@ export class KeymapService {
 
   /** Update a single binding and persist */
   public setBinding(action: string, binding: KeyBinding): void {
-    const entry = this.entries.find((e) => e.action === action);
+    const entry = this.ensureLoaded().find((e) => e.action === action);
     if (entry) {
       entry.binding = binding;
       this.saveKeymap();
@@ -160,7 +172,7 @@ export class KeymapService {
     // recovered from DEFAULT_KEYMAP on load. PersistenceService deletes
     // the storage key when the overrides map is empty.
     const overrides: Record<string, KeyBinding> = {};
-    for (const entry of this.entries) {
+    for (const entry of this.ensureLoaded()) {
       const def = DEFAULT_KEYMAP.find((d) => d.action === entry.action);
       if (def && JSON.stringify(def.binding) !== JSON.stringify(entry.binding)) {
         overrides[entry.action] = entry.binding;
