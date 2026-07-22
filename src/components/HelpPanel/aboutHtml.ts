@@ -16,13 +16,13 @@ export function renderAboutBody(version: string): string {
       <p class="help-panel__about-version">v${version}</p>
       <p class="help-panel__about-description">Open SAS, SPSS, Stata, Parquet, Excel, CSV, TSV, and JSON files in your browser. Query them with SQL, plot with <code>VISUALIZE</code> — no install, no upload.</p>
       <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.14</h3>
+        <h3 class="help-panel__about-section-title">What's new in 0.15</h3>
         <ul class="help-panel__about-list">
-          <li><strong>Embed builder.</strong> The <code>.embed</code> command opens a dialog that composes an <code>/embed</code> URL + <code>&lt;iframe&gt;</code> snippet from your query, a dataset URL, theme, and autorun — copy it straight into a blog or page.</li>
-          <li><strong>New themes.</strong> GitHub-Dark is the default dark theme; a Classic light and dark (Tokyonight Day / Storm) are selectable in Settings. Exactly one theme applies cleanly across every panel.</li>
-          <li><strong>Faster start-up.</strong> DuckDB-WASM now loads lazily — its worker bytes are fetched during init instead of up front, so the app appears sooner.</li>
-          <li><strong>Security hardening.</strong> A Content-Security-Policy now covers the app and the <code>/embed</code> route, and every generated query quotes table and column names so a crafted file can't break out of the SQL.</li>
-          <li><strong><code>table_one</code> &amp; stats fixed.</strong> The <code>stats_duck</code> aggregates (<code>table_one</code>, ANOVA, chi-square) work again in the browser after a WASM i64 ABI fix.</li>
+          <li><strong>Charts handle 64-bit integers.</strong> <code>VISUALIZE</code> no longer crashes on <code>BIGINT</code> columns — <code>count(*)</code> bars, <code>range()</code> scatters, and friends all render.</li>
+          <li><strong>Categorical axes just work.</strong> Boxplots, violins, and bars over text columns render without hand-annotating <code>:nominal</code>; explicit annotations now land on the right channel for every mark.</li>
+          <li><strong>Query lifecycle fixed.</strong> Saving a query no longer swaps your editor content; drafts flush before the tab closes; on desktop, settings and saved queries survive a relaunch reliably.</li>
+          <li><strong>Full export list on desktop.</strong> <code>.export</code> offers <code>xpt</code> / <code>sav</code> / <code>por</code> / <code>sas7bdat</code> alongside the text formats — stale extension caches can't hide the bundled stats_duck anymore.</li>
+          <li><strong>Help, illustrated.</strong> The How-To gains a worked <code>table_one</code> example — stratify by species &times; island, ordered.</li>
         </ul>
       </div>
       <div class="help-panel__about-section">
