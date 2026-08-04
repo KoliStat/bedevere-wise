@@ -304,8 +304,10 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
   /**
    * Stroke a rect, optionally skipping the left and/or bottom edge.
-   * `skipLeft` keeps the centered 2px stroke from clipping to a 1px
-   * strip at the gutter boundary; `skipBottom` matches the existing
+   * `skipLeft` drops the left edge where a centered stroke would lose
+   * its outer half to the cell-area clip at the gutter boundary — the
+   * caller repaints it fully inside the boundary via
+   * `fillBoundaryLeftEdge`. `skipBottom` matches the existing
    * "table overflows the viewport" path that signals "continues below".
    */
   private strokeRectEdges(
@@ -341,6 +343,23 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
       ctx.lineTo(x + w, y + h);
     }
     ctx.stroke();
+  }
+
+  /**
+   * Left edge for a ring flush with the gutter boundary. Strokes center
+   * on the path, so at `x === rowHeaderWidth` the cell-area clip eats
+   * the outer half — and skipping the edge outright (the previous
+   * behavior) left column-0 hovers/selections with no left border at
+   * all. A fill has no centering: paint the 2px fully inside the
+   * boundary. Inset 1px vertically so the translucent hover color
+   * doesn't double-coat the corner pixels the top/bottom strokes
+   * already cover.
+   */
+  private fillBoundaryLeftEdge(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
+    const prevFill = ctx.fillStyle;
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillRect(x, y + 1, 2, h - 2);
+    ctx.fillStyle = prevFill;
   }
 
   private drawCellHover(visibleStartRow: number) {
@@ -383,6 +402,10 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
 
       this.hoverCtx.lineWidth = 1;
       this.strokeRectEdges(this.hoverCtx, x + 1, y + 1, width - 2, height - 2, atBoundary);
+
+      if (atBoundary) {
+        this.fillBoundaryLeftEdge(this.hoverCtx, x, y, height);
+      }
     });
 
     this.lastCellHoverRect = { x, y, w: width, h: height };
@@ -529,6 +552,10 @@ export class SpreadsheetVisualizerSelection extends SpreadsheetVisualizerBase {
         this.strokeRectEdges(this.selectionCtx, sb.x, sb.y, sb.width, sb.height, atBoundary);
         this.selectionCtx.lineWidth = 1;
         this.strokeRectEdges(this.selectionCtx, sb.x + 1, sb.y + 1, sb.width - 2, sb.height - 2, atBoundary);
+
+        if (atBoundary) {
+          this.fillBoundaryLeftEdge(this.selectionCtx, sb.x, sb.y, sb.height);
+        }
 
         // Draw selection handle (dot) in bottom-right corner
         const handleSize = 8;
