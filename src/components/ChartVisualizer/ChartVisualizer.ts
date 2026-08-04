@@ -179,12 +179,30 @@ export class ChartVisualizer {
         tickColor:   v("--rule") || "#1a1917",
         labelFont:   v("--font-mono") || "monospace",
         titleFont:   v("--font-mono") || "monospace",
+        // Vega-Lite's 10px default reads tiny next to the app's 11px mono
+        // UI — most visibly on ordinal/nominal axes (bar / boxplot
+        // category labels).
+        labelFontSize: 11,
+        titleFontSize: 12,
       },
       legend: {
         labelColor: v("--fg-dark") || "#3d3a33",
         titleColor: v("--fg") || "#1a1917",
         labelFont:  v("--font-mono") || "monospace",
         titleFont:  v("--font-mono") || "monospace",
+        labelFontSize: 11,
+        titleFontSize: 12,
+      },
+      // Facet headers (violin renders its categories as a `column` facet —
+      // these ARE its visible x labels). Without this block Vega-Lite's
+      // default near-black header text disappears on the dark themes.
+      header: {
+        labelColor: v("--fg-dark") || "#3d3a33",
+        titleColor: v("--fg") || "#1a1917",
+        labelFont:  v("--font-mono") || "monospace",
+        titleFont:  v("--font-mono") || "monospace",
+        labelFontSize: 11,
+        titleFontSize: 12,
       },
       title: { color: v("--fg") || "#1a1917", font: v("--font-mono") || "monospace" },
     };
