@@ -1,11 +1,19 @@
-// Cloudflare Workers config for the static SPA deploy.
-// Deployed via Cloudflare's "Workers Builds" CI: build runs `bun run build`,
-// deploy runs `bunx wrangler deploy`. The `assets` block tells Workers to
-// serve `dist/` as static files; `single-page-application` handling routes
-// any unknown path back to `index.html` so client-side routing works.
+// Cloudflare Workers config. Deployed via Cloudflare's "Workers Builds" CI:
+// build runs `bun run build`, deploy runs `bunx wrangler deploy`.
+//
+// A small Worker (worker/index.ts) fronts the static assets: `run_worker_first`
+// makes it run for every request; it serves the asset through the ASSETS
+// binding (which honours `not_found_handling: single-page-application` — a
+// bare route like /demo falls back to index.html) and stamps the
+// Content-Security-Policy per path. This replaces the old `public/_headers`:
+// that file couldn't give /embed a looser `frame-ancestors` than the rest of
+// the app, because Workers Assets APPENDS every matching _headers rule and the
+// browser enforces the intersection (the strict one wins). The Worker owns one
+// clean policy per document — see worker/csp.ts.
 {
 	"name": "bedevere-wise",
 	"compatibility_date": "2026-04-24",
+	"main": "worker/index.ts",
 	"workers_dev": false,
 	"preview_urls": false,
 	"routes": [
@@ -13,6 +21,8 @@
 	],
 	"assets": {
 		"directory": "./dist",
-		"not_found_handling": "single-page-application"
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": true
 	}
 }

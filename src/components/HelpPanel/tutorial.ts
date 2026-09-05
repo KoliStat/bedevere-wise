@@ -114,8 +114,8 @@ export const PENGUINS_TUTORIAL: TutorialNode[] = [
     html:
       `Stats Duck's <code>TABLE_ONE()</code> produces a long-format summary — one row per ` +
       `(variable × level × statistic) — that you can pivot into the wide layout most papers use. ` +
-      `Variables are passed by name; the <code>by</code> argument splits the summary by a stratifier ` +
-      `(here, <code>species</code>). Display strings are already formatted (e.g. <code>"45.32 ± 5.46"</code>); ` +
+      `Variables are passed by name; the <code>by</code> argument splits the summary by one or more stratifiers ` +
+      `(here, <code>species</code> and <code>island</code>). Display strings are already formatted (e.g. <code>"45.32 ± 5.46"</code>); ` +
       `the <code>PIVOT … USING FIRST(display)</code> step reshapes them into one column per stratum.`,
   },
   {
@@ -127,8 +127,8 @@ export const PENGUINS_TUTORIAL: TutorialNode[] = [
       "CREATE OR REPLACE TABLE penguins_temp AS\n" +
       "SELECT * FROM TABLE_ONE(\n" +
       "  'penguins_clean'\n" +
-      "  , variables := ['island', 'sex', 'bill_length_mm', 'flipper_length_mm', 'body_mass_g']\n" +
-      "  , by := 'species'\n" +
+      "  , variables := ['sex', 'bill_length_mm', 'flipper_length_mm', 'body_mass_g']\n" +
+      "  , by := ['species', 'island']\n" +
       ")\n" +
       ";\n" +
       "\n" +
@@ -139,6 +139,7 @@ export const PENGUINS_TUTORIAL: TutorialNode[] = [
       "CREATE OR REPLACE TABLE penguins_summ AS\n" +
       "PIVOT penguins_temp ON stratum USING FIRST(display)\n" +
       "GROUP BY variable, level, statistic\n" +
+      "ORDER BY variable, level, statistic\n" +
       ";",
   },
   {

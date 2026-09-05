@@ -232,16 +232,16 @@ export class BedevereApp implements EventHandler {
         // and it's a real failure mode (DuckDB-WASM version mismatch with
         // the published extension build).
         const ggsqlFns = await this.backend.executeQuery(
-          "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'ggsql_mark_v1_%'",
+          "SELECT count(*) AS n FROM duckdb_functions() WHERE function_name LIKE 'visualize_mark_v1_%'",
         );
         const n = Number((ggsqlFns?.[0] as { n?: unknown })?.n ?? 0);
         if (n === 0) {
           const reason =
-            `loaded from ${statsDuckUrl} but registered 0 ggsql_mark_v1_* functions ` +
+            `loaded from ${statsDuckUrl} but registered 0 visualize_mark_v1_* functions ` +
             "(likely a DuckDB-WASM version mismatch with @duckdb/duckdb-wasm)";
           setStatsDuckFailureReason(reason);
           console.warn(
-            `stats_duck loaded from ${statsDuckUrl} but registered no ggsql_mark_v1_* ` +
+            `stats_duck loaded from ${statsDuckUrl} but registered no visualize_mark_v1_* ` +
               "functions — parser hooks didn't attach. Likely a DuckDB-WASM version " +
               "mismatch; run `SELECT version()` and rebuild the extension against it.",
           );

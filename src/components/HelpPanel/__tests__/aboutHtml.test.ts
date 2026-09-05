@@ -3,7 +3,7 @@ import { renderAboutBody } from "../aboutHtml";
 import { KOLISTAT_URL, DESKTOP_DOWNLOAD_URL } from "../../../appLinks";
 
 describe("renderAboutBody", () => {
-  const html = renderAboutBody("0.14-and-this");
+  const html = renderAboutBody("0.15-my-trusty-servant");
 
   it("links the KoliStat umbrella site", () => {
     expect(html).toContain(`href="${KOLISTAT_URL}"`);
