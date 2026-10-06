@@ -6,6 +6,7 @@ import { FolderScanService } from "../../data/FolderScanService";
 import { FileTreeNode, detectFileType } from "../../data/FileTreeTypes";
 import type { FileSource, FileSourceFile, FileSourceFolder } from "../../data/files/FileSource";
 import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
+import { sniffXlsxTableRange } from "../../data/formats/xlsxTableRange";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { resolveTableName } from "../../data/tableNames";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
@@ -1238,8 +1239,9 @@ export class ControlPanel {
     // registerFile RPC which dispatches read_csv_auto / read_parquet /
     // read_json_auto / read_xlsx based on the extension. For a `sheet`
     // node we thread its sheetName through so the host imports that
-    // worksheet (read_xlsx sheet=); multi-table HTML still isn't
-    // supported on this path.
+    // worksheet (read_xlsx sheet=), and for any workbook we pass the
+    // sniffed table range (read_xlsx range=, see sniffHostXlsxRange);
+    // multi-table HTML still isn't supported on this path.
     if (node.filePath) {
       try {
         // Sheet nodes carry the worksheet in `node.name`; build the table
@@ -1252,7 +1254,8 @@ export class ControlPanel {
             : node.alias || stripExt(node.name);
         const tableName = node.tableName ?? resolveTableName(baseName, await this.takenTableNames());
         const sheet = node.kind === "sheet" ? node.sheetName : undefined;
-        const result = await this.fileImportService.importPath(node.filePath, tableName, sheet);
+        const range = await this.sniffHostXlsxRange(node);
+        const result = await this.fileImportService.importPath(node.filePath, tableName, sheet, range);
         const metadata = await result.getMetadata();
         node.isImported = true;
         node.tableName = metadata.name;
@@ -1396,6 +1399,26 @@ export class ControlPanel {
       }
     }
     return taken;
+  }
+
+  /**
+   * Table range for a host-path workbook node (`"A19:H151"`), or
+   * undefined when the host should let read_xlsx infer it. Host-path
+   * files never reach JS as a File, so the sniff that ExcelFormatHandler
+   * runs on uploaded bytes pulls the bytes across with the FileSource's
+   * readFile RPC instead (the same call sheet enumeration uses). Any
+   * failure (an older host without readFile, an unreadable file) means
+   * "no range" and the import proceeds exactly as before.
+   */
+  private async sniffHostXlsxRange(node: FileTreeNode): Promise<string | undefined> {
+    if (!node.filePath || !this.fileSource || node.fileType !== "xlsx") return undefined;
+    try {
+      const bytes = await this.fileSource.readFile(node.filePath);
+      const sheet = node.kind === "sheet" ? node.sheetName : undefined;
+      return (await sniffXlsxTableRange(bytes, sheet)) ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private async handleTreeNodeExpand(node: FileTreeNode): Promise<void> {

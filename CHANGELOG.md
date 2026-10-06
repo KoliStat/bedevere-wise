@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- [Bug-fix] **Excel import finds the data table when the sheet has rows above it.** DuckDB's `read_xlsx` infers its range from the first filled cell and stops at the first empty row. A bank statement export with a lone marker cell in I1, an account block in rows 7–17 and the transactions table at A19:H151 therefore imported as one empty column on the web. On desktop the same file failed outright for a separate reason (see bedevere-desktop). The Excel handler now scans the sheet XML itself (`sniffXlsxTableRange`): it splits the sheet into blocks of consecutive non-empty rows, takes the block with the most filled cells, skips leading title rows narrower than half the block, and passes the result as `read_xlsx`'s `range=` argument. Clean sheets whose table starts at the first filled row keep DuckDB's own inference, so nothing changes for them. Applies to uploaded and dropped workbooks on both engines; desktop native-path imports get it through a new optional `range` param on the `registerFile` RPC (the renderer pulls the bytes with `readFile`, as sheet enumeration already does). The ZIP reader behind sheet enumeration moved into the same module and is shared.
+- [Docs] **`docs/backend-protocol.md` §5.3.1 — `registerFile.range`.** A1-notation cell range for `.xlsx` imports; hosts must validate it before building SQL.
+- [Change] **`/app` exports `APP_VERSION`.** Hosts that embed `BedevereApp` (bedevere-desktop) can show the bundled package's version instead of a hand-maintained copy; the 0.15.0 desktop build still displayed "0.14" in the status bar because of exactly that drift.
+
 ## v0.15-my-trusty-servant
 
 - [Bug-fix] **Charts render 64-bit integer columns.** Any `VISUALIZE` whose dataset carried a `BIGINT` / `HUGEINT` value (a `count(*)`, a `range()` column, an integer ID) crashed at render — Arrow delivers those as JavaScript `BigInt`s, which Vega's CSP-safe expression interpreter can't mix with numbers. The chart pipeline now coerces `BigInt` → `Number` at the chart boundary only (documented >2^53 precision loss is acceptable for pixel coordinates; the spreadsheet/table path keeps exact `BigInt`s untouched). Applies to web, `/embed`, and desktop alike via a single shared post-processing funnel (`finalizeVisualizeResult`) both transport paths flow through.
