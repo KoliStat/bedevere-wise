@@ -60,16 +60,18 @@ export class FileImportService {
    *
    * `sheet` selects a worksheet of a multi-sheet `.xlsx` workbook; the
    * backend forwards it to the host's `read_xlsx` `sheet=` argument.
-   * It's ignored for every non-xlsx path. Other WASM-path knobs
-   * (`sample_size`, `ignore_errors`, multi-table HTML) still aren't
-   * available here — they need host-side support the wire protocol
-   * doesn't expose yet.
+   * `range` pins the table inside that sheet (`"A19:H151"`, as
+   * returned by `sniffXlsxTableRange`); the host forwards it as
+   * `read_xlsx`'s `range=` argument. Both are ignored for every
+   * non-xlsx path. Other WASM-path knobs (`sample_size`,
+   * `ignore_errors`, multi-table HTML) still aren't available here —
+   * they need host-side support the wire protocol doesn't expose yet.
    */
-  public async importPath(path: string, tableName?: string, sheet?: string): Promise<DataProvider> {
+  public async importPath(path: string, tableName?: string, sheet?: string, range?: string): Promise<DataProvider> {
     const fileName = path.split(/[\\/]/).pop() ?? path;
     const preferred = tableName ?? fileName.replace(/\.[^/.]+$/, "");
     const name = await this.resolveUniqueTableName(preferred);
-    await this.backend.registerFileURL(name, path, sheet);
+    await this.backend.registerFileURL(name, path, sheet, range);
     return this.backend.getDataProvider(name, fileName);
   }
 

@@ -212,7 +212,7 @@ export class IpcBackend implements Backend {
 
   // ─── ingest path ────────────────────────────────────────────────────
 
-  async registerFileURL(name: string, url: string, sheet?: string): Promise<void> {
+  async registerFileURL(name: string, url: string, sheet?: string, range?: string): Promise<void> {
     // The host's `registerFile` takes a path. For URL ingestion the
     // host needs to fetch + cache the bytes itself; today we route URLs
     // through the path channel verbatim (the host treats `http://…` as
@@ -220,12 +220,15 @@ export class IpcBackend implements Backend {
     // URL-fetch RPC exists on the wire.
     //
     // `sheet`, when set, picks a worksheet of a multi-sheet .xlsx; the
-    // host forwards it to read_xlsx's `sheet=` arg. Omitted from the
-    // params object when absent so non-xlsx imports stay unchanged.
+    // host forwards it to read_xlsx's `sheet=` arg. `range`, when set,
+    // pins the table inside that sheet (read_xlsx `range=`). Both are
+    // omitted from the params object when absent so non-xlsx imports
+    // stay unchanged.
     await this.bridge.call("registerFile", {
       path: url,
       tableName: name,
       ...(sheet ? { sheet } : {}),
+      ...(range ? { range } : {}),
     });
   }
 
