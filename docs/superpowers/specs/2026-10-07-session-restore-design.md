@@ -87,8 +87,8 @@ Two guards:
 
 Runs inside `applyActiveEnvironment`, after the tree rebuild, with saving suspended.
 
-1. **Tree rebuild (existing).** Desktop: folder re-listed through the surviving grant, small files auto-imported silently. Web: folder handle from IndexedDB, permission re-checked, same auto-import.
-2. **Picked single files (new, desktop only).** Environment datasets whose node id starts with `ipc/file/` get their tree node recreated from the id (the path is the id suffix) and are imported through the normal path.
+1. **Tree rebuild (existing).** Desktop: folder re-listed through the surviving grant, small files auto-imported silently. Web: folder handle from IndexedDB, permission re-checked, same auto-import. On the web the browser will not ask for folder permission at boot, because there is no click to hang the prompt on. The folder comes back later, when the user clicks it in the recent list or picks it again. The restore runs at that point instead.
+2. **Picked single files (new, desktop only).** Environment datasets whose node id starts with `ipc/file/` get their tree row back, recreated from the id (the path is the id suffix). They are not imported here. Step 3 reopens the ones that were open. The rest stay as rows to click.
 3. **Reopen tabs in order.** For each id in `openDataNodeIds`: find the node; for a sheet id, enumerate the workbook's sheets first (the lazy step the tree does on expand) so the child node exists; then run `importNode` in non-silent mode, which imports if needed and opens the tab. Files above the auto-import size threshold are imported here anyway, with the usual progress, because the user had them open.
 4. **Filters and sorts come back with the tab.** The `setOnBeforeAddDatasetCallback` hook also loads `columnFilters[name]` and `columnSorts[name]` into the filter manager through a new `hydrate(dataset, { filters, sorts }, existingColumns)` method, dropping entries whose column no longer exists. The manager has state before the tab is built, so the tab starts on the filtered provider with no flash of unfiltered data. Filters therefore return whenever the dataset is reopened, not only at startup, matching hidden columns.
 5. **Activate.** The tab for `activeDataNodeId` is activated if it opened; otherwise the TabManager default (first tab) stands. The SQL editor restores its own tabs and active query as it does now.
@@ -96,7 +96,7 @@ Runs inside `applyActiveEnvironment`, after the tree rebuild, with saving suspen
 
 ### Failure handling (all non-fatal)
 
-- File gone or renamed: the node is not in the rebuilt tree, skipped. Node present but import fails: flagged `isUnavailable`, skipped.
+- File gone or renamed: the node is not in the rebuilt tree, skipped. Node present but import fails: skipped and reported. Its row stays clickable, so the user can retry it.
 - Skips are reported once in the status bar: "Restored 3 of 4 tabs. Missing: sales_2025.csv". No modal, no per-file error.
 - Web permission denied or dismissed: nothing opens and the saved list is left untouched, so the next successful open restores it.
 - Corrupt or partial persisted data: unknown node ids and malformed filter entries are ignored one by one; the rest restores.
@@ -130,7 +130,9 @@ bedevere-wise:
 - `src/data/workspaceRestore.ts` (new) and its test.
 - `src/components/TabManager/TabManager.ts`: `getActiveTabId`, `onTabActivated`.
 - `src/components/ControlPanel/ControlPanel.ts`: stable picked-file ids, `persistDataWorkspace`, restore step, suspension guards, status message.
+- `src/components/SqlEditor/SqlEditor.ts`: keeps the dataset tab fields when it writes the workspace.
 - `src/components/BedevereApp/BedevereApp.ts`: filter and sort persistence, hydration in the before-add hook.
+- `docs/backend-protocol.md`: the `loadPersistence` and `savePersistence` sections.
 - `CHANGELOG.md` under "Unreleased".
 
 bedevere-desktop:
