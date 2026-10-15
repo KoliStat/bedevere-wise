@@ -57,6 +57,12 @@ export interface EnvironmentWorkspaceState {
   openQueryIds: string[];
   /** Last-active tab when the env was last left. */
   activeTab?: { kind: "data" | "query"; id: string };
+  /**
+   * Dataset tab active in the bottom tab strip when the env was last
+   * left. Separate from `activeTab`, which the SQL editor uses for its
+   * own strip and its expanded state. References a FileTreeNode id.
+   */
+  activeDataNodeId?: string;
 }
 
 export interface Environment {
