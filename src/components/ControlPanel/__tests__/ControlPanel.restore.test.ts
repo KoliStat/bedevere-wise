@@ -44,20 +44,29 @@ describe("restoreWorkspaceTabs", () => {
     const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isImported: true });
     const b = file("ipc/C:/data/b.csv", "b.csv");
     const opened: string[] = [];
+    const open: string[] = [];
     const panel = makePanel({
       fileTree: [a, b],
       datasets: [{ metadata: { name: "a" }, dataset: {}, isLoaded: true }],
       importNode: vi.fn(async (node: FileTreeNode) => {
         node.tableName = node.name.replace(".csv", "");
         opened.push(node.name);
+        open.push(node.tableName!);
         return { ok: true };
       }),
+      tabManager: {
+        getDatasetIds: () => open,
+        getActiveTabId: () => null,
+        getBackend: () => undefined,
+        addDataset: vi.fn(async (metadata: { name: string }) => { open.push(metadata.name); }),
+        switchToDataset: vi.fn(async () => {}),
+      },
     });
-    panel.tabManager.getDatasetIds = () => [];
     await panel.restoreWorkspaceTabs(envId, { openDataNodeIds: [b.id, a.id], activeDataNodeId: a.id });
     expect(opened).toEqual(["b.csv"]);
     expect(panel.tabManager.addDataset).toHaveBeenCalledTimes(1);
     expect(panel.tabManager.switchToDataset).toHaveBeenLastCalledWith("a");
+    expect(panel.tabManager.switchToDataset).toHaveBeenCalledTimes(2);
     expect(panel.onShowMessageCallback).not.toHaveBeenCalled();
   });
 
