@@ -1,8 +1,9 @@
 /**
- * Pure helpers behind session restore: turn the TabManager's tab list
- * into the environment's persisted dataset workspace, and turn that
- * persisted workspace back into a list of tree nodes to reopen. No DOM,
- * no services, so ControlPanel stays thin and the rules are unit tested.
+ * Pure helpers behind session restore. One turns the TabManager's tab
+ * list into the environment's persisted dataset workspace. The other
+ * turns that persisted workspace back into a list of tree nodes to
+ * reopen. There is no DOM and no service here, so ControlPanel stays
+ * thin and the rules are unit tested.
  *
  * Node ids are the stable identity of a file across restarts. Folder
  * trees mint `ipc/<folder>/<relative path>` (desktop) or

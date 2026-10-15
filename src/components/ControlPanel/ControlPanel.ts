@@ -132,10 +132,10 @@ export class ControlPanel {
   private lastActiveEnvId: string | null = null;
   /**
    * True while applyActiveEnvironment tears down and rebuilds tabs.
-   * persistDataWorkspace is a no-op meanwhile: the teardown closes
-   * every tab after the active environment has already switched, so
-   * without the guard it would write a shrinking list into the incoming
-   * environment and the restore would find nothing to reopen.
+   * persistDataWorkspace is a no-op meanwhile. The teardown closes
+   * every tab after the active environment has already switched.
+   * Without the guard it would write a shrinking list into the incoming
+   * environment, and the restore would find nothing to reopen.
    */
   private workspaceSaveSuspended = false;
   /**
@@ -252,7 +252,7 @@ export class ControlPanel {
     });
 
     // Tab activation is the one transition that does not pass through a
-    // panel method; hook it so the active dataset tab is recorded too.
+    // panel method. Hook it so the active dataset tab is recorded too.
     this.tabManager.setOnTabActivatedCallback(() => this.persistDataWorkspace());
   }
 
@@ -453,8 +453,8 @@ export class ControlPanel {
    * Record which dataset tabs are open (display order) and which one is
    * active into the active environment's workspace. Everything else in
    * the workspace (query tabs, the editor's active tab) is left as is.
-   * Called on every open, close and activation; cheap, and the
-   * persistence backend debounces the actual write.
+   * Called on every open, close and activation. The call is cheap and
+   * the persistence backend debounces the actual write.
    */
   private persistDataWorkspace(): void {
     if (this.workspaceSaveSuspended) return;
@@ -470,12 +470,12 @@ export class ControlPanel {
   }
 
   /**
-   * Desktop only: files picked one at a time are not under any folder,
+   * Desktop only. Files picked one at a time are not under any folder,
    * so the tree rebuild does not bring them back. Recreate their nodes
-   * from the environment's dataset list; the host's grant for each path
+   * from the environment's dataset list. The host's grant for each path
    * survived the restart, so opening them needs no dialog. Files are
-   * not imported here; restoreWorkspaceTabs opens the ones that were
-   * open, the rest stay as rows to click.
+   * not imported here. restoreWorkspaceTabs opens the ones that were
+   * open. The rest stay as rows to click.
    */
   private restorePickedFiles(env: Environment): void {
     if (!this.fileSource || this.fileSource.id === "fsa") return;
@@ -516,7 +516,7 @@ export class ControlPanel {
     const missing = [...plan.missing];
     let opened = 0;
     // Every step is guarded. The spec says a restore failure is never
-    // fatal: a throw from the tab manager counts as a failed step, and
+    // fatal. A throw from the tab manager counts as a failed step, and
     // applyActiveEnvironment keeps going.
     for (const step of plan.steps) {
       if (environmentService.getActiveId() !== envId) return;
@@ -1150,7 +1150,7 @@ export class ControlPanel {
    */
   private async applyActiveEnvironment(envId: string): Promise<void> {
     let restoreRan = false;
-    // Saving is suspended for the whole apply: the active id has already
+    // Saving is suspended for the whole apply. The active id has already
     // moved to `envId`, so the tab closes below would otherwise write a
     // shrinking list into the incoming environment.
     this.workspaceSaveSuspended = true;
@@ -1212,7 +1212,7 @@ export class ControlPanel {
 
       // A folder env whose folder could not be re-acquired (moved, drive
       // unplugged, web permission denied) leaves an empty tree. Restore
-      // nothing and, below, save nothing: the saved list stays as it is
+      // nothing and, below, save nothing. The saved list stays as it is
       // so the next successful open brings the tabs back.
       const needsFolder = env.kind === "folder" && !!env.folderHandleId;
       if (needsFolder && this.fileTree.length === 0) return;
@@ -1628,7 +1628,7 @@ export class ControlPanel {
   /**
    * Open a tab for `node`. A node that was imported before (silently by
    * the folder auto-import, or explicitly) reuses its cached table and
-   * provider; anything else goes through importNode. Shared by the tree
+   * provider. Anything else goes through importNode. Shared by the tree
    * click handler and the session restore.
    */
   private async openNodeAsTab(
