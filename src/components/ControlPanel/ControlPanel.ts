@@ -515,33 +515,48 @@ export class ControlPanel {
     const plan = planRestore(saved.openDataNodeIds, this.fileTree);
     const missing = [...plan.missing];
     let opened = 0;
+    // Every step is guarded. The spec says a restore failure is never
+    // fatal: a throw from the tab manager counts as a failed step, and
+    // applyActiveEnvironment keeps going.
     for (const step of plan.steps) {
       if (environmentService.getActiveId() !== envId) return;
-      let node: FileTreeNode | undefined;
-      if (step.kind === "node") {
-        node = step.node;
-      } else {
-        await this.handleTreeNodeExpand(step.workbook);
-        node = step.workbook.children?.find((c) => c.id === step.id);
-        if (!node) {
-          missing.push(`${step.workbook.name} / ${step.sheetName}`);
-          continue;
+      try {
+        let node: FileTreeNode | undefined;
+        if (step.kind === "node") {
+          node = step.node;
+        } else {
+          await this.handleTreeNodeExpand(step.workbook);
+          node = step.workbook.children?.find((c) => c.id === step.id);
+          if (!node) {
+            missing.push(`${step.workbook.name} / ${step.sheetName}`);
+            continue;
+          }
         }
-      }
-      const result = await this.openNodeAsTab(node);
-      if (result.ok) {
-        opened++;
-      } else {
+        const result = await this.openNodeAsTab(node);
+        if (result.ok) {
+          opened++;
+        } else {
+          node.isUnavailable = true;
+          this.treeRenderer?.updateNode(node.id, { isUnavailable: true });
+          missing.push(node.name);
+        }
+      } catch (err) {
+        const node = step.kind === "node" ? step.node : step.workbook;
         node.isUnavailable = true;
         this.treeRenderer?.updateNode(node.id, { isUnavailable: true });
         missing.push(node.name);
+        console.error("Session restore: failed to reopen", node.name, err);
       }
     }
 
     if (saved.activeDataNodeId && environmentService.getActiveId() === envId) {
       const active = findNodeById(this.fileTree, saved.activeDataNodeId);
       if (active?.tableName && this.tabManager.getDatasetIds().includes(active.tableName)) {
-        await this.tabManager.switchToDataset(active.tableName);
+        try {
+          await this.tabManager.switchToDataset(active.tableName);
+        } catch (err) {
+          console.error("Session restore: failed to activate", active.tableName, err);
+        }
       }
     }
 

@@ -144,6 +144,34 @@ describe("restoreWorkspaceTabs", () => {
     await panel.restoreWorkspaceTabs(envId, { openDataNodeIds: [] });
     expect(panel.importNode).not.toHaveBeenCalled();
   });
+
+  it("treats a throwing step as a failed tab and keeps going", async () => {
+    const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isImported: true });
+    const b = file("ipc/C:/data/b.csv", "b.csv", { tableName: "b", isImported: true });
+    const open: string[] = [];
+    const panel = makePanel({
+      fileTree: [a, b],
+      datasets: [
+        { metadata: { name: "a" }, dataset: {}, isLoaded: true },
+        { metadata: { name: "b" }, dataset: {}, isLoaded: true },
+      ],
+      tabManager: {
+        getDatasetIds: () => open,
+        getActiveTabId: () => null,
+        getBackend: () => undefined,
+        addDataset: vi.fn(async (metadata: { name: string }) => {
+          if (metadata.name === "a") throw new Error("boom");
+          open.push(metadata.name);
+        }),
+        switchToDataset: vi.fn(async () => {}),
+      },
+    });
+    await panel.restoreWorkspaceTabs(envId, { openDataNodeIds: [a.id, b.id] });
+    expect(a.isUnavailable).toBe(true);
+    expect(panel.tabManager.addDataset).toHaveBeenCalledTimes(2);
+    expect(panel.onShowMessageCallback.mock.calls[0][0]).toBe("Restored 1 of 2 tabs. Missing: a.csv");
+    expect(panel.onShowMessageCallback.mock.calls[0][1]).toBe("warning");
+  });
 });
 
 describe("restorePickedFiles", () => {
