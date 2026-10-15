@@ -67,7 +67,12 @@ describe("restoreWorkspaceTabs", () => {
     expect(panel.tabManager.addDataset).toHaveBeenCalledTimes(1);
     expect(panel.tabManager.switchToDataset).toHaveBeenLastCalledWith("a");
     expect(panel.tabManager.switchToDataset).toHaveBeenCalledTimes(2);
-    expect(panel.onShowMessageCallback).not.toHaveBeenCalled();
+    // b.csv has no cached table, so it gets the usual progress line.
+    // a.csv was already imported silently, so it gets none. No warning
+    // summary follows because nothing was missing.
+    expect(panel.onShowMessageCallback.mock.calls).toEqual([
+      ["Loading b.csv\u2026", "info", { duration: 0 }],
+    ]);
   });
 
   it("waits for the folder auto-import before opening anything", async () => {
@@ -99,6 +104,8 @@ describe("restoreWorkspaceTabs", () => {
     expect(panel.handleTreeNodeExpand).toHaveBeenCalledWith(wb);
     expect(importNode).toHaveBeenCalledTimes(1);
     expect(importNode.mock.calls[0][0].sheetName).toBe("Sheet1");
+    // The chevron must agree with the sheet rows that are now visible.
+    expect(wb.isExpanded).toBe(true);
   });
 
   it("skips missing and failing files and reports them once", async () => {
@@ -111,10 +118,13 @@ describe("restoreWorkspaceTabs", () => {
       ),
     });
     await panel.restoreWorkspaceTabs(envId, { openDataNodeIds: ["ipc/C:/data/gone.csv", bad.id, a.id] });
-    expect(bad.isUnavailable).toBe(true);
-    expect(panel.onShowMessageCallback).toHaveBeenCalledTimes(1);
-    expect(panel.onShowMessageCallback.mock.calls[0][0]).toBe("Restored 1 of 3 tabs. Missing: gone.csv, bad.csv");
-    expect(panel.onShowMessageCallback.mock.calls[0][1]).toBe("warning");
+    // A failed step leaves the row clickable so the user can retry.
+    // isUnavailable means "this format cannot be read", which is a
+    // different thing.
+    expect(bad.isUnavailable).toBeUndefined();
+    const warnings = panel.onShowMessageCallback.mock.calls.filter((c: unknown[]) => c[1] === "warning");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0][0]).toBe("Restored 1 of 3 tabs. Missing: gone.csv, bad.csv");
   });
 
   it("ignores an active id that was not opened", async () => {
@@ -167,7 +177,7 @@ describe("restoreWorkspaceTabs", () => {
       },
     });
     await panel.restoreWorkspaceTabs(envId, { openDataNodeIds: [a.id, b.id] });
-    expect(a.isUnavailable).toBe(true);
+    expect(a.isUnavailable).toBeUndefined();
     expect(panel.tabManager.addDataset).toHaveBeenCalledTimes(2);
     expect(panel.onShowMessageCallback.mock.calls[0][0]).toBe("Restored 1 of 2 tabs. Missing: a.csv");
     expect(panel.onShowMessageCallback.mock.calls[0][1]).toBe("warning");

@@ -525,6 +525,10 @@ export class ControlPanel {
         if (step.kind === "node") {
           node = step.node;
         } else {
+          // The sheet rows become visible here, so the workbook has to
+          // show as expanded. The click path does this itself.
+          step.workbook.isExpanded = true;
+          this.treeRenderer?.updateNode(step.workbook.id, { isExpanded: true });
           await this.handleTreeNodeExpand(step.workbook);
           node = step.workbook.children?.find((c) => c.id === step.id);
           if (!node) {
@@ -532,18 +536,24 @@ export class ControlPanel {
             continue;
           }
         }
+        // A file with no cached table is imported here, which can take a
+        // while for a large one. Show the same progress line the tree
+        // click shows.
+        if (!node.tableName) {
+          this.onShowMessageCallback?.(`Loading ${node.name}\u2026`, "info", { duration: 0 });
+        }
         const result = await this.openNodeAsTab(node);
         if (result.ok) {
           opened++;
         } else {
-          node.isUnavailable = true;
-          this.treeRenderer?.updateNode(node.id, { isUnavailable: true });
+          // The row stays clickable so the user can retry. isUnavailable
+          // would say "this format cannot be read", which is not what
+          // happened, and it would also swallow the click.
           missing.push(node.name);
+          console.error("Session restore: failed to reopen", node.name, result.error.message);
         }
       } catch (err) {
         const node = step.kind === "node" ? step.node : step.workbook;
-        node.isUnavailable = true;
-        this.treeRenderer?.updateNode(node.id, { isUnavailable: true });
         missing.push(node.name);
         console.error("Session restore: failed to reopen", node.name, err);
       }
