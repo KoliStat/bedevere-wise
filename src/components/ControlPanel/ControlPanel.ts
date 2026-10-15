@@ -9,7 +9,8 @@ import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { sniffXlsxTableRange } from "../../data/formats/xlsxTableRange";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { resolveTableName } from "../../data/tableNames";
-import { deriveDataWorkspace, findNodeById, pickedFileNodeId } from "../../data/workspaceRestore";
+import { deriveDataWorkspace, findNodeById, pickedFileNodeId, pickedFilePath, planRestore } from "../../data/workspaceRestore";
+import type { Environment } from "../../data/environments/types";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
 import { TabManager } from "../TabManager/TabManager";
@@ -137,6 +138,13 @@ export class ControlPanel {
    * environment and the restore would find nothing to reopen.
    */
   private workspaceSaveSuspended = false;
+  /**
+   * The folder auto-import started by attachFolderTree, while it runs.
+   * restoreWorkspaceTabs waits for it so a file that is both small
+   * (auto-imported) and open reuses the cached table instead of being
+   * imported twice at the same time.
+   */
+  private pendingAutoImport: Promise<void> | null = null;
 
   // Accordion
   private accordionSections: Map<string, AccordionSection> = new Map();
@@ -459,6 +467,90 @@ export class ControlPanel {
       openDataNodeIds: derived.openDataNodeIds,
       activeDataNodeId: derived.activeDataNodeId,
     });
+  }
+
+  /**
+   * Desktop only: files picked one at a time are not under any folder,
+   * so the tree rebuild does not bring them back. Recreate their nodes
+   * from the environment's dataset list; the host's grant for each path
+   * survived the restart, so opening them needs no dialog. Files are
+   * not imported here; restoreWorkspaceTabs opens the ones that were
+   * open, the rest stay as rows to click.
+   */
+  private restorePickedFiles(env: Environment): void {
+    if (!this.fileSource || this.fileSource.id === "fsa") return;
+    let added = false;
+    for (const ds of env.datasets) {
+      const path = pickedFilePath(ds.nodeId);
+      if (!path || findNodeById(this.fileTree, ds.nodeId)) continue;
+      this.fileTree.push({
+        id: ds.nodeId,
+        name: ds.name,
+        kind: "file",
+        filePath: path,
+        fileType: detectFileType(ds.name) ?? undefined,
+        isImported: false,
+        isExpanded: false,
+      });
+      added = true;
+    }
+    if (added) this.renderTree();
+  }
+
+  /**
+   * Reopen the dataset tabs saved for `envId`, in order, then activate
+   * the saved one. Every failure is skipped and reported once. Stops
+   * early if the active environment changes underneath (the user
+   * switched while tabs were still opening), leaving the other
+   * environment's apply run in charge.
+   */
+  private async restoreWorkspaceTabs(
+    envId: string,
+    saved: { openDataNodeIds: string[]; activeDataNodeId?: string },
+  ): Promise<void> {
+    if (saved.openDataNodeIds.length === 0) return;
+    if (this.pendingAutoImport) await this.pendingAutoImport;
+    if (environmentService.getActiveId() !== envId) return;
+
+    const plan = planRestore(saved.openDataNodeIds, this.fileTree);
+    const missing = [...plan.missing];
+    let opened = 0;
+    for (const step of plan.steps) {
+      if (environmentService.getActiveId() !== envId) return;
+      let node: FileTreeNode | undefined;
+      if (step.kind === "node") {
+        node = step.node;
+      } else {
+        await this.handleTreeNodeExpand(step.workbook);
+        node = step.workbook.children?.find((c) => c.id === step.id);
+        if (!node) {
+          missing.push(`${step.workbook.name} / ${step.sheetName}`);
+          continue;
+        }
+      }
+      const result = await this.openNodeAsTab(node);
+      if (result.ok) {
+        opened++;
+      } else {
+        node.isUnavailable = true;
+        this.treeRenderer?.updateNode(node.id, { isUnavailable: true });
+        missing.push(node.name);
+      }
+    }
+
+    if (saved.activeDataNodeId && environmentService.getActiveId() === envId) {
+      const active = findNodeById(this.fileTree, saved.activeDataNodeId);
+      if (active?.tableName && this.tabManager.getDatasetIds().includes(active.tableName)) {
+        await this.tabManager.switchToDataset(active.tableName);
+      }
+    }
+
+    if (missing.length > 0) {
+      this.onShowMessageCallback?.(
+        `Restored ${opened} of ${saved.openDataNodeIds.length} tabs. Missing: ${missing.join(", ")}`,
+        "warning",
+      );
+    }
   }
 
   private findTreeNodeByTableName(tableName: string): FileTreeNode | undefined {
@@ -885,9 +977,14 @@ export class ControlPanel {
     // doesn't redo work.
     const leaves = this.collectFileLeaves(tree).filter((n) => !n.isImported);
     if (leaves.length > 0) {
-      this.autoImportBatch(leaves).catch((err) => {
-        console.error("Folder auto-import failed:", err);
-      });
+      const batch = this.autoImportBatch(leaves)
+        .catch((err) => {
+          console.error("Folder auto-import failed:", err);
+        })
+        .finally(() => {
+          if (this.pendingAutoImport === batch) this.pendingAutoImport = null;
+        });
+      this.pendingAutoImport = batch;
     }
   }
 
@@ -973,54 +1070,83 @@ export class ControlPanel {
    * converge here through the service emit.
    */
   private async applyActiveEnvironment(envId: string): Promise<void> {
-    // Close every open dataset tab. The TabManager API works by name;
-    // snapshot first so we don't mutate while iterating.
-    const openIds = this.tabManager.getDatasetIds();
-    for (const id of openIds) {
-      this.tabManager.closeDataset(id);
-    }
-
-    // Wipe every user-created object in DuckDB's `main` schema. Without
-    // this, switching from env A to env B leaves env A's tables, views,
-    // macros and types visible in autocomplete + reachable by SQL —
-    // confusing because the panel says they aren't part of B, but the
-    // engine still knows them. The new env's datasets re-import below
-    // through `openRecentFolder` / silent-import.
-    const backend = this.tabManager.getBackend();
-    if (backend && backend.wipeUserState) {
-      try {
-        await backend.wipeUserState();
-      } catch (err) {
-        console.warn("applyActiveEnvironment: wipeUserState failed", err);
+    let restoreRan = false;
+    // Saving is suspended for the whole apply: the active id has already
+    // moved to `envId`, so the tab closes below would otherwise write a
+    // shrinking list into the incoming environment.
+    this.workspaceSaveSuspended = true;
+    try {
+      // Close every open dataset tab. The TabManager API works by name;
+      // snapshot first so we don't mutate while iterating.
+      const openIds = this.tabManager.getDatasetIds();
+      for (const id of openIds) {
+        this.tabManager.closeDataset(id);
       }
-    }
 
-    // Reset the panel's in-memory state.
-    this.fileTree = [];
-    this.datasets = [];
-    this.renderTree();
-    this.renderSavedQueries();
-
-    const env = environmentService.get(envId);
-    if (!env) return;
-    if (env.kind === "folder" && env.folderHandleId) {
-      if (env.folderHandleId.startsWith("ipc:")) {
-        // Desktop / IPC env: re-acquire by path via the host.
-        await this.restoreIpcFolder(env.folderHandleId.slice("ipc:".length));
-      } else if (this.fileSource && this.fileSource.id !== "fsa") {
-        // Non-FSA runtime + an env saved before the "ipc:" prefix
-        // landed. The id is a raw OS path; route it through the host.
-        // (FSA envs viewed under a non-FSA fileSource will fail the
-        // openFolder check inside restoreIpcFolder and surface the
-        // standard "no longer accessible" toast — acceptable; the
-        // user re-picks via Open Folder.)
-        await this.restoreIpcFolder(env.folderHandleId);
-      } else {
-        // FSA env: re-scan via the recent-folder pathway. It already
-        // handles permission prompts and stale-handle cleanup.
-        await this.openRecentFolder(env.folderHandleId);
+      // Wipe every user-created object in DuckDB's `main` schema. Without
+      // this, switching from env A to env B leaves env A's tables, views,
+      // macros and types visible in autocomplete + reachable by SQL —
+      // confusing because the panel says they aren't part of B, but the
+      // engine still knows them. The new env's datasets re-import below
+      // through `openRecentFolder` / silent-import.
+      const backend = this.tabManager.getBackend();
+      if (backend && backend.wipeUserState) {
+        try {
+          await backend.wipeUserState();
+        } catch (err) {
+          console.warn("applyActiveEnvironment: wipeUserState failed", err);
+        }
       }
+
+      // Reset the panel's in-memory state.
+      this.fileTree = [];
+      this.datasets = [];
+      this.renderTree();
+      this.renderSavedQueries();
+
+      const env = environmentService.get(envId);
+      if (!env) return;
+      // Snapshot the saved tab list before anything below can touch it.
+      const saved = {
+        openDataNodeIds: [...env.workspace.openDataNodeIds],
+        activeDataNodeId: env.workspace.activeDataNodeId,
+      };
+
+      if (env.kind === "folder" && env.folderHandleId) {
+        if (env.folderHandleId.startsWith("ipc:")) {
+          // Desktop / IPC env: re-acquire by path via the host.
+          await this.restoreIpcFolder(env.folderHandleId.slice("ipc:".length));
+        } else if (this.fileSource && this.fileSource.id !== "fsa") {
+          // Non-FSA runtime + an env saved before the "ipc:" prefix
+          // landed. The id is a raw OS path; route it through the host.
+          // (FSA envs viewed under a non-FSA fileSource will fail the
+          // openFolder check inside restoreIpcFolder and surface the
+          // standard "no longer accessible" toast — acceptable; the
+          // user re-picks via Open Folder.)
+          await this.restoreIpcFolder(env.folderHandleId);
+        } else {
+          // FSA env: re-scan via the recent-folder pathway. It already
+          // handles permission prompts and stale-handle cleanup.
+          await this.openRecentFolder(env.folderHandleId);
+        }
+      }
+
+      // A folder env whose folder could not be re-acquired (moved, drive
+      // unplugged, web permission denied) leaves an empty tree. Restore
+      // nothing and, below, save nothing: the saved list stays as it is
+      // so the next successful open brings the tabs back.
+      const needsFolder = env.kind === "folder" && !!env.folderHandleId;
+      if (needsFolder && this.fileTree.length === 0) return;
+
+      this.restorePickedFiles(env);
+      await this.restoreWorkspaceTabs(envId, saved);
+      restoreRan = true;
+    } finally {
+      this.workspaceSaveSuspended = false;
     }
+    // One save with what actually opened, so a file that disappeared
+    // drops out of the list cleanly.
+    if (restoreRan && environmentService.getActiveId() === envId) this.persistDataWorkspace();
   }
 
   /**
