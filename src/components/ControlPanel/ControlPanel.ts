@@ -9,6 +9,7 @@ import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { sniffXlsxTableRange } from "../../data/formats/xlsxTableRange";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { resolveTableName } from "../../data/tableNames";
+import { deriveDataWorkspace, findNodeById, pickedFileNodeId } from "../../data/workspaceRestore";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
 import { TabManager } from "../TabManager/TabManager";
@@ -128,6 +129,14 @@ export class ControlPanel {
   // path applied the tab-close / folder-rescan side-effects.
   private envUnsubscribe?: () => void;
   private lastActiveEnvId: string | null = null;
+  /**
+   * True while applyActiveEnvironment tears down and rebuilds tabs.
+   * persistDataWorkspace is a no-op meanwhile: the teardown closes
+   * every tab after the active environment has already switched, so
+   * without the guard it would write a shrinking list into the incoming
+   * environment and the restore would find nothing to reopen.
+   */
+  private workspaceSaveSuspended = false;
 
   // Accordion
   private accordionSections: Map<string, AccordionSection> = new Map();
@@ -233,6 +242,10 @@ export class ControlPanel {
         });
       }
     });
+
+    // Tab activation is the one transition that does not pass through a
+    // panel method; hook it so the active dataset tab is recorded too.
+    this.tabManager.setOnTabActivatedCallback(() => this.persistDataWorkspace());
   }
 
   private buildAccordion(): void {
@@ -347,6 +360,7 @@ export class ControlPanel {
       });
       this.renderTree();
     }
+    this.persistDataWorkspace();
   }
 
   public markDatasetAsLoaded(name: string): void {
@@ -359,6 +373,7 @@ export class ControlPanel {
       node.isOpenAsTab = true;
       this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
     }
+    this.persistDataWorkspace();
   }
 
   /**
@@ -379,6 +394,7 @@ export class ControlPanel {
     // class toggle; the warning glyph (which keys off `isImported`)
     // wants a full row rebuild.
     this.renderTree();
+    this.persistDataWorkspace();
   }
 
   /**
@@ -405,6 +421,7 @@ export class ControlPanel {
     };
     walk(this.fileTree);
     this.renderTree();
+    this.persistDataWorkspace();
   }
 
   public markDatasetAsUnloaded(name: string): void {
@@ -421,6 +438,27 @@ export class ControlPanel {
       node.isOpenAsTab = false;
       this.treeRenderer?.updateNode(node.id, { isOpenAsTab: false });
     }
+    this.persistDataWorkspace();
+  }
+
+  /**
+   * Record which dataset tabs are open (display order) and which one is
+   * active into the active environment's workspace. Everything else in
+   * the workspace (query tabs, the editor's active tab) is left as is.
+   * Called on every open, close and activation; cheap, and the
+   * persistence backend debounces the actual write.
+   */
+  private persistDataWorkspace(): void {
+    if (this.workspaceSaveSuspended) return;
+    const envId = environmentService.getActiveId();
+    const env = envId ? environmentService.get(envId) : null;
+    if (!env) return;
+    const derived = deriveDataWorkspace(this.tabManager.getDatasetIds(), this.tabManager.getActiveTabId(), this.fileTree);
+    environmentService.setWorkspace(env.id, {
+      ...env.workspace,
+      openDataNodeIds: derived.openDataNodeIds,
+      activeDataNodeId: derived.activeDataNodeId,
+    });
   }
 
   private findTreeNodeByTableName(tableName: string): FileTreeNode | undefined {
@@ -684,18 +722,30 @@ export class ControlPanel {
       >[];
       if (pathFiles.length === 0) return;
 
-      // Mint drop-style nodes carrying `filePath`. autoImportBatch
-      // dispatches on filePath via importNode, so the single-file
-      // picker and the folder picker share the rest of the pipeline.
-      const newNodes: FileTreeNode[] = pathFiles.map((f) => ({
-        id: `ipc/file/${f.path}/${Date.now()}/${Math.random().toString(36).slice(2, 8)}`,
-        name: f.name,
-        kind: "file" as const,
-        filePath: f.path,
-        fileType: detectFileType(f.name) ?? undefined,
-        isImported: false,
-        isExpanded: false,
-      }));
+      // One node per path, keyed by a stable id so the environment can
+      // find the file again after a restart and so picking the same file
+      // twice reuses the row instead of adding a twin.
+      const nodes: FileTreeNode[] = [];
+      const newNodes: FileTreeNode[] = [];
+      for (const f of pathFiles) {
+        const id = pickedFileNodeId(f.path);
+        const existing = findNodeById(this.fileTree, id);
+        if (existing) {
+          nodes.push(existing);
+          continue;
+        }
+        const node: FileTreeNode = {
+          id,
+          name: f.name,
+          kind: "file",
+          filePath: f.path,
+          fileType: detectFileType(f.name) ?? undefined,
+          isImported: false,
+          isExpanded: false,
+        };
+        newNodes.push(node);
+        nodes.push(node);
+      }
       this.fileTree.push(...newNodes);
 
       const activeEnvId = environmentService.getActiveId();
@@ -713,7 +763,7 @@ export class ControlPanel {
 
       // Open as visible tabs (no `silent: true`) so the user actually
       // sees the data after picking, matching the drag-drop UX.
-      for (const node of newNodes) {
+      for (const node of nodes) {
         const result = await this.importNode(node);
         if (!result.ok) {
           this.onShowMessageCallback?.(
@@ -1185,23 +1235,11 @@ export class ControlPanel {
 
     if (node.isUnavailable) return;
 
-    // Already-tracked node (we've imported this file before): re-select the
-    // existing tab if open, or re-open the tab from cached DataProvider if the
-    // user had closed it. Avoids a duplicate import and the "Component with id
-    // X is already registered" error from a duplicate tab.
-    if (node.tableName) {
-      const existing = this.datasets.find((d) => d.metadata.name === node.tableName);
-      if (existing) {
-        const openTabs = this.tabManager.getDatasetIds();
-        if (!openTabs.includes(existing.metadata.name)) {
-          await this.tabManager.addDataset(existing.metadata, existing.dataset);
-        }
-        await this.tabManager.switchToDataset(existing.metadata.name);
-        node.isOpenAsTab = true;
-        this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
-        this.onSelectCallback?.(existing.dataset);
-        return;
-      }
+    // Already-tracked node (imported before): reuse the cached table so
+    // there is no duplicate import and no duplicate tab registration.
+    if (node.tableName && this.datasets.some((d) => d.metadata.name === node.tableName)) {
+      await this.openNodeAsTab(node);
+      return;
     }
 
     // Show a persistent "Loading…" line immediately; it's replaced by the
@@ -1268,6 +1306,7 @@ export class ControlPanel {
           await this.tabManager.addDataset(metadata, result);
           await this.tabManager.switchToDataset(metadata.name);
           this.onSelectCallback?.(result);
+          this.persistDataWorkspace();
         }
         return { ok: true };
       } catch (err) {
@@ -1341,6 +1380,7 @@ export class ControlPanel {
         await this.tabManager.addDataset(metadata, provider);
         await this.tabManager.switchToDataset(metadata.name);
         this.onSelectCallback?.(provider);
+        this.persistDataWorkspace();
       }
       return { ok: true };
     } catch (error) {
@@ -1378,6 +1418,33 @@ export class ControlPanel {
 
       return { ok: false, error: formatted };
     }
+  }
+
+  /**
+   * Open a tab for `node`. A node that was imported before (silently by
+   * the folder auto-import, or explicitly) reuses its cached table and
+   * provider; anything else goes through importNode. Shared by the tree
+   * click handler and the session restore.
+   */
+  private async openNodeAsTab(
+    node: FileTreeNode,
+  ): Promise<{ ok: true } | { ok: false; error: { message: string; details?: string } }> {
+    if (node.isUnavailable) return { ok: false, error: { message: `${node.name} is unavailable` } };
+    if (node.tableName) {
+      const existing = this.datasets.find((d) => d.metadata.name === node.tableName);
+      if (existing) {
+        if (!this.tabManager.getDatasetIds().includes(existing.metadata.name)) {
+          await this.tabManager.addDataset(existing.metadata, existing.dataset);
+        }
+        await this.tabManager.switchToDataset(existing.metadata.name);
+        node.isOpenAsTab = true;
+        this.treeRenderer?.updateNode(node.id, { isOpenAsTab: true });
+        this.onSelectCallback?.(existing.dataset);
+        this.persistDataWorkspace();
+        return { ok: true };
+      }
+    }
+    return this.importNode(node);
   }
 
   /**
