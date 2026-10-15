@@ -1001,6 +1001,41 @@ export class ControlPanel {
         });
       this.pendingAutoImport = batch;
     }
+
+    // On the web the browser will not ask for folder permission at boot.
+    // The folder usually comes back later, when the user clicks it in the
+    // recent list or picks it again. That click is where the saved tabs
+    // have to reopen. A full applyActiveEnvironment run restores on its
+    // own, so this path stays out of the way while saving is suspended.
+    if (!this.workspaceSaveSuspended && folderHandleId) {
+      const env = environmentService.getActive();
+      if (env?.folderHandleId === folderHandleId && env.workspace.openDataNodeIds.length > 0) {
+        this.restoreAfterReattach(env.id).catch((err) => {
+          console.error("Session restore after a folder re-open failed:", err);
+        });
+      }
+    }
+  }
+
+  /**
+   * Reopen the saved dataset tabs after the active environment's folder
+   * was re-acquired outside a full apply. Saving is suspended while the
+   * tabs open. One save runs at the end with the tabs that opened.
+   */
+  private async restoreAfterReattach(envId: string): Promise<void> {
+    const env = environmentService.get(envId);
+    if (!env) return;
+    const saved = {
+      openDataNodeIds: [...env.workspace.openDataNodeIds],
+      activeDataNodeId: env.workspace.activeDataNodeId,
+    };
+    this.workspaceSaveSuspended = true;
+    try {
+      await this.restoreWorkspaceTabs(envId, saved);
+    } finally {
+      this.workspaceSaveSuspended = false;
+    }
+    if (environmentService.getActiveId() === envId) this.persistDataWorkspace();
   }
 
   private collectFileLeaves(node: FileTreeNode): FileTreeNode[] {

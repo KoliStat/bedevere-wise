@@ -192,6 +192,62 @@ describe("restorePickedFiles", () => {
   });
 });
 
+describe("restoreAfterReattach", () => {
+  function folderRoot(): FileTreeNode {
+    return { id: "ipc/C:/data", name: "data", kind: "folder", children: [], isImported: false, isExpanded: true };
+  }
+
+  it("reopens the saved tabs with saving suspended, then saves once", async () => {
+    environmentService.setWorkspace(envId, {
+      openDataNodeIds: ["ipc/C:/data/a.csv"],
+      openQueryIds: [],
+      activeDataNodeId: "ipc/C:/data/a.csv",
+    });
+    let saves = 0;
+    const seen: unknown[] = [];
+    const flagDuringRestore: boolean[] = [];
+    const panel = makePanel({
+      restoreWorkspaceTabs: vi.fn(async (_id: string, saved: unknown) => {
+        seen.push(saved);
+        flagDuringRestore.push(panel.workspaceSaveSuspended);
+      }),
+      persistDataWorkspace: () => {
+        saves++;
+      },
+    });
+    await panel.restoreAfterReattach(envId);
+    expect(seen).toEqual([
+      { openDataNodeIds: ["ipc/C:/data/a.csv"], activeDataNodeId: "ipc/C:/data/a.csv" },
+    ]);
+    expect(flagDuringRestore).toEqual([true]);
+    expect(panel.workspaceSaveSuspended).toBe(false);
+    expect(saves).toBe(1);
+  });
+
+  it("runs from attachFolderTree when the active environment's folder comes back", () => {
+    environmentService.setWorkspace(envId, { openDataNodeIds: ["ipc/C:/data/a.csv"], openQueryIds: [] });
+    const panel = makePanel({
+      restoreAfterReattach: vi.fn(async () => {}),
+      bindFolderToEnvironment: vi.fn(),
+      collectFileLeaves: () => [],
+    });
+    panel.attachFolderTree(folderRoot(), "ipc:C:/data");
+    expect(panel.restoreAfterReattach).toHaveBeenCalledWith(envId);
+  });
+
+  it("does not run from attachFolderTree while a full apply is in flight", () => {
+    environmentService.setWorkspace(envId, { openDataNodeIds: ["ipc/C:/data/a.csv"], openQueryIds: [] });
+    const panel = makePanel({
+      workspaceSaveSuspended: true,
+      restoreAfterReattach: vi.fn(async () => {}),
+      bindFolderToEnvironment: vi.fn(),
+      collectFileLeaves: () => [],
+    });
+    panel.attachFolderTree(folderRoot(), "ipc:C:/data");
+    expect(panel.restoreAfterReattach).not.toHaveBeenCalled();
+  });
+});
+
 describe("applyActiveEnvironment guard", () => {
   function folderRoot(): FileTreeNode {
     return { id: "ipc/C:/data", name: "data", kind: "folder", children: [], isImported: false, isExpanded: true };
