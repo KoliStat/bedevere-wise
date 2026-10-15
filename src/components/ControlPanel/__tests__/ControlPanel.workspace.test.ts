@@ -77,9 +77,50 @@ describe("persistDataWorkspace", () => {
 
   it("records a tab closed through markDatasetAsUnloaded", () => {
     const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isOpenAsTab: true });
+    environmentService.setWorkspace(envId, { openDataNodeIds: [a.id], openQueryIds: [], activeDataNodeId: a.id });
     const panel = makePanel({ fileTree: [a], datasets: [{ metadata: { name: "a" }, dataset: {}, isLoaded: true }], tabManager: { getDatasetIds: () => [], getActiveTabId: () => null } });
     panel.markDatasetAsUnloaded("a");
     expect(a.isOpenAsTab).toBe(false);
+    const ws = environmentService.get(envId)!.workspace;
+    expect(ws.openDataNodeIds).toEqual([]);
+    expect(ws.activeDataNodeId).toBeUndefined();
+  });
+
+  it("records a tab loaded through markDatasetAsLoaded", () => {
+    const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a" });
+    const panel = makePanel({ fileTree: [a], tabManager: { getDatasetIds: () => ["a"], getActiveTabId: () => "a" } });
+    panel.markDatasetAsLoaded("a");
+    const ws = environmentService.get(envId)!.workspace;
+    expect(ws.openDataNodeIds).toEqual([a.id]);
+    expect(ws.activeDataNodeId).toBe(a.id);
+  });
+
+  it("records a tab dropped through markDatasetAsDropped", () => {
+    const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isImported: true, isOpenAsTab: true });
+    environmentService.setWorkspace(envId, { openDataNodeIds: [a.id], openQueryIds: [] });
+    const panel = makePanel({ fileTree: [a], tabManager: { getDatasetIds: () => [], getActiveTabId: () => null } });
+    panel.markDatasetAsDropped("a");
+    // The node's tableName is cleared as part of the drop, so it no
+    // longer maps to a restorable id — the stale [a.id] must be gone.
+    expect(environmentService.get(envId)!.workspace.openDataNodeIds).toEqual([]);
+  });
+
+  it("clears the workspace when markAllAsUnloaded runs", () => {
+    const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isImported: true, isOpenAsTab: true });
+    environmentService.setWorkspace(envId, { openDataNodeIds: [a.id], openQueryIds: [] });
+    const panel = makePanel({ fileTree: [a], tabManager: { getDatasetIds: () => [], getActiveTabId: () => null } });
+    panel.markAllAsUnloaded();
+    expect(environmentService.get(envId)!.workspace.openDataNodeIds).toEqual([]);
+  });
+
+  it("runs persist after addDataset synthesizes a tree node", async () => {
+    // The synthesized node gets a `dataset/`-prefixed id, which
+    // deriveDataWorkspace never treats as restorable — so the only way
+    // to tell persist ran is to seed a stale id first and see it wiped.
+    environmentService.setWorkspace(envId, { openDataNodeIds: ["ipc/C:/data/old.csv"], openQueryIds: [] });
+    const panel = makePanel({ tabManager: { getDatasetIds: () => ["t1"], getActiveTabId: () => "t1" } });
+    const provider = { getMetadata: async () => ({ name: "t1", columns: [] }) };
+    await panel.addDataset(provider);
     expect(environmentService.get(envId)!.workspace.openDataNodeIds).toEqual([]);
   });
 });
@@ -88,10 +129,17 @@ describe("openNodeAsTab", () => {
   it("reuses the cached table of an imported node and records the open tab", async () => {
     const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isImported: true });
     const dataset = {};
+    // getDatasetIds must reflect the add once it happens, otherwise the
+    // persistDataWorkspace call at the end of the reuse path can't be
+    // told apart from a no-op: both would leave the tab out of the
+    // derived workspace.
+    const open: string[] = [];
     const tabManager = {
-      getDatasetIds: vi.fn(() => []),
+      getDatasetIds: vi.fn(() => open.slice()),
       getActiveTabId: () => "a",
-      addDataset: vi.fn(async () => {}),
+      addDataset: vi.fn(async (metadata: { name: string }) => {
+        open.push(metadata.name);
+      }),
       switchToDataset: vi.fn(async () => {}),
     };
     const panel = makePanel({ fileTree: [a], datasets: [{ metadata: { name: "a" }, dataset, isLoaded: true }], tabManager, importNode: vi.fn() });
@@ -101,6 +149,9 @@ describe("openNodeAsTab", () => {
     expect(tabManager.switchToDataset).toHaveBeenCalledWith("a");
     expect(panel.importNode).not.toHaveBeenCalled();
     expect(a.isOpenAsTab).toBe(true);
+    const ws = environmentService.get(envId)!.workspace;
+    expect(ws.openDataNodeIds).toEqual([a.id]);
+    expect(ws.activeDataNodeId).toBe(a.id);
   });
 
   it("imports a node that has no cached table", async () => {
@@ -109,6 +160,62 @@ describe("openNodeAsTab", () => {
     const panel = makePanel({ fileTree: [b], importNode });
     await panel.openNodeAsTab(b);
     expect(importNode).toHaveBeenCalledWith(b);
+  });
+});
+
+describe("importNode persists the workspace", () => {
+  it("records the newly opened tab (File branch)", async () => {
+    const a = file("ipc/C:/data/a.csv", "a.csv", {
+      fileHandle: new File(["a,b\n1,2"], "a.csv", { type: "text/csv" }),
+    });
+    const open: string[] = [];
+    const tabManager = {
+      getDatasetIds: () => open.slice(),
+      getActiveTabId: () => "a",
+      getBackend: () => undefined,
+      addDataset: vi.fn(async (metadata: { name: string }) => {
+        open.push(metadata.name);
+      }),
+      switchToDataset: vi.fn(async () => {}),
+    };
+    const panel = makePanel({
+      fileTree: [a],
+      tabManager,
+      fileImportService: {
+        importFile: async (_file: File, name: string) => ({ getMetadata: async () => ({ name }) }),
+      },
+    });
+    const result = await panel.importNode(a);
+    expect(result.ok).toBe(true);
+    const ws = environmentService.get(envId)!.workspace;
+    expect(ws.openDataNodeIds).toEqual([a.id]);
+    expect(ws.activeDataNodeId).toBe(a.id);
+  });
+
+  it("records the newly opened tab (host path)", async () => {
+    const b = file("ipc/C:/data/b.csv", "b.csv", { filePath: "C:/data/b.csv", fileType: "csv" });
+    const open: string[] = [];
+    const tabManager = {
+      getDatasetIds: () => open.slice(),
+      getActiveTabId: () => "b",
+      getBackend: () => undefined,
+      addDataset: vi.fn(async (metadata: { name: string }) => {
+        open.push(metadata.name);
+      }),
+      switchToDataset: vi.fn(async () => {}),
+    };
+    const panel = makePanel({
+      fileTree: [b],
+      tabManager,
+      fileImportService: {
+        importPath: async (_path: string, name: string) => ({ getMetadata: async () => ({ name }) }),
+      },
+    });
+    const result = await panel.importNode(b);
+    expect(result.ok).toBe(true);
+    const ws = environmentService.get(envId)!.workspace;
+    expect(ws.openDataNodeIds).toEqual([b.id]);
+    expect(ws.activeDataNodeId).toBe(b.id);
   });
 });
 
