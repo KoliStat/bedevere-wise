@@ -9,7 +9,7 @@ import { MultipleHtmlTablesError } from "../../data/formats/htmlTables";
 import { sniffXlsxTableRange } from "../../data/formats/xlsxTableRange";
 import { environmentService } from "../../data/environments/EnvironmentService";
 import { resolveTableName } from "../../data/tableNames";
-import { deriveDataWorkspace, findNodeById, pickedFileNodeId, pickedFilePath, planRestore } from "../../data/workspaceRestore";
+import { deriveDataWorkspace, findNodeById, isRestorableNodeId, pickedFileNodeId, pickedFilePath, planRestore } from "../../data/workspaceRestore";
 import type { Environment } from "../../data/environments/types";
 import { HtmlPasteDialog } from "../HtmlPasteDialog/HtmlPasteDialog";
 import { FileTreeRenderer, FileTreeCallbacks } from "./FileTreeRenderer";
@@ -566,6 +566,17 @@ export class ControlPanel {
         "warning",
       );
     }
+  }
+
+  /**
+   * True when the dataset's row in the file tree can be found again
+   * after a restart. Query results, dropped files and catalog tables
+   * are not restorable. Their names are reused by unrelated data in the
+   * next session, so state keyed by the name must not be persisted.
+   */
+  public isDatasetRestorable(tableName: string): boolean {
+    const node = this.findTreeNodeByTableName(tableName);
+    return !!node && isRestorableNodeId(node.id);
   }
 
   private findTreeNodeByTableName(tableName: string): FileTreeNode | undefined {

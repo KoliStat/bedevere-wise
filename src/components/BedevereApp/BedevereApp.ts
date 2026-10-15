@@ -541,13 +541,26 @@ export class BedevereApp implements EventHandler {
     // `hasAnyState` and constructs the filtered provider directly, so
     // the first render is already projected.
     this.tabManager.setOnBeforeAddDatasetCallback((metadata) => {
-      hydrateColumnState(this.tabManager.getFilterManager(), this.persistenceService.loadAppSettings(), metadata);
+      const settings = this.persistenceService.loadAppSettings();
+      // Filters and sorts only come back for datasets the file tree can
+      // restore. A session-local name such as result_1 belongs to a
+      // different query next session. Applying yesterday's filter to it
+      // would hide rows with no visible cause. Hidden columns and
+      // column order predate this feature and keep loading either way.
+      const restorable = !!this.leftPanel?.isDatasetRestorable(metadata.name);
+      const forHydration = restorable
+        ? settings
+        : withColumnSorts(withColumnFilters(settings, metadata.name, []), metadata.name, []);
+      hydrateColumnState(this.tabManager.getFilterManager(), forHydration, metadata);
     });
 
     // Filters and sorts persist on every change. Hidden columns and
-    // column order keep their own persist calls in the callbacks below;
-    // this subscriber writes only the two lists it owns.
+    // column order keep their own persist calls in the callbacks below.
+    // This subscriber writes only the two lists it owns.
     this.tabManager.getFilterManager().onChange((datasetName) => {
+      // Same rule as the hydration above. Only a dataset the tree can
+      // restore gets its filters and sorts written out.
+      if (!this.leftPanel?.isDatasetRestorable(datasetName)) return;
       const fm = this.tabManager.getFilterManager();
       let settings = this.persistenceService.loadAppSettings();
       settings = withColumnFilters(settings, datasetName, fm.getFilters(datasetName));

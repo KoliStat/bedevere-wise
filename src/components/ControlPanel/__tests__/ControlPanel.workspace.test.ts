@@ -125,6 +125,20 @@ describe("persistDataWorkspace", () => {
   });
 });
 
+describe("isDatasetRestorable", () => {
+  it("is true for a folder node and false for a dropped file or an unknown name", () => {
+    const panel = makePanel({
+      fileTree: [
+        file("ipc/C:/data/a.csv", "a.csv", { tableName: "a" }),
+        file("drop/x.csv/1/ab", "x.csv", { tableName: "x" }),
+      ],
+    });
+    expect(panel.isDatasetRestorable("a")).toBe(true);
+    expect(panel.isDatasetRestorable("x")).toBe(false);
+    expect(panel.isDatasetRestorable("result_1")).toBe(false);
+  });
+});
+
 describe("openNodeAsTab", () => {
   it("reuses the cached table of an imported node and records the open tab", async () => {
     const a = file("ipc/C:/data/a.csv", "a.csv", { tableName: "a", isImported: true });
