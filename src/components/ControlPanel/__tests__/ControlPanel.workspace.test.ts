@@ -101,7 +101,7 @@ describe("persistDataWorkspace", () => {
     const panel = makePanel({ fileTree: [a], tabManager: { getDatasetIds: () => [], getActiveTabId: () => null } });
     panel.markDatasetAsDropped("a");
     // The node's tableName is cleared as part of the drop, so it no
-    // longer maps to a restorable id — the stale [a.id] must be gone.
+    // longer maps to a restorable id. The stale [a.id] must be gone.
     expect(environmentService.get(envId)!.workspace.openDataNodeIds).toEqual([]);
   });
 
@@ -115,7 +115,7 @@ describe("persistDataWorkspace", () => {
 
   it("runs persist after addDataset synthesizes a tree node", async () => {
     // The synthesized node gets a `dataset/`-prefixed id, which
-    // deriveDataWorkspace never treats as restorable — so the only way
+    // deriveDataWorkspace never treats as restorable. So the only way
     // to tell persist ran is to seed a stale id first and see it wiped.
     environmentService.setWorkspace(envId, { openDataNodeIds: ["ipc/C:/data/old.csv"], openQueryIds: [] });
     const panel = makePanel({ tabManager: { getDatasetIds: () => ["t1"], getActiveTabId: () => "t1" } });
@@ -236,15 +236,20 @@ describe("importNode persists the workspace", () => {
 describe("openFilePicker ids", () => {
   it("mints a stable id per path and reuses the node when the same file is picked again", async () => {
     const importNode = vi.fn(async () => ({ ok: true }));
+    const openNodeAsTab = vi.fn(async () => ({ ok: true }));
     const panel = makePanel({
       fileImportService: { getSupportedExtensions: () => [".csv"] },
       fileSource: { id: "ipc", pickFiles: async () => [{ kind: "path", path: "C:/d/a.csv", name: "a.csv" }] },
       importNode,
+      openNodeAsTab,
     });
     await panel.openFilePicker();
     await panel.openFilePicker();
     expect(panel.fileTree.map((n: FileTreeNode) => n.id)).toEqual(["ipc/file/C:/d/a.csv"]);
-    expect(importNode).toHaveBeenCalledTimes(2);
+    // First pick imports. Second pick finds the node and only brings
+    // its tab forward, so the table is not imported twice.
+    expect(importNode).toHaveBeenCalledTimes(1);
+    expect(openNodeAsTab).toHaveBeenCalledTimes(1);
     expect(environmentService.get(envId)!.datasets.map((d) => d.nodeId)).toEqual(["ipc/file/C:/d/a.csv"]);
   });
 });

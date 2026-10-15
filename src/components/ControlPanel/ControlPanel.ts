@@ -880,9 +880,17 @@ export class ControlPanel {
       this.expandSection("datasets");
 
       // Open as visible tabs (no `silent: true`) so the user actually
-      // sees the data after picking, matching the drag-drop UX.
+      // sees the data after picking, matching the drag-drop UX. A file
+      // that was already in the tree may already be open. Importing it
+      // again would re-import the same table and register a tab the
+      // manager already has, which throws. openNodeAsTab reuses the
+      // cached table and brings the tab forward. It still imports when
+      // there is no cached table yet.
+      const freshIds = new Set(newNodes.map((n) => n.id));
       for (const node of nodes) {
-        const result = await this.importNode(node);
+        const result = freshIds.has(node.id)
+          ? await this.importNode(node)
+          : await this.openNodeAsTab(node);
         if (!result.ok) {
           this.onShowMessageCallback?.(
             `Failed to import "${node.name}": ${result.error.message}`,
