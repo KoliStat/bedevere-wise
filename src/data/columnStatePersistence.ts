@@ -1,8 +1,9 @@
 /**
  * Per-dataset column state (hidden columns, column order, filters,
- * sorts) in and out of AppSettings. Keyed by dataset name, which is the
- * DuckDB table name; two environments with a same-named table share an
- * entry. Known and accepted, see the design spec.
+ * sorts) in and out of AppSettings. Entries are keyed by dataset name.
+ * That name is the DuckDB table name. Two environments with a
+ * same-named table share one entry. This is known and accepted, see
+ * the design spec.
  */
 
 import type { ColumnFilter, ColumnFilterManager, SortConfig } from "./ColumnFilterManager";
@@ -14,11 +15,12 @@ import type { DatasetMetadata } from "./types";
  * Runs before the dataset's tab is built (TabManager's before-add hook),
  * so the first render is already projected and filtered.
  *
- * Order matters: filters and sorts first, through the silent `hydrate`;
- * hidden columns and order after, because those setters fire `onChange`
- * and the subscriber in BedevereApp rewrites the persisted filter list
- * from the manager on every change. Doing it the other way round would
- * erase the persisted filters before they were loaded.
+ * The order of the calls matters. Filters and sorts load first, through
+ * the silent `hydrate`. Hidden columns and column order load after.
+ * Their setters fire `onChange`, and the subscriber in BedevereApp
+ * rewrites the persisted filter list from the manager on every change.
+ * The reverse order would erase the persisted filters before they were
+ * loaded.
  */
 export function hydrateColumnState(fm: ColumnFilterManager, settings: AppSettings, metadata: DatasetMetadata): void {
   const name = metadata.name;
@@ -31,7 +33,7 @@ export function hydrateColumnState(fm: ColumnFilterManager, settings: AppSetting
   if (order.length > 0) fm.setColumnOrder(name, order);
 }
 
-/** Settings with the dataset's filter list replaced; an empty list removes the key. */
+/** Settings with the dataset's filter list replaced. An empty list removes the key. */
 export function withColumnFilters(settings: AppSettings, datasetName: string, filters: ColumnFilter[]): AppSettings {
   const next = { ...(settings.columnFilters ?? {}) };
   if (filters.length === 0) delete next[datasetName];
@@ -39,7 +41,7 @@ export function withColumnFilters(settings: AppSettings, datasetName: string, fi
   return { ...settings, columnFilters: next };
 }
 
-/** Settings with the dataset's sort chain replaced; an empty list removes the key. */
+/** Settings with the dataset's sort chain replaced. An empty list removes the key. */
 export function withColumnSorts(settings: AppSettings, datasetName: string, sorts: SortConfig[]): AppSettings {
   const next = { ...(settings.columnSorts ?? {}) };
   if (sorts.length === 0) delete next[datasetName];
