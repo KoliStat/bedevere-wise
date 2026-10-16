@@ -66,8 +66,7 @@ export function renderAboutBody(version: string): string {
         </p>
       </details>
     ` +
-    `<p class="about-legal">Legal: <a href="https://kolistat.com/terms" target="_blank" rel="noopener">Terms of service</a> · ` +
-    `<a href="https://kolistat.com/privacy" target="_blank" rel="noopener">Privacy notice</a> · ` +
-    `<a href="/third-party-licenses.txt" target="_blank" rel="noopener">Third-party notices</a> · ` +
-    `<a href="https://github.com/KoliStat/bedevere-wise/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></p>`;
+    `<p class="about-legal">Legal: <a href="https://kolistat.com/terms" target="_blank" rel="noopener noreferrer">Terms of service</a> · ` +
+    `<a href="https://kolistat.com/privacy" target="_blank" rel="noopener noreferrer">Privacy notice</a> · ` +
+    `<a href="/third-party-licenses.txt" target="_blank" rel="noopener noreferrer">Third-party notices</a></p>`;
 }
