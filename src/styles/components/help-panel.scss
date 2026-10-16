@@ -906,6 +906,14 @@
   }
 }
 
+.about-legal {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border, #ccc);
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .help-panel__tab,
   .help-panel__sample-btn,
