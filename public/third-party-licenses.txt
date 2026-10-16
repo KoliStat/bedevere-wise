@@ -98,7 +98,7 @@ color-convert 2.0.1
   Source:    https://github.com/Qix-/color-convert
 color-name 1.1.4
   Copyright: Copyright (c) 2015 Dmitry Ivanov
-  Source:    git@github.com:colorjs/color-name
+  Source:    https://github.com/colorjs/color-name
 command-line-args 5.2.1
   Copyright: Copyright (c) 2014-22 Lloyd Brookes <75pound@gmail.com>
   Source:    https://github.com/75lb/command-line-args
@@ -142,7 +142,7 @@ json-stringify-pretty-compact 4.0.0
   Copyright: Copyright (c) 2014, 2016, 2017, 2019, 2021, 2022 Simon Lydell
   Source:    https://github.com/lydell/json-stringify-pretty-compact
 lodash.camelcase 4.3.0
-  Copyright: Copyright jQuery Foundation and other contributors <https://jquery.org/>
+  Copyright: John-David Dalton <john.david.dalton@gmail.com> (http://allyoucanleet.com/)
   Source:    https://github.com/lodash/lodash
 safer-buffer 2.1.2
   Copyright: Copyright (c) 2018 Nikita Skovoroda <chalkerx@gmail.com>
@@ -259,7 +259,7 @@ vega-scenegraph 5.1.0
   Source:    https://github.com/vega/vega
 vega-schema-url-parser 3.0.2
   Copyright: Copyright (c) 2017, Vega
-  Source:    git@github.com:vega/schema
+  Source:    https://github.com/vega/schema
 vega-selections 6.1.2
   Copyright: Arvind Satyanarayan (http://arvindsatya.com)
   Source:    https://github.com/vega/vega
@@ -382,13 +382,13 @@ yargs-parser 22.0.0
 
 --- Apache-2.0 (3) ---
 @swc/helpers 0.5.17
-  Copyright: "Licensor" shall mean the copyright owner or entity authorized by
+  Copyright: Copyright 2024 SWC contributors.
   Source:    https://github.com/swc-project/swc
 apache-arrow 17.0.0
-  Copyright: "Licensor" shall mean the copyright owner or entity authorized by
+  Copyright: copyright (c) Google inc and (c) The Chromium Authors and licensed under the
   Source:    https://github.com/apache/arrow
 flatbuffers 24.12.23
-  Copyright: "Licensor" shall mean the copyright owner or entity authorized by
+  Copyright: The FlatBuffers project
   Source:    https://github.com/google/flatbuffers
 
 --- OFL-1.1 (2) ---
@@ -396,7 +396,7 @@ flatbuffers 24.12.23
   Copyright: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-ThinItalic.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-ExtraLight.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-ExtraLightItalic.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-Light.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-LightItalic.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-Regular.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-Italic.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-Medium.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-MediumItalic.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-SemiBold.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-SemiBoldItalic.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-Bold.ttf: Copyright 2017 IBM Corp. All rights reserved. IBMPlexMono-BoldItalic.ttf: Copyright 2017 IBM Corp. All rights reserved.
   Source:    https://github.com/fontsource/font-files
 @fontsource/source-serif-4 5.2.9
-  Copyright: "Font Software" refers to the set of files released by the Copyright
+  Copyright: Google Inc.
   Source:    https://github.com/fontsource/font-files
 
 --- 0BSD (1) ---
@@ -406,7 +406,7 @@ tslib 2.8.1
 
 --- Unlicense (1) ---
 robust-predicates 3.0.3
-  Copyright: In jurisdictions that recognize copyright laws, the author or authors
+  Copyright: Vladimir Agafonkin
   Source:    https://github.com/mourner/robust-predicates
 
 ================================================================================
@@ -1173,7 +1173,26 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 emoji-regex 10.6.0 — MIT
 --------------------------------------------------------------------------------
-License text not included in the package; see https://github.com/mathiasbynens/emoji-regex.
+Copyright Mathias Bynens <https://mathiasbynens.be/>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 --------------------------------------------------------------------------------
 escalade 3.2.0 — MIT
@@ -5704,6 +5723,93 @@ java/vector/src/main/java/org/apache/arrow/vector/util/IntObjectMap.java
 These file are derived from code from Netty, which is made available under the
 Apache License 2.0.
 
+NOTICE:
+
+Apache Arrow
+Copyright 2016-2024 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+This product includes software from the SFrame project (BSD, 3-clause).
+* Copyright (C) 2015 Dato, Inc.
+* Copyright (c) 2009 Carnegie Mellon University.
+
+This product includes software from the Feather project (Apache 2.0)
+https://github.com/wesm/feather
+
+This product includes software from the DyND project (BSD 2-clause)
+https://github.com/libdynd
+
+This product includes software from the LLVM project
+ * distributed under the University of Illinois Open Source
+
+This product includes software from the google-lint project
+ * Copyright (c) 2009 Google Inc. All rights reserved.
+
+This product includes software from the mman-win32 project
+ * Copyright https://code.google.com/p/mman-win32/
+ * Licensed under the MIT License;
+
+This product includes software from the LevelDB project
+ * Copyright (c) 2011 The LevelDB Authors. All rights reserved.
+ * Use of this source code is governed by a BSD-style license that can be
+ * Moved from Kudu http://github.com/cloudera/kudu
+
+This product includes software from the CMake project
+ * Copyright 2001-2009 Kitware, Inc.
+ * Copyright 2012-2014 Continuum Analytics, Inc.
+ * All rights reserved.
+
+This product includes software from https://github.com/matthew-brett/multibuild (BSD 2-clause)
+ * Copyright (c) 2013-2016, Matt Terry and Matthew Brett; all rights reserved.
+
+This product includes software from the Ibis project (Apache 2.0)
+ * Copyright (c) 2015 Cloudera, Inc.
+ * https://github.com/cloudera/ibis
+
+This product includes software from Dremio (Apache 2.0)
+  * Copyright (C) 2017-2018 Dremio Corporation
+  * https://github.com/dremio/dremio-oss
+
+This product includes software from Google Guava (Apache 2.0)
+  * Copyright (C) 2007 The Guava Authors
+  * https://github.com/google/guava
+
+This product include software from CMake (BSD 3-Clause)
+  * CMake - Cross Platform Makefile Generator
+  * Copyright 2000-2019 Kitware, Inc. and Contributors
+
+The web site includes files generated by Jekyll.
+
+--------------------------------------------------------------------------------
+
+This product includes code from Apache Kudu, which includes the following in
+its NOTICE file:
+
+  Apache Kudu
+  Copyright 2016 The Apache Software Foundation
+
+  This product includes software developed at
+  The Apache Software Foundation (http://www.apache.org/).
+
+  Portions of this software were developed at
+  Cloudera, Inc (http://www.cloudera.com/).
+
+--------------------------------------------------------------------------------
+
+This product includes code from Apache ORC, which includes the following in
+its NOTICE file:
+
+  Apache ORC
+  Copyright 2013-2019 The Apache Software Foundation
+
+  This product includes software developed by The Apache Software
+  Foundation (http://www.apache.org/).
+
+  This product includes software developed by Hewlett-Packard:
+  (c) Copyright [2014-2015] Hewlett-Packard Development Company, L.P
+
 --------------------------------------------------------------------------------
 flatbuffers 24.12.23 — Apache-2.0
 --------------------------------------------------------------------------------
@@ -6157,13 +6263,15 @@ extension repository
   the-stats-duck, by KoliStat, Apache License 2.0
   Source:    https://github.com/KoliStat/the-stats-duck
   It bundles:
-    ReadStat — Copyright (c) 2013-2016 Evan Miller — MIT
+    ReadStat: Copyright (c) 2013-2016 Evan Miller, MIT License
       Source: https://github.com/WizardMac/ReadStat
-    Eigen — Mozilla Public License 2.0 (MPL-2.0 parts only)
+    Eigen: Mozilla Public License 2.0 (MPL-2.0 parts only)
       Source: https://gitlab.com/libeigen/eigen
       The MPL 2.0 text: https://www.mozilla.org/MPL/2.0/
-    win_iconv — public domain, per its readme
+    win_iconv: public domain, per its source header
       Source: https://github.com/win-iconv/win-iconv
 
-DuckDB itself reaches the browser through the @duckdb/duckdb-wasm package
-listed in the inventory above, under the MIT License.
+@duckdb/duckdb-wasm is MIT licensed. Copyright DuckDB Labs. The npm
+package ships no licence file, so its text is not reproduced above. See
+https://github.com/duckdb/duckdb-wasm/blob/main/LICENSE for the text.
+Its own bundled third-party components are listed in that repository.

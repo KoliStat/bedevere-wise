@@ -11,8 +11,17 @@
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const LICENSE_FILES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'LICENCE.md', 'LICENCE.txt', 'COPYING'];
+// A licence file's name, with or without an extension or a suffix such
+// as "-MIT". Matches LICENSE, LICENCE, COPYING, UNLICENSE and variants
+// like LICENSE.txt or LICENSE-MIT.txt.
+const LICENSE_NAME_RE = /^(licen[cs]e|copying|unlicense)([.-].*)?$/i;
+const BARE_LICENSE_NAME_RE = /^(license|licence|copying)$/i;
+
+// NOTICE, NOTICE.txt or NOTICE.md, the Apache convention for a short
+// attribution file that sits next to the licence text.
+const NOTICE_NAME_RE = /^notice(\.(txt|md))?$/i;
 
 function readJson(path) {
   const raw = readFileSync(path, 'utf8');
@@ -49,30 +58,69 @@ function licenseOf(pkg) {
 function repositoryOf(pkg) {
   let url = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository && pkg.repository.url;
   if (!url) return null;
-  url = String(url).replace(/^git\+/, '').replace(/\.git$/, '');
+  url = String(url).trim();
+  // git@host:org/repo(.git) is scp-like syntax, not a URL; normalise it
+  // the same way we normalise git+https and github: forms below.
+  const scp = /^git@([^:]+):(.+?)(\.git)?$/.exec(url);
+  if (scp) return `https://${scp[1]}/${scp[2]}`;
+  url = url.replace(/^git\+/, '').replace(/\.git$/, '');
   if (/^github:/.test(url)) return `https://github.com/${url.slice('github:'.length)}`;
   if (/^[\w.-]+\/[\w.-]+$/.test(url)) return `https://github.com/${url}`;
   return url.replace(/^git:\/\//, 'https://').replace(/^ssh:\/\/git@/, 'https://');
 }
 
-function licenseTextOf(dir) {
-  let names;
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return null;
-  }
-  for (const want of LICENSE_FILES) {
-    const hit = names.find((n) => n.toLowerCase() === want.toLowerCase());
-    if (hit) return readFileSync(join(dir, hit), 'utf8').replace(/\r\n?/g, '\n').replace(/\n+$/, '') + '\n';
-  }
-  return null;
+/// Pick the file in `names` that holds the licence text: an exact bare
+/// LICENSE/LICENCE/COPYING first, else the first match in sorted order.
+function findLicenseFile(names) {
+  const matches = names.filter((n) => LICENSE_NAME_RE.test(n));
+  if (matches.length === 0) return null;
+  const bare = matches.find((n) => BARE_LICENSE_NAME_RE.test(n));
+  if (bare) return bare;
+  return [...matches].sort()[0];
 }
 
+function readNormalised(dir, fileName) {
+  return readFileSync(join(dir, fileName), 'utf8').replace(/\r\n?/g, '\n');
+}
+
+function licenseTextOf(dir, names) {
+  const hit = findLicenseFile(names);
+  if (!hit) return null;
+  return readNormalised(dir, hit).replace(/\n+$/, '') + '\n';
+}
+
+/// An Apache-style NOTICE file's text, trimmed, or null when the package
+/// has none. Kept apart from the licence text so it never feeds the
+/// copyright heuristic below; it is only appended when rendering.
+function noticeTextOf(dir, names) {
+  const matches = names.filter((n) => NOTICE_NAME_RE.test(n)).sort();
+  if (matches.length === 0) return null;
+  return readNormalised(dir, matches[0]).trim() || null;
+}
+
+// A line that opens with "copyright" immediately followed by "(c)", "©"
+// or a year: the shape of a real copyright holder line.
+const COPYRIGHT_LINE_RE = /^\s*copyright\s*(\(c\)|©|\d{4})/i;
+
+function looksLikeCopyright(line) {
+  if (/copyright\s*\(c\)/i.test(line)) return true;
+  if (line.includes('©')) return true;
+  if (/copyright\D{0,20}\d{4}/i.test(line)) return true;
+  return false;
+}
+
+/// The licence text's copyright line, favouring a line that opens with
+/// it over one that merely mentions "copyright" in passing (Apache-2.0's
+/// "\"Licensor\" shall mean the copyright owner..." and OFL's similar
+/// boilerplate are not copyright holder lines). Falls back to the
+/// package's declared author, then omits the summary entirely.
 function copyrightOf(licenseText, pkg) {
   if (licenseText) {
-    const line = licenseText.split('\n').find((l) => /copyright/i.test(l));
-    if (line) return line.trim();
+    const lines = licenseText.split('\n');
+    const strict = lines.find((l) => COPYRIGHT_LINE_RE.test(l));
+    if (strict) return strict.trim();
+    const loose = lines.find(looksLikeCopyright);
+    if (loose) return loose.trim();
   }
   if (typeof pkg.author === 'string') return pkg.author;
   if (pkg.author && typeof pkg.author.name === 'string') return pkg.author.name;
@@ -106,7 +154,14 @@ export function collectPackages(rootDir, { roots = ['dependencies'], includePeer
     const key = resolve(dir);
     if (seen.has(key)) continue;
     const pkg = readJson(join(dir, 'package.json'));
-    const licenseText = licenseTextOf(dir);
+    let names = [];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      names = [];
+    }
+    const licenseText = licenseTextOf(dir, names);
+    const noticeText = noticeTextOf(dir, names);
     seen.set(key, {
       name: pkg.name || name,
       version: pkg.version || '0.0.0',
@@ -114,6 +169,7 @@ export function collectPackages(rootDir, { roots = ['dependencies'], includePeer
       copyright: copyrightOf(licenseText, pkg),
       repository: repositoryOf(pkg),
       licenseText,
+      noticeText,
     });
     for (const dep of Object.keys(pkg.dependencies || {})) queue.push({ name: dep, fromDir: dir, optional: false });
     for (const dep of Object.keys(pkg.optionalDependencies || {})) queue.push({ name: dep, fromDir: dir, optional: true });
@@ -134,7 +190,9 @@ const RULE = '='.repeat(80);
 const THIN = '-'.repeat(80);
 
 function cmpPkg(a, b) {
-  return a.name.localeCompare(b.name) || a.version.localeCompare(b.version, undefined, { numeric: true });
+  // 'en' pins the comparison so output does not depend on the machine's
+  // configured locale.
+  return a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en', { numeric: true });
 }
 
 export function renderNotices({ product, packages, tail = '' }) {
@@ -144,7 +202,8 @@ export function renderNotices({ product, packages, tail = '' }) {
     if (!groups.has(p.license)) groups.set(p.license, []);
     groups.get(p.license).push(p);
   }
-  const groupOrder = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  // 'en' pins this comparison too, for the same reason as cmpPkg above.
+  const groupOrder = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'en'));
 
   const out = [];
   out.push(`THIRD-PARTY NOTICES — ${product}`, '');
@@ -168,8 +227,12 @@ export function renderNotices({ product, packages, tail = '' }) {
   for (const [license, pkgs] of groupOrder) {
     for (const p of pkgs) {
       out.push(THIN, `${p.name} ${p.version} — ${license}`, THIN);
-      if (p.licenseText) out.push(p.licenseText.replace(/\n$/, ''));
-      else out.push(`License text not included in the package; see ${p.repository || 'no repository listed'}.`);
+      if (p.licenseText) {
+        out.push(p.licenseText.replace(/\n$/, ''));
+        if (p.noticeText) out.push('', 'NOTICE:', '', p.noticeText);
+      } else {
+        out.push(`License text not included in the package; see ${p.repository || 'no repository listed'}.`);
+      }
       out.push('');
     }
   }
@@ -190,12 +253,19 @@ export function generate({ rootDir, product, tailPath, ...collectOpts }) {
 
 function parseArgs(argv) {
   const opts = { product: 'this product', out: null, tail: null, includePeers: false, extra: [], check: false, roots: ['dependencies'] };
+  // A flag that takes a value must have one; without this check a flag
+  // given as the last argument would silently store undefined.
+  function value(flag, i) {
+    const v = argv[i];
+    if (v === undefined) throw new Error('notices: ' + flag + ' needs a value');
+    return v;
+  }
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === '--product') opts.product = argv[++i];
-    else if (a === '--out') opts.out = argv[++i];
-    else if (a === '--tail') opts.tail = argv[++i];
-    else if (a === '--extra') opts.extra.push(argv[++i]);
+    if (a === '--product') opts.product = value(a, ++i);
+    else if (a === '--out') opts.out = value(a, ++i);
+    else if (a === '--tail') opts.tail = value(a, ++i);
+    else if (a === '--extra') opts.extra.push(value(a, ++i));
     else if (a === '--include-peers') opts.includePeers = true;
     else if (a === '--check') opts.check = true;
     else throw new Error(`notices: unknown argument ${a}`);
@@ -226,6 +296,10 @@ function main() {
   console.log(`notices: wrote ${opts.out}`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))) {
+// Compare resolved filesystem paths, not the raw URL pathname: a script
+// path containing a space keeps "%20" in `new URL(import.meta.url).pathname`,
+// which never equals argv[1], so the CLI would silently do nothing.
+// fileURLToPath decodes it back to a real path first.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main();
 }
