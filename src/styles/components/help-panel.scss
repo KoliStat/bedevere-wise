@@ -906,6 +906,20 @@
   }
 }
 
+.about-legal {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border, #ccc);
+  font-size: 0.9em;
+  opacity: 0.85;
+
+  a {
+    color: var(--cyan);
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .help-panel__tab,
   .help-panel__sample-btn,
