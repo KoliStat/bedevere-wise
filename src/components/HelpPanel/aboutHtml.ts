@@ -65,5 +65,8 @@ export function renderAboutBody(version: string): string {
           <a href="https://www.youtube.com/watch?v=yp_l5ntikaU" target="_blank" rel="noopener noreferrer">https://www.youtube.com/watch?v=yp_l5ntikaU</a>
         </p>
       </details>
-    `;
+    ` +
+    `<p class="about-legal">Legal: <a href="https://kolistat.com/terms" target="_blank" rel="noopener noreferrer">Terms of service</a> · ` +
+    `<a href="https://kolistat.com/privacy" target="_blank" rel="noopener noreferrer">Privacy notice</a> · ` +
+    `<a href="/third-party-licenses.txt" target="_blank" rel="noopener noreferrer">Third-party notices</a></p>`;
 }

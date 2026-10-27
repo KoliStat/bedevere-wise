@@ -161,7 +161,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "notices": "bun scripts/notices.mjs --product \"Bedevere web app\" --out public/third-party-licenses.txt --tail scripts/notices-tail.txt --include-peers --extra @fontsource/ibm-plex-mono --extra @fontsource/source-serif-4",
+    "notices:check": "bun scripts/notices.mjs --product \"Bedevere web app\" --out public/third-party-licenses.txt --tail scripts/notices-tail.txt --include-peers --extra @fontsource/ibm-plex-mono --extra @fontsource/source-serif-4 --check"
   },
   "type": "module",
   "types": "dist/index.d.ts",
