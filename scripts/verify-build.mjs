@@ -20,10 +20,12 @@ import { statSync, existsSync } from "node:fs";
 // The DuckDB version @duckdb/duckdb-wasm resolves at runtime: `INSTALL …
 // FROM` derives the path `/<DUCKDB_VERSION>/wasm_eh/`. This is NOT the
 // duckdb-wasm npm version — it's the DuckDB that version bundles
-// (duckdb-wasm 1.32.0 → DuckDB v1.4.3). Bump in lockstep with
-// @duckdb/duckdb-wasm. (We pin to duckdb-wasm's latest *stable*; it has no
-// stable 1.5.x line yet.)
-const DUCKDB_VERSION = "v1.4.3";
+// (duckdb-wasm 1.33.1-dev65.0 → DuckDB v1.5.6). Bump in lockstep with
+// @duckdb/duckdb-wasm. duckdb-wasm has no stable 1.5.x release, so the pin
+// is the npm dev build that bundles the v1.5.6 release. Keep it exact. The
+// `latest` tag (1.33.1-dev57.0) bundles v1.5.4, and an extension loads only
+// in the DuckDB version it was built for.
+const DUCKDB_VERSION = "v1.5.6";
 
 // Only stats_duck is served from this same-origin bundle: BedevereApp runs
 // `INSTALL stats_duck FROM '<origin>/extensions/stats-duck'`. excel, parquet
