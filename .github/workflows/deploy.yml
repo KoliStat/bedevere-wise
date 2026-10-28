@@ -22,6 +22,7 @@ jobs:
       # bun-version gap make a strict frozen check brittle. Plain install
       # resolves package.json deterministically enough for a web deploy.
       - run: bun install
+      - run: bun run notices:check
       - run: bun run build
 
       - uses: cloudflare/wrangler-action@v3
