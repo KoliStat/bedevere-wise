@@ -86,6 +86,9 @@ export class TabManager {
   private onQueryCompletedCallback?: (result: { elapsedMs: number; error?: Error }) => void;
   private onShellMessageCallback?: (text: string, details?: string) => void;
   private onBeforeAddDatasetCallback?: (metadata: DatasetMetadata) => void;
+  // Fires after a tab becomes active (any kind). ControlPanel records the
+  // active dataset tab into the environment workspace from here.
+  private onTabActivatedCallback?: (name: string) => void;
   // Monotonic counter for default result-tab names (`result_1`, `result_2`,
   // …). Resets per session — these tables don't survive a page reload.
   private resultCounter = 0;
@@ -468,6 +471,15 @@ export class TabManager {
     this.onBeforeAddDatasetCallback = callback;
   }
 
+  public setOnTabActivatedCallback(callback: (name: string) => void): void {
+    this.onTabActivatedCallback = callback;
+  }
+
+  /** Name of the active tab (any kind), or null when no tab is open. */
+  public getActiveTabId(): string | null {
+    return this.activeTabId;
+  }
+
   private createTabElement(tab: Tab): void {
     const tabElement = document.createElement("div");
     tabElement.setAttribute("data-tab-id", tab.metadata.name);
@@ -519,6 +531,7 @@ export class TabManager {
     this.activeTabId = id;
     newTab.container.classList.add("tab-manager__dataset-container--active");
     this.updateTabStyles(id, true);
+    this.onTabActivatedCallback?.(id);
 
     if (newTab.kind === "dataset") {
       if (this.eventDispatcher) {
