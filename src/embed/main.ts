@@ -1,10 +1,10 @@
 // Self-hosted fonts (Statistical-Report identity). Static weights only:
-// mono 400/600 for chrome+data+editor, serif 400/400i/600 for prose accents.
+// mono 400/600 for chrome+data+editor, Source Sans 3 400/400i/600 for prose.
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/600.css";
-import "@fontsource/source-serif-4/400.css";
-import "@fontsource/source-serif-4/400-italic.css";
-import "@fontsource/source-serif-4/600.css";
+import "@fontsource/source-sans-3/400.css";
+import "@fontsource/source-sans-3/400-italic.css";
+import "@fontsource/source-sans-3/600.css";
 
 import "../styles/main.scss";
 import "../styles/embed.scss";
