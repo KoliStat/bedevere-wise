@@ -63,6 +63,7 @@ body.theme-light {
   // Statistical-Report structural tokens
   --rule:            #1a1917;   // booktabs heavy rule = ink
   --duck:            #ffd939;   // the one accent
+  --chart-duck:      #8f6b00;   // chart slot 1: --duck is 1.26:1 on paper, too faint for marks
   --duck-ink:        #1a1917;   // text on a duck fill (both modes)
   // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
   --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%231a1917' stroke-width='1.8'/%3E%3C/svg%3E");
@@ -122,6 +123,7 @@ body.theme-classic-light {
   // Statistical-Report structural tokens — aliased to this family's accent.
   --rule:            var(--fg);
   --duck:            var(--blue);
+  --chart-duck:      var(--duck);
   --duck-ink:        #ffffff;
   // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
   --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%23ffffff' stroke-width='1.8'/%3E%3C/svg%3E");
@@ -185,6 +187,7 @@ body.theme-classic-dark {
   // Statistical-Report structural tokens — aliased to this family's accent.
   --rule:            var(--fg);
   --duck:            var(--blue);
+  --chart-duck:      var(--duck);
   --duck-ink:        #16161e;
   // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
   --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%2316161e' stroke-width='1.8'/%3E%3C/svg%3E");
@@ -249,6 +252,7 @@ body.theme-github-light {
   // Statistical-Report structural tokens — aliased to this family's accent.
   --rule:            var(--fg);
   --duck:            var(--blue);
+  --chart-duck:      var(--duck);
   --duck-ink:        #ffffff;
   // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
   --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%23ffffff' stroke-width='1.8'/%3E%3C/svg%3E");
@@ -314,6 +318,7 @@ body.theme-github-dark {
   // Statistical-Report structural tokens — aliased to this family's accent.
   --rule:            var(--fg);
   --duck:            var(--blue);
+  --chart-duck:      var(--duck);
   --duck-ink:        #1f1f1f;
   // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
   --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%231f1f1f' stroke-width='1.8'/%3E%3C/svg%3E");
@@ -379,6 +384,7 @@ body.theme-dark {
   // Statistical-Report structural tokens
   --rule:            #ece7da;
   --duck:            #ffd939;
+  --chart-duck:      #ffd939;   // duck holds 13:1 on night
   --duck-ink:        #1a1917;
   // checkbox check — stroke = this block's --duck-ink literal (data-URIs can't var())
   --checkmark:       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.5 4 8l4.5-6' fill='none' stroke='%231a1917' stroke-width='1.8'/%3E%3C/svg%3E");
