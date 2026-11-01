@@ -8,7 +8,7 @@ Embeddable browser components for DuckDB-WASM-backed data exploration:
 - **`EmbedSqlEditor`** — slim CodeMirror SQL editor with Bedevere's PostgreSQL-extended dialect.
 - **`DuckDBService` + `DuckDBDataProvider`** — DuckDB-WASM runtime wrapper + bridge to the UI components.
 
-These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). Also consumed by [tlf-studio](https://github.com/KoliStat/tlf-studio) for clinical-trial pipeline inspection.
+These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). The product page is [kolistat.com/products/bedevere](https://kolistat.com/products/bedevere). It also offers the desktop app for Windows.
 
 > **Status**: pre-1.0. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes are possible between `0.x` minor versions (the CHANGELOG flags them). Pin to an exact version in production.
 
@@ -18,12 +18,14 @@ These are the same components that compose the standalone web app at [bedeverewi
 bun add @kolistat/bedevere-wise@next
 
 # Peer dependencies — install one shared copy of each in your tree:
-bun add @duckdb/duckdb-wasm \
+bun add @duckdb/duckdb-wasm@1.33.1-dev65.0 apache-arrow@17 \
   @codemirror/autocomplete @codemirror/commands @codemirror/lang-sql \
   @codemirror/language @codemirror/search @codemirror/state \
   @codemirror/view @lezer/highlight codemirror \
   vega-embed
 ```
+
+`@duckdb/duckdb-wasm` must be exactly `1.33.1-dev65.0`, the build that bundles DuckDB v1.5.6. npm's `latest` tag points at an older build. DuckDB extensions such as stats_duck load only in the DuckDB version they were built for. `apache-arrow` must be a 17.x release, and npm's `latest` is newer.
 
 All peer deps are required if you `import` from the package's main entry today. See [Bundler compatibility](#bundler-compatibility) for the rationale and the WASM-free entry split (`/ui`, `/app`, `/ipc`).
 
@@ -106,14 +108,16 @@ These shells assume module-level singletons (`CommandRegistry`, `EnvironmentServ
 
 ## Theming
 
-The package ships four themes as CSS custom-property sets, selected by a single body class — exactly one is applied at a time:
+The package ships six themes as CSS custom-property sets, in three light and dark pairs. A single body class selects one. Exactly one is applied at a time:
 
 | Body class | Theme |
 | --- | --- |
-| `theme-dark` | GitHub-Dark — the default dark |
-| `theme-light` | Light (warm-neutral) |
-| `theme-classic-dark` | Tokyonight Storm |
+| `theme-light` | Paper, the default. It matches kolistat.com. |
+| `theme-dark` | Night, Paper's dark mode |
 | `theme-classic-light` | Tokyonight Day |
+| `theme-classic-dark` | Tokyonight Storm |
+| `theme-github-light` | GitHub Light |
+| `theme-github-dark` | GitHub Dark |
 
 Override the tokens in your own stylesheet, after importing the package CSS (see `dist/style.css` for the full token list):
 
@@ -125,7 +129,25 @@ body.theme-dark {
 }
 ```
 
-Switching the body class re-renders theme-sensitive canvas surfaces (the spreadsheet repaints; the chart re-embeds with a matching Vega palette). `BedevereApp` manages this class for you and exposes `setTheme()`.
+Switching the body class re-renders theme-sensitive canvas surfaces (the spreadsheet repaints; the chart re-embeds with a matching Vega palette). `BedevereApp` manages this class for you and exposes `setTheme()`. It starts on Paper and follows the system light or dark setting.
+
+### Fonts
+
+Every theme uses IBM Plex Mono for the chrome, the data grid, the editor and chart text. Paper and Night set prose in Source Sans 3. Tokyonight and GitHub use the system sans-serif font for prose. The package's `style.css` names these fonts but ships no font files. Load them yourself, for example from Fontsource, in the weights the app uses:
+
+```sh
+bun add @fontsource/ibm-plex-mono @fontsource/source-sans-3
+```
+
+```ts
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "@fontsource/source-sans-3/400.css";
+import "@fontsource/source-sans-3/400-italic.css";
+import "@fontsource/source-sans-3/600.css";
+```
+
+Without them, the browser uses the next font in each stack.
 
 ## Bundler compatibility
 
