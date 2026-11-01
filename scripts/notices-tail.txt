@@ -1,0 +1,21 @@
+================================================================================
+COMPONENTS OUTSIDE THE PACKAGE TREE
+================================================================================
+
+stats_duck.duckdb_extension — loaded into DuckDB-wasm on demand from the
+extension repository
+  the-stats-duck, by KoliStat, Apache License 2.0
+  Source:    https://github.com/KoliStat/the-stats-duck
+  It bundles:
+    ReadStat: Copyright (c) 2013-2016 Evan Miller, MIT License
+      Source: https://github.com/WizardMac/ReadStat
+    Eigen: Mozilla Public License 2.0 (MPL-2.0 parts only)
+      Source: https://gitlab.com/libeigen/eigen
+      The MPL 2.0 text: https://www.mozilla.org/MPL/2.0/
+    win_iconv: public domain, per its source header
+      Source: https://github.com/win-iconv/win-iconv
+
+@duckdb/duckdb-wasm is MIT licensed. Copyright DuckDB Labs. The npm
+package ships no licence file, so its text is not reproduced above. See
+https://github.com/duckdb/duckdb-wasm/blob/main/LICENSE for the text.
+Its own bundled third-party components are listed in that repository.

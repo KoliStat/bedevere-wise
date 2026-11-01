@@ -1,0 +1,15 @@
+name: Check
+on:
+  pull_request:
+jobs:
+  check:
+    name: Notices and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run notices:check
+      - run: bunx vitest run

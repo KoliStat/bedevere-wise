@@ -13,4 +13,12 @@ describe("renderAboutBody", () => {
     expect(html).toContain(`href="${DESKTOP_DOWNLOAD_URL}"`);
     expect(html).toMatch(/desktop app/i);
   });
+
+  it("groups the legal links in their own block", () => {
+    const legalBlock = html.match(/<p class="about-legal">[\s\S]*?<\/p>/)?.[0];
+    expect(legalBlock).toBeTruthy();
+    expect(legalBlock).toContain(`href="https://kolistat.com/terms"`);
+    expect(legalBlock).toContain(`href="https://kolistat.com/privacy"`);
+    expect(legalBlock).toContain(`href="/third-party-licenses.txt"`);
+  });
 });
