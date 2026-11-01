@@ -1,4 +1,5 @@
 import {
+  Column,
   DataType,
   isBooleanType,
   isDateType,
@@ -342,6 +343,56 @@ export class ColumnFilterManager {
       this.hasHiddenColumns(datasetName) ||
       this.hasColumnOrder(datasetName)
     );
+  }
+
+  /**
+   * Load persisted filters and sorts for a dataset before its tab
+   * exists. Entries whose column is not in `existingColumns` are
+   * dropped. Range filters are kept only when the column's current
+   * type still fits them (numeric for min/max, temporal for
+   * minStr/maxStr), so a file whose schema changed cannot produce a
+   * WHERE clause that fails. Each kept filter gets the column's current
+   * dataType. Malformed entries are skipped.
+   *
+   * Fires no `onChange`: the hook that calls it runs before the tab is
+   * registered, and the TabManager reads `hasAnyState` right after.
+   * Firing would also make the persistence subscriber in BedevereApp
+   * rewrite the list while it is being loaded.
+   */
+  public hydrate(
+    datasetName: string,
+    state: { filters?: ColumnFilter[]; sorts?: SortConfig[] },
+    existingColumns: ReadonlyArray<Pick<Column, "name" | "dataType">>,
+  ): void {
+    const typeOf = new Map(existingColumns.map((c) => [c.name, c.dataType]));
+
+    const filters: ColumnFilter[] = [];
+    for (const f of state.filters ?? []) {
+      if (!f || typeof f.columnName !== "string") continue;
+      const dataType = typeOf.get(f.columnName);
+      if (dataType === undefined) continue;
+      if (f.filterType === "range") {
+        const numeric = f.min !== undefined || f.max !== undefined;
+        const temporal = f.minStr !== undefined || f.maxStr !== undefined;
+        if (numeric && !isNumericType(dataType)) continue;
+        if (temporal && !isTemporalType(dataType)) continue;
+        if (!numeric && !temporal) continue;
+      } else if (f.filterType !== "include" && f.filterType !== "exclude") {
+        continue;
+      }
+      filters.push({ ...f, dataType });
+    }
+    if (filters.length > 0) this.filters.set(datasetName, filters);
+    else this.filters.delete(datasetName);
+
+    const sorts: SortConfig[] = [];
+    for (const s of state.sorts ?? []) {
+      if (!s || typeof s.columnName !== "string" || !typeOf.has(s.columnName)) continue;
+      if (s.direction !== "asc" && s.direction !== "desc") continue;
+      sorts.push({ columnName: s.columnName, direction: s.direction });
+    }
+    if (sorts.length > 0) this.sorts.set(datasetName, sorts);
+    else this.sorts.delete(datasetName);
   }
 
   public onChange(callback: (datasetName: string) => void): void {

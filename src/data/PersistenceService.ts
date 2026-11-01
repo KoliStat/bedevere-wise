@@ -1,5 +1,6 @@
 import type { KeyBinding } from "./KeymapService";
 import type { EnvironmentsFile } from "./environments/types";
+import type { ColumnFilter, SortConfig } from "./ColumnFilterManager";
 import type { PersistenceBackend } from "./persistence/PersistenceBackend";
 import { LocalStoragePersistenceBackend } from "./persistence/LocalStoragePersistenceBackend";
 
@@ -69,6 +70,15 @@ export interface AppSettings {
    * skipped on apply.
    */
   columnOrder?: Record<string, string[]>;
+  /**
+   * Per-dataset column filters, keyed by dataset name like
+   * `hiddenColumns`. Restored into the filter manager before the
+   * dataset's tab is built, so the tab opens already filtered. Entries
+   * whose column no longer exists are dropped on restore.
+   */
+  columnFilters?: Record<string, ColumnFilter[]>;
+  /** Per-dataset sort chain, same keying and restore rules as `columnFilters`. */
+  columnSorts?: Record<string, SortConfig[]>;
   /**
    * Working-copy of the SQL editor's current text, persisted on a
    * short debounce while the user types. Restored into the editor
