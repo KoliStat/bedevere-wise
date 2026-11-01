@@ -59,7 +59,7 @@ export default defineConfig(({ command }) => {
       // expose source, and add nothing for the live site / embeds (a thrown
       // error there is usually inside the third-party duckdb-wasm worker, which
       // our maps don't cover anyway). The library build keeps maps for package
-      // consumers (desktop / tlf-studio).
+      // consumers (bedevere-desktop).
       sourcemap: false,
       target: "esnext",
       // Drop Vite's inline modulepreload-polyfill <script>. It's the only
