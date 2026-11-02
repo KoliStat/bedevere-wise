@@ -69,13 +69,14 @@ export function renderAboutBody(version: string, host: AboutHost = "web"): strin
       <p class="help-panel__about-version">v${version}</p>
       <p class="help-panel__about-description">${description}</p>
       <div class="help-panel__about-section">
-        <h3 class="help-panel__about-section-title">What's new in 0.15</h3>
+        <h3 class="help-panel__about-section-title">What's new in 0.16</h3>
         <ul class="help-panel__about-list">
-          <li><strong>Charts handle 64-bit integers.</strong> <code>VISUALIZE</code> no longer crashes on <code>BIGINT</code> columns — <code>count(*)</code> bars, <code>range()</code> scatters, and friends all render.</li>
-          <li><strong>Categorical axes just work.</strong> Boxplots, violins, and bars over text columns render without hand-annotating <code>:nominal</code>; explicit annotations now land on the right channel for every mark.</li>
-          <li><strong>Query lifecycle fixed.</strong> Saving a query no longer swaps your editor content; drafts flush before the tab closes; on desktop, settings and saved queries survive a relaunch reliably.</li>
-          <li><strong>Full export list on desktop.</strong> <code>.export</code> offers <code>xpt</code> / <code>sav</code> / <code>por</code> / <code>sas7bdat</code> alongside the text formats — stale extension caches can't hide the bundled stats_duck anymore.</li>
-          <li><strong>Help, illustrated.</strong> The How-To gains a worked <code>table_one</code> example — stratify by species &times; island, ordered.</li>
+          <li><strong>Your workspace comes back.</strong> After a restart, open dataset tabs reopen in the same order, with their column filters and sorts. This works for folders, and on desktop for files opened with <code>.import</code>.</li>
+          <li><strong>New statistics.</strong> stats_duck 0.9 adds <code>glm_fit</code>, <code>emmeans</code>, <code>lin_hyp</code>, <code>ptukey</code> and <code>qtukey</code>. The web app and the desktop app both run DuckDB v1.5.6.</li>
+          <li><strong>Excel tables under a header block.</strong> Import finds the data table when the sheet has rows above it.</li>
+          <li><strong>Chart colours at 3:1 contrast.</strong> On Paper and Night, every category colour has at least 3:1 contrast with the background.</li>
+          <li><strong>Folder import runs once.</strong> Opening a folder imports each file once. A file whose table name is taken gets a numbered name, such as <code>AE_2</code>.</li>
+          <li><strong>Help stays closed.</strong> Help opens at startup only on your first visit. Settings &gt; Startup turns it back on.</li>
         </ul>
       </div>
       <div class="help-panel__about-section">
