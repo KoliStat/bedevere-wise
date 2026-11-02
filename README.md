@@ -1,31 +1,47 @@
-# @kolistat/bedevere-wise
+# bedevere wise
 
-Embeddable browser components for DuckDB-WASM-backed data exploration:
+This repo holds the bedevere wise web app and the npm package [`@kolistat/bedevere-wise`](https://www.npmjs.com/package/@kolistat/bedevere-wise). The package has the browser components that both bedevere apps are built from:
 
-- **`SpreadsheetVisualizer`** — canvas-rendered grid; virtually scrolled, HiDPI-sharp.
-- **`ColumnStatsVisualizer`** — per-column summary stats + value-filter UI.
-- **`ChartVisualizer`** — Vega-Lite renderer for `stats_duck`'s `VISUALIZE … DRAW` output.
-- **`EmbedSqlEditor`** — slim CodeMirror SQL editor with Bedevere's PostgreSQL-extended dialect.
-- **`DuckDBService` + `DuckDBDataProvider`** — DuckDB-WASM runtime wrapper + bridge to the UI components.
+- **`SpreadsheetVisualizer`**: a spreadsheet drawn on a canvas. It scrolls through large tables and stays sharp on high-DPI screens.
+- **`ColumnStatsVisualizer`**: summary statistics for each column, with a value filter.
+- **`ChartVisualizer`**: draws the Vega-Lite charts that `stats_duck`'s `VISUALIZE … DRAW` produces.
+- **`EmbedSqlEditor`**: a small CodeMirror SQL editor for bedevere's SQL dialect, which extends PostgreSQL's.
+- **`DuckDBService` and `DuckDBDataProvider`**: a wrapper around the DuckDB-WASM runtime, and the bridge from it to the UI components.
 
-These are the same components that compose the standalone web app at [bedeverewise.app](https://bedeverewise.app). Also consumed by [tlf-studio](https://github.com/KoliStat/tlf-studio) for clinical-trial pipeline inspection.
+## bedevere
 
-> **Status**: pre-1.0. Shipping on the `@next` dist-tag while the embedding API settles. Breaking changes are possible between `0.x` minor versions (the CHANGELOG flags them). Pin to an exact version in production.
+bedevere opens SAS, SPSS, Stata, Parquet, Excel, CSV, TSV and JSON files. You query them with SQL and plot them with `VISUALIZE`. It runs on [DuckDB](https://duckdb.org) and comes in three parts:
+
+| Part | What it is | Where |
+| --- | --- | --- |
+| bedevere wise | The web app. DuckDB runs in the browser, and files are not uploaded. | [bedeverewise.app](https://bedeverewise.app) |
+| bedevere desktop | The Windows app. It runs native DuckDB and reads files from disk. | [kolistat.com/products/bedevere](https://kolistat.com/products/bedevere) |
+| `@kolistat/bedevere-wise` | The npm package with the components that both apps are built from. | [npm](https://www.npmjs.com/package/@kolistat/bedevere-wise) |
+
+The web app and the desktop app are released together, with the same version and code name.
+
+## Status
+
+The package is before version 1.0. Each release is published under both the `latest` and `next` dist-tags. A new 0.x minor version can break the API, and the CHANGELOG says when it does. Pin an exact version in production.
+
+The web app needs a desktop browser. Phones and tablets are not supported yet.
 
 ## Install
 
 ```sh
-bun add @kolistat/bedevere-wise@next
+bun add @kolistat/bedevere-wise
 
-# Peer dependencies — install one shared copy of each in your tree:
-bun add @duckdb/duckdb-wasm \
+# Peer dependencies. Install one shared copy of each in your tree:
+bun add @duckdb/duckdb-wasm@1.33.1-dev65.0 apache-arrow@17 \
   @codemirror/autocomplete @codemirror/commands @codemirror/lang-sql \
   @codemirror/language @codemirror/search @codemirror/state \
   @codemirror/view @lezer/highlight codemirror \
   vega-embed
 ```
 
-All peer deps are required if you `import` from the package's main entry today. See [Bundler compatibility](#bundler-compatibility) for the rationale and the WASM-free entry split (`/ui`, `/app`, `/ipc`).
+`@duckdb/duckdb-wasm` must be exactly `1.33.1-dev65.0`, the build that bundles DuckDB v1.5.6. npm's `latest` tag points at an older build. DuckDB extensions such as stats_duck load only in the DuckDB version they were built for. `apache-arrow` must be a 17.x release, and npm's `latest` is newer.
+
+All peer dependencies are required if you import from the package's root entry. [Bundler compatibility](#bundler-compatibility) explains why, and lists the entries that leave out DuckDB-WASM (`/ui`, `/app`, `/ipc`).
 
 ## Quick start
 
@@ -67,29 +83,29 @@ await grid.initialize();
 
 ## Embedding surface
 
-The package ships two tiers of exports.
+The package has two tiers of exports.
 
-### Embedding tier — recommended
+### Component tier (recommended)
 
-Components in this tier accept their dependencies via constructor; no module-level singleton reach-through. Safe to mount inside any host app.
+Components in this tier take their dependencies as constructor arguments. They do not reach into module-level singletons, so you can mount them inside any host app.
 
 | Export | Purpose |
 | --- | --- |
-| `DuckDBService` | DuckDB-WASM runtime wrapper. One instance per app. |
+| `DuckDBService` | Wraps the DuckDB-WASM runtime. Use one instance per app. |
 | `DuckDBDataProvider` | Implements `DataProvider` over a DuckDB table. |
-| `DataProvider` (interface) | **The per-dataset integration boundary.** Implement your own to feed rows from anywhere — HTTP, IPC, a server. |
-| `Backend` (interface) | **The SQL-engine boundary.** Implement to point `BedevereApp` at a non-WASM engine (native IPC, remote relay). Optional `exportTable(opts)` writes a whole table to Parquet / JSON / SAS / SPSS — `ExportFormat`, `ExportTableOptions`, `ExportResult`, and `EXPORT_FORMATS` are exported for it. |
-| `SpreadsheetVisualizer` | Canvas-rendered spreadsheet. |
-| `ColumnStatsVisualizer` / `ColumnStatsVisualizerFocusable` | Column stats + filter panel; share one across many spreadsheets. |
-| `ChartVisualizer` | Renders Vega-Lite specs produced by `stats_duck`'s `VISUALIZE … DRAW`. |
-| `EmbedSqlEditor` | Slim CodeMirror SQL editor with the Bedevere dialect + tokyonight palette. |
-| Type helpers (`isNumericType`, `normalizeDuckDBType`, `dataTypeCategory`, …) | For consumers writing custom `DataProvider`s. |
+| `DataProvider` (interface) | **Where a dataset plugs in.** Implement it to feed rows from any source, such as HTTP, IPC or a server. |
+| `Backend` (interface) | **Where a SQL engine plugs in.** Implement it to run `BedevereApp` on an engine other than DuckDB-WASM, such as native DuckDB over IPC or a remote relay. The optional `exportTable(opts)` writes a whole table to Parquet, JSON, SAS or SPSS. `ExportFormat`, `ExportTableOptions`, `ExportResult` and `EXPORT_FORMATS` are exported for it. |
+| `SpreadsheetVisualizer` | The spreadsheet, drawn on a canvas. |
+| `ColumnStatsVisualizer`, `ColumnStatsVisualizerFocusable` | The column statistics and filter panel. Several spreadsheets can share one. |
+| `ChartVisualizer` | Draws the Vega-Lite specs that `stats_duck`'s `VISUALIZE … DRAW` produces. |
+| `EmbedSqlEditor` | A small CodeMirror SQL editor with the bedevere dialect. Its colours follow the active theme. |
+| Type helpers (`isNumericType`, `normalizeDuckDBType`, `dataTypeCategory`, …) | For consumers that write their own `DataProvider`. |
 
-The UI components (`SpreadsheetVisualizer`, `ColumnStatsVisualizer`, `ChartVisualizer`, `EmbedSqlEditor`) **have no hard dependency on DuckDB-WASM** — they consume the `DataProvider` interface and Vega specs respectively. A consumer can ignore `DuckDBService` / `DuckDBDataProvider` entirely and supply their own `DataProvider` over an alternative backend (HTTP API, native IPC, an in-memory pipeline, …).
+The UI components (`SpreadsheetVisualizer`, `ColumnStatsVisualizer`, `ChartVisualizer` and `EmbedSqlEditor`) **do not depend on DuckDB-WASM**. They read rows through the `DataProvider` interface and charts as Vega specs. A consumer can skip `DuckDBService` and `DuckDBDataProvider`, and supply its own `DataProvider` over another backend: an HTTP API, native IPC or an in-memory pipeline.
 
-### App-shell tier — `@kolistat/bedevere-wise/app`
+### App-shell tier: `@kolistat/bedevere-wise/app`
 
-The full standalone-app shell as composable pieces: `BedevereApp`, `TabManager`, `ControlPanel`, `StatusBar`, `CommandBar`, plus the `PersistenceService` singleton. `BedevereApp` is **backend-agnostic** — pass `options.backend` (there is no built-in default), so importing from `/app` pulls **no DuckDB-WASM**. Pair it with `/duckdb` for the in-browser engine, or hand it an `IpcBackend` / remote relay (this is exactly how bedevere-desktop drives the same UI against native DuckDB):
+This entry has the whole app shell in parts: `BedevereApp`, `TabManager`, `ControlPanel`, `StatusBar` and `CommandBar`. It also exports the `PersistenceService` singleton and `APP_VERSION`, the release name. `BedevereApp` has no default engine: you pass one as `options.backend`. So importing from `/app` pulls in **no DuckDB-WASM**. Pair it with `/duckdb` for the in-browser engine, or pass an `IpcBackend` or a remote relay. bedevere desktop runs the same UI on native DuckDB this way, through `IpcBackend`:
 
 ```ts
 import { BedevereApp } from "@kolistat/bedevere-wise/app";
@@ -102,20 +118,22 @@ const app = new BedevereApp(document.getElementById("app")!, "1.0.0", { backend 
 await app.initAsync();
 ```
 
-These shells assume module-level singletons (`CommandRegistry`, `EnvironmentService`, `KeymapService`, `PersistenceService`) and expect one `BedevereApp` per page. If you only need a piece of the UI rather than the whole shell, prefer the component tier above.
+The shell uses module-level singletons (`CommandRegistry`, `EnvironmentService`, `KeymapService` and `PersistenceService`) and expects one `BedevereApp` per page. If you need only part of the UI, use the component tier instead.
 
 ## Theming
 
-The package ships four themes as CSS custom-property sets, selected by a single body class — exactly one is applied at a time:
+The package ships six themes as CSS custom-property sets, in three light and dark pairs. A single body class selects one. Exactly one is applied at a time:
 
 | Body class | Theme |
 | --- | --- |
-| `theme-dark` | GitHub-Dark — the default dark |
-| `theme-light` | Light (warm-neutral) |
-| `theme-classic-dark` | Tokyonight Storm |
+| `theme-light` | Paper, the default. It matches kolistat.com. |
+| `theme-dark` | Night, Paper's dark mode |
 | `theme-classic-light` | Tokyonight Day |
+| `theme-classic-dark` | Tokyonight Storm |
+| `theme-github-light` | GitHub Light |
+| `theme-github-dark` | GitHub Dark |
 
-Override the tokens in your own stylesheet, after importing the package CSS (see `dist/style.css` for the full token list):
+Override the tokens in your own stylesheet, after the package CSS. `dist/style.css` has the full token list:
 
 ```css
 body.theme-dark {
@@ -125,48 +143,78 @@ body.theme-dark {
 }
 ```
 
-Switching the body class re-renders theme-sensitive canvas surfaces (the spreadsheet repaints; the chart re-embeds with a matching Vega palette). `BedevereApp` manages this class for you and exposes `setTheme()`.
+Switching the body class redraws the canvas parts: the spreadsheet repaints, and the chart re-embeds with matching Vega colours. `BedevereApp` sets the class for you and exposes `setTheme()`. It starts on Paper and follows the system light or dark setting.
+
+### Fonts
+
+Every theme uses IBM Plex Mono for the chrome, the data grid, the editor and chart text. Paper and Night set prose in Source Sans 3. Tokyonight and GitHub use the system sans-serif font for prose. The package's `style.css` names these fonts but ships no font files. Load them yourself, for example from Fontsource, in the weights the app uses:
+
+```sh
+bun add @fontsource/ibm-plex-mono @fontsource/source-sans-3
+```
+
+```ts
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "@fontsource/source-sans-3/400.css";
+import "@fontsource/source-sans-3/400-italic.css";
+import "@fontsource/source-sans-3/600.css";
+```
+
+Without them, the browser uses the next font in each stack.
 
 ## Bundler compatibility
 
-The package is **browser-only** and currently **Vite-friendly**. DuckDB-WASM, which `DuckDBService` depends on, ships its worker scripts as separate JS files referenced via Vite's `?url` import syntax. The compiled bundle (`dist/index.es.js`) preserves these `?url` imports verbatim; resolving them is your bundler's job.
+The package runs **only in the browser**, and it is built for **Vite**. DuckDB-WASM, which `DuckDBService` uses, ships its worker scripts as separate JS files. The package imports them with Vite's `?url` suffix. The compiled bundle (`dist/index.es.js`) keeps these `?url` imports as written, so your bundler has to resolve them.
 
 | Bundler | Status |
 | --- | --- |
-| Vite | Works out of the box. This is the supported path. |
-| webpack 5 | Works with `asset/resource` rules for the worker URLs. See the [DuckDB-WASM docs](https://duckdb.org/docs/api/wasm/instantiation) for setup. |
-| Bun bundler / esbuild / Parcel | The `?url` suffix isn't resolved natively; needs custom plugins or loader config. Untested. |
-| SSR / Node / Bun runtime | Not supported. The DuckDB worker code requires browser APIs at module load. |
+| Vite | Works without extra setup. This is the supported path. |
+| webpack 5 | Works with `asset/resource` rules for the worker URLs. See the [DuckDB-WASM docs](https://duckdb.org/docs/api/wasm/instantiation) for the setup. |
+| Bun bundler, esbuild, Parcel | They do not resolve the `?url` suffix, so they need plugins or loader config. Untested. |
+| SSR, Node, Bun runtime | Not supported. The DuckDB worker code needs browser APIs when the module loads. |
 
-The `?url` worker chain lives **only** behind the `/duckdb` entry. If your bundler can't resolve `?url` (or you simply don't want DuckDB-WASM in your bundle), import from the WASM-free entries instead and bring your own engine:
+The `?url` imports sit **only** behind the `/duckdb` entry. If your bundler cannot resolve `?url`, or you don't want DuckDB-WASM in your bundle, import from the other entries and bring your own engine:
 
-| Entry | Pulls DuckDB-WASM? | Use for |
+| Entry | Pulls in DuckDB-WASM? | Use for |
 | --- | --- | --- |
-| `@kolistat/bedevere-wise/ui` | No | Individual UI components over your own `DataProvider`. |
-| `@kolistat/bedevere-wise/app` | No | The full app shell (`BedevereApp`) with an injected `Backend`. |
-| `@kolistat/bedevere-wise/duckdb` | **Yes** | The in-browser `DuckDBService` engine (the `?url` chain). |
-| `@kolistat/bedevere-wise/ipc` | No | `IpcBackend` for a native/remote DuckDB over WebSocket. |
-| `@kolistat/bedevere-wise` (root) | **Yes** | Back-compat barrel; re-exports `/duckdb`, so it pulls the chain. |
+| `@kolistat/bedevere-wise/ui` | No | Single UI components over your own `DataProvider`. |
+| `@kolistat/bedevere-wise/app` | No | The whole app shell (`BedevereApp`) with a `Backend` you pass in. |
+| `@kolistat/bedevere-wise/duckdb` | **Yes** | The in-browser engine, `DuckDBService`, with the `?url` imports. |
+| `@kolistat/bedevere-wise/ipc` | No | `IpcBackend`, for native or remote DuckDB over a WebSocket. |
+| `@kolistat/bedevere-wise` (root) | **Yes** | Older code. It re-exports `/duckdb`, so it pulls in the `?url` imports. |
 
-## Local development against this package
+## Development
 
-The package's source lives in [bedevere-wise](https://github.com/KoliStat/bedevere-wise) (active development happens on the current `dev-X.Y` branch). To hack on both this and a consumer at once:
+Work happens on the current `dev-X.Y` branch. Feature branches start from it, and pull requests target it.
+
+To run the web app and the checks:
+
+```sh
+bun install
+bun run dev            # Vite dev server
+bunx vitest run        # tests
+bun run notices:check  # checks that the third-party notices are up to date
+bun run build          # type checks, production build, output check
+```
+
+To work on the package and a consumer at the same time, link a local build:
 
 ```sh
 # in bedevere-wise/
-bun run build:lib    # produces dist/
+bun run build:lib    # writes dist/
 bun link             # registers @kolistat/bedevere-wise locally
 
-# in your consumer app/
+# in the consumer
 bun link @kolistat/bedevere-wise
 ```
 
-After source changes in `bedevere-wise`, re-run `bun run build:lib` to refresh the linked `dist/`. The consumer's Vite dev server picks up the new code on next reload.
+After a change in bedevere-wise, run `bun run build:lib` again. The consumer's Vite dev server picks up the new `dist/` on the next reload.
 
-## Source + standalone app
+## Releases
 
-Source code: [github.com/KoliStat/bedevere-wise](https://github.com/KoliStat/bedevere-wise). The standalone web app at [bedeverewise.app](https://bedeverewise.app) is built from the same source. End-user docs and screenshots live on the [Bedevere Wise app site](https://bedeverewise.app) (it's a desktop-only browser app; mobile isn't supported yet).
+Each release has a version and a code name, such as `0.15-my-trusty-servant`. The [CHANGELOG](CHANGELOG.md) lists the changes in each release, and [RELEASING.md](RELEASING.md) has the steps. bedevere desktop is released at the same time, with the same version.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The web app's third-party notices are in [`public/third-party-licenses.txt`](public/third-party-licenses.txt).

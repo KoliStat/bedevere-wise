@@ -18,7 +18,8 @@ export const PENGUINS_TUTORIAL: TutorialNode[] = [
     html:
       `DuckDB supports a rich SQL dialect — see the ` +
       `<a href="https://duckdb.org/docs/current/sql/introduction" target="_blank" rel="noopener noreferrer">DuckDB SQL reference</a> ` +
-      `for the full syntax. The examples below assume the Palmer Penguins sample loaded via the button above.`,
+      `for the full syntax. The examples below assume the Palmer Penguins sample dataset is loaded; ` +
+      `in the app, the <em>Load sample dataset</em> button loads it.`,
   },
 
   { kind: "heading", text: "Parse the dataset" },

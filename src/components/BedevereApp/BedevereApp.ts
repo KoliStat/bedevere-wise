@@ -16,6 +16,7 @@ import { DataProvider } from "../../data/types";
 import type { Backend } from "../../data/Backend";
 import type { FileSource } from "../../data/files/FileSource";
 import { FsaFileSource } from "../../data/files/FsaFileSource";
+import { hydrateColumnState, withColumnFilters, withColumnSorts } from "../../data/columnStatePersistence";
 import { FocusManager } from "./FocusManager";
 import { EventDispatcher } from "./EventDispatcher";
 import { EventHandler } from "./types";
@@ -57,7 +58,9 @@ import { FilteredDuckDBDataProvider } from "@/data/FilteredDuckDBDataProvider";
 import { HideColumnsDialog } from "../HideColumnsDialog/HideColumnsDialog";
 import { EmbedBuilderDialog } from "../EmbedBuilderDialog/EmbedBuilderDialog";
 import { shouldShowDesktopHint, renderDesktopHint } from "./desktopHint";
+import { startupHelpTab } from "./startupHelp";
 import { DESKTOP_DOWNLOAD_URL } from "../../appLinks";
+import { aboutHostForBackend } from "../HelpPanel/aboutHtml";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -298,13 +301,13 @@ export class BedevereApp implements EventHandler {
     const path = window.location.pathname.replace(/\/$/, "");
     if (path === "/demo") {
       await this.runDemo();
-    } else if (!settings.hasSeenOnboarding) {
-      this.helpPanel.show("howto");
-      settings.hasSeenOnboarding = true;
-      this.persistenceService.saveAppSettings(settings);
     } else {
-      this.helpPanel.show("import");
-      if (shouldShowDesktopHint(settings, this.backend.id)) {
+      const startupTab = startupHelpTab(settings);
+      if (startupTab) this.helpPanel.show(startupTab);
+      if (!settings.hasSeenOnboarding) {
+        settings.hasSeenOnboarding = true;
+        this.persistenceService.saveAppSettings(settings);
+      } else if (shouldShowDesktopHint(settings, this.backend.id)) {
         renderDesktopHint(this.container, DESKTOP_DOWNLOAD_URL, () => {
           const s = this.persistenceService.loadAppSettings();
           s.hasSeenDesktopHint = true;
@@ -429,6 +432,7 @@ export class BedevereApp implements EventHandler {
     // Help panel (mounted on body so it overlays the entire app)
     this.helpPanel = new HelpPanel(document.body, {
       version: this.version,
+      host: aboutHostForBackend(this.backend.id),
       onLoadSampleDataset: () => this.loadSampleDataset(),
       onShowMessage: (msg, type) => this.showMessage(msg, type),
       onBrowseFolder: () => this.leftPanel?.openFolderPicker(),
@@ -462,6 +466,12 @@ export class BedevereApp implements EventHandler {
         s.copyDelimiter = opts.delimiter;
         s.copyIncludeHeader = opts.includeHeader;
         s.csvQuoteEscape = opts.quoteEscape;
+        this.persistenceService.saveAppSettings(s);
+      },
+      getShowHelpOnStartup: () => this.persistenceService.loadAppSettings().showHelpOnStartup ?? false,
+      setShowHelpOnStartup: (value) => {
+        const s = this.persistenceService.loadAppSettings();
+        s.showHelpOnStartup = value;
         this.persistenceService.saveAppSettings(s);
       },
       getFormatOptions: () => {
@@ -534,22 +544,30 @@ export class BedevereApp implements EventHandler {
     // the first render is already projected.
     this.tabManager.setOnBeforeAddDatasetCallback((metadata) => {
       const settings = this.persistenceService.loadAppSettings();
-      const live = new Set(metadata.columns.map((c) => c.name));
+      // Filters and sorts only come back for datasets the file tree can
+      // restore. A session-local name such as result_1 belongs to a
+      // different query next session. Applying yesterday's filter to it
+      // would hide rows with no visible cause. Hidden columns and
+      // column order predate this feature and keep loading either way.
+      const restorable = !!this.leftPanel?.isDatasetRestorable(metadata.name);
+      const forHydration = restorable
+        ? settings
+        : withColumnSorts(withColumnFilters(settings, metadata.name, []), metadata.name, []);
+      hydrateColumnState(this.tabManager.getFilterManager(), forHydration, metadata);
+    });
+
+    // Filters and sorts persist on every change. Hidden columns and
+    // column order keep their own persist calls in the callbacks below.
+    // This subscriber writes only the two lists it owns.
+    this.tabManager.getFilterManager().onChange((datasetName) => {
+      // Same rule as the hydration above. Only a dataset the tree can
+      // restore gets its filters and sorts written out.
+      if (!this.leftPanel?.isDatasetRestorable(datasetName)) return;
       const fm = this.tabManager.getFilterManager();
-
-      const persistedHidden = settings.hiddenColumns?.[metadata.name];
-      if (persistedHidden && persistedHidden.length > 0) {
-        // Filter to columns that still exist in the current metadata —
-        // stale entries (renamed / dropped columns) are harmless to drop.
-        const surviving = persistedHidden.filter((c) => live.has(c));
-        if (surviving.length > 0) fm.setHiddenColumns(metadata.name, surviving);
-      }
-
-      const persistedOrder = settings.columnOrder?.[metadata.name];
-      if (persistedOrder && persistedOrder.length > 0) {
-        const surviving = persistedOrder.filter((c) => live.has(c));
-        if (surviving.length > 0) fm.setColumnOrder(metadata.name, surviving);
-      }
+      let settings = this.persistenceService.loadAppSettings();
+      settings = withColumnFilters(settings, datasetName, fm.getFilters(datasetName));
+      settings = withColumnSorts(settings, datasetName, fm.getSorts(datasetName));
+      this.persistenceService.saveAppSettings(settings);
     });
 
     // Context menu's "Hide column" entry routes here so the column-

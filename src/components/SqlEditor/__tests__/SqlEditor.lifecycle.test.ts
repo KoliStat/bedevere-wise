@@ -110,3 +110,36 @@ describe("SqlEditor query lifecycle", () => {
     expect(q?.sql).toBe("SELECT 99 AS bye");
   });
 });
+
+describe("SqlEditor workspace writes", () => {
+  // The workspace object is shared with the dataset tab strip. The editor
+  // must not drop the fields the ControlPanel owns.
+  it("keeps the dataset tab fields when it writes the workspace", async () => {
+    const envId = environmentService.getActiveId();
+    expect(envId).not.toBeNull();
+    const current = environmentService.get(envId!)!;
+    environmentService.setWorkspace(envId!, {
+      ...current.workspace,
+      openDataNodeIds: ["ipc/C:/data/a.csv"],
+      activeDataNodeId: "ipc/C:/data/a.csv",
+    });
+
+    // Boot-time restore writes the workspace back at the end.
+    await editor.restoreActiveEnvironment();
+    expect(environmentService.get(envId!)!.workspace.openDataNodeIds).toEqual([
+      "ipc/C:/data/a.csv",
+    ]);
+    expect(environmentService.get(envId!)!.workspace.activeDataNodeId).toBe(
+      "ipc/C:/data/a.csv",
+    );
+
+    // So does every query tab open.
+    const queryId = editor.getActiveQueryId();
+    expect(queryId).not.toBeNull();
+    expect(editor.openSavedQuery(queryId!)).toBe(true);
+
+    const after = environmentService.get(envId!)!.workspace;
+    expect(after.openDataNodeIds).toEqual(["ipc/C:/data/a.csv"]);
+    expect(after.activeDataNodeId).toBe("ipc/C:/data/a.csv");
+  });
+});

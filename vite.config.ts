@@ -1,5 +1,34 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { resolve } from "path";
+
+// /about and /howto are served as about.html / howto.html in production
+// (Cloudflare html_handling). Mirror that mapping in dev and preview so
+// the clean URLs work locally instead of falling back to the SPA app.
+function pageCleanUrls(): Plugin {
+  const PAGES: Record<string, string> = { "/about": "/about.html", "/howto": "/howto.html" };
+  const rewrite = (req: { url?: string }): void => {
+    const url = req.url ?? "";
+    const splitAt = url.search(/[?#]/);
+    const path = splitAt === -1 ? url : url.slice(0, splitAt);
+    const target = PAGES[path.replace(/\/$/, "") || "/"];
+    if (target) req.url = target + (splitAt === -1 ? "" : url.slice(splitAt));
+  };
+  return {
+    name: "bedevere:page-clean-urls",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        rewrite(req);
+        next();
+      });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        rewrite(req);
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig(({ command }) => {
   // Base path resolution — different deploy targets serve from different
@@ -14,6 +43,7 @@ export default defineConfig(({ command }) => {
 
   return {
     base,
+    plugins: [pageCleanUrls()],
     resolve: {
       alias: {
         "@": resolve(__dirname, "./src"),
@@ -29,7 +59,7 @@ export default defineConfig(({ command }) => {
       // expose source, and add nothing for the live site / embeds (a thrown
       // error there is usually inside the third-party duckdb-wasm worker, which
       // our maps don't cover anyway). The library build keeps maps for package
-      // consumers (desktop / tlf-studio).
+      // consumers (bedevere-desktop).
       sourcemap: false,
       target: "esnext",
       // Drop Vite's inline modulepreload-polyfill <script>. It's the only
@@ -44,6 +74,10 @@ export default defineConfig(({ command }) => {
           // src/embed/main.ts). MPA shape — its own bundle so the
           // main app's tabs/env/help-panel code doesn't ride along.
           embed: resolve(__dirname, "embed.html"),
+          // Standalone, indexable pages serving the Help panel's About
+          // and How-To content outside the app.
+          about: resolve(__dirname, "about.html"),
+          howto: resolve(__dirname, "howto.html"),
         },
       },
     },

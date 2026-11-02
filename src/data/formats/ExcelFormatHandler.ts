@@ -2,7 +2,8 @@ import type { Backend } from "../Backend";
 import { DuckDBExtensionLoader } from "../DuckDBExtensionLoader";
 import { SupportedFileType } from "../FileTreeTypes";
 import { FormatHandler, ImportFileOptions } from "./FormatHandler";
-import { quoteIdent } from "../sqlIdent";
+import { quoteIdent, quoteLiteral } from "../sqlIdent";
+import { listZipEntries, readZipEntry, sniffXlsxTableRange } from "./xlsxTableRange";
 
 export class ExcelFormatHandler implements FormatHandler {
   private extensionLoader: DuckDBExtensionLoader | null;
@@ -19,9 +20,27 @@ export class ExcelFormatHandler implements FormatHandler {
 
   async import(file: File, tableName: string, backend: Backend, options?: ImportFileOptions): Promise<void> {
     const buffer = new Uint8Array(await file.arrayBuffer());
+
+    // read_xlsx infers its range from the first filled cell of the sheet
+    // and stops at the first empty row. Exports with a title, a marker
+    // cell or an account block above the table then come back as one
+    // empty column. Scan the sheet ourselves and pin the table with an
+    // explicit range when it does not start where read_xlsx would start
+    // (null for clean sheets and for anything we cannot parse, e.g. .xls).
+    //
+    // This has to run BEFORE registerFileBuffer: DuckDB-WASM hands the
+    // ArrayBuffer to its worker as a transferable, which detaches it on
+    // this thread, so afterwards `buffer` is empty and the sniff would
+    // silently find nothing.
+    const detectedRange = await sniffXlsxTableRange(buffer, options?.sheetName);
+    const range = detectedRange ? `, range=${quoteLiteral(detectedRange)}` : "";
+    if (detectedRange && import.meta.env.DEV) {
+      console.log(`Excel import for ${file.name}: table detected at ${detectedRange}`);
+    }
+
     const effectiveName = (await backend.registerFileBuffer(file.name, buffer)) ?? file.name;
 
-    const sheet = options?.sheetName ? `, sheet = '${options.sheetName.replace(/'/g, "''")}'` : "";
+    const sheet = options?.sheetName ? `, sheet = ${quoteLiteral(options.sheetName)}` : "";
     const fname = effectiveName.replace(/'/g, "''");
 
     // Try several read paths, widening tolerance each time. The order
@@ -42,15 +61,15 @@ export class ExcelFormatHandler implements FormatHandler {
     const attempts: Array<{ label: string; sql: string }> = [
       {
         label: "read_xlsx",
-        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}'${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}'${range}${sheet})`,
       },
       {
         label: "read_xlsx ignore_errors",
-        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}', ignore_errors=true${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}', ignore_errors=true${range}${sheet})`,
       },
       {
         label: "read_xlsx all_varchar",
-        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}', all_varchar=true${sheet})`,
+        sql: `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS SELECT * FROM read_xlsx('${fname}', all_varchar=true${range}${sheet})`,
       },
       {
         label: "st_read",
@@ -127,89 +146,20 @@ export class ExcelFormatHandler implements FormatHandler {
 
 /**
  * Extract sheet names from an .xlsx file by reading the embedded
- * xl/workbook.xml entry from the ZIP container. Uses the browser's native
- * DecompressionStream for DEFLATE and DOMParser for XML — no dependencies.
- * Returns null if the structure doesn't match (not a valid XLSX, .xls binary,
- * corrupt archive, etc.).
+ * xl/workbook.xml entry from the ZIP container (the ZIP reader lives in
+ * xlsxTableRange.ts, shared with the table-range sniff). Uses DOMParser
+ * for the XML — no dependencies. Returns null if the structure doesn't
+ * match (not a valid XLSX, .xls binary, corrupt archive, etc.).
  */
 async function extractSheetNamesFromXlsx(file: File): Promise<string[] | null> {
-  const buffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const decoder = new TextDecoder();
-
-  // Find End of Central Directory (EOCD) record: signature 0x06054b50 ("PK\5\6").
-  // EOCD sits near the end of the file; max-back window is 65557 bytes (22-byte
-  // fixed record + up to 65535 bytes of trailing comment).
-  const windowStart = Math.max(0, bytes.length - 65557);
-  let eocdOffset = -1;
-  for (let i = bytes.length - 22; i >= windowStart; i--) {
-    if (
-      bytes[i] === 0x50 && bytes[i + 1] === 0x4b &&
-      bytes[i + 2] === 0x05 && bytes[i + 3] === 0x06
-    ) {
-      eocdOffset = i;
-      break;
-    }
-  }
-  if (eocdOffset < 0) return null;
-
-  const numEntries = view.getUint16(eocdOffset + 10, true);
-  const cdOffset = view.getUint32(eocdOffset + 16, true);
-
-  // Walk the central directory, looking for xl/workbook.xml.
-  let cdPos = cdOffset;
-  let entry: { lhOffset: number; method: number; compSize: number } | null = null;
-
-  for (let i = 0; i < numEntries; i++) {
-    if (
-      bytes[cdPos] !== 0x50 || bytes[cdPos + 1] !== 0x4b ||
-      bytes[cdPos + 2] !== 0x01 || bytes[cdPos + 3] !== 0x02
-    ) break;
-
-    const method = view.getUint16(cdPos + 10, true);
-    const compSize = view.getUint32(cdPos + 20, true);
-    const nameLen = view.getUint16(cdPos + 28, true);
-    const extraLen = view.getUint16(cdPos + 30, true);
-    const commentLen = view.getUint16(cdPos + 32, true);
-    const lhOffset = view.getUint32(cdPos + 42, true);
-    const fileName = decoder.decode(bytes.subarray(cdPos + 46, cdPos + 46 + nameLen));
-
-    if (fileName === "xl/workbook.xml") {
-      entry = { lhOffset, method, compSize };
-      break;
-    }
-
-    cdPos += 46 + nameLen + extraLen + commentLen;
-  }
-
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const entries = listZipEntries(bytes);
+  const entry = entries?.find((e) => e.name === "xl/workbook.xml");
   if (!entry) return null;
+  const xmlBytes = await readZipEntry(bytes, entry);
+  if (!xmlBytes) return null;
 
-  // Read the local file header; the actual compressed payload starts after
-  // the header + variable-length name/extra fields.
-  const lhPos = entry.lhOffset;
-  if (
-    bytes[lhPos] !== 0x50 || bytes[lhPos + 1] !== 0x4b ||
-    bytes[lhPos + 2] !== 0x03 || bytes[lhPos + 3] !== 0x04
-  ) return null;
-
-  const lhNameLen = view.getUint16(lhPos + 26, true);
-  const lhExtraLen = view.getUint16(lhPos + 28, true);
-  const dataStart = lhPos + 30 + lhNameLen + lhExtraLen;
-  const payload = bytes.subarray(dataStart, dataStart + entry.compSize);
-
-  let xmlBytes: Uint8Array;
-  if (entry.method === 0) {
-    xmlBytes = payload;
-  } else if (entry.method === 8) {
-    const stream = new Blob([payload]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-    const decompressed = await new Response(stream).arrayBuffer();
-    xmlBytes = new Uint8Array(decompressed);
-  } else {
-    return null;
-  }
-
-  const xml = decoder.decode(xmlBytes);
+  const xml = new TextDecoder().decode(xmlBytes);
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   if (doc.querySelector("parsererror")) return null;
 

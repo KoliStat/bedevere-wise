@@ -1,15 +1,16 @@
 // Self-hosted fonts (Statistical-Report identity). Static weights only:
-// mono 400/600 for chrome+data+editor, serif 400/400i/600 for prose accents.
+// mono 400/600 for chrome+data+editor, Source Sans 3 400/400i/600 for prose.
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/600.css";
-import "@fontsource/source-serif-4/400.css";
-import "@fontsource/source-serif-4/400-italic.css";
-import "@fontsource/source-serif-4/600.css";
+import "@fontsource/source-sans-3/400.css";
+import "@fontsource/source-sans-3/400-italic.css";
+import "@fontsource/source-sans-3/600.css";
 
 import "./styles/main.scss";
 import { BedevereApp } from "./components/BedevereApp/BedevereApp";
 import { DuckDBService } from "./data/DuckDBService.ts";
 import { persistenceService } from "./data/PersistenceService.ts";
+import { APP_VERSION } from "./version.ts";
 import {
   DEFAULT_DATE_FORMAT,
   DEFAULT_DATETIME_FORMAT,
@@ -21,7 +22,7 @@ import {
 // Initialize the Bedevere Wise application
 async function initApplication() {
   const debugMode = import.meta.env.DEV;
-  const appVersion = "0.15-my-trusty-servant";
+  const appVersion = APP_VERSION;
 
   // The web app constructs its own engine and hands it to BedevereApp
   // (which has no built-in default). Kept in a local so the debug handle

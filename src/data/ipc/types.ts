@@ -239,6 +239,17 @@ export interface RegisterFileParams {
    * non-xlsx reader. See docs/backend-protocol.md §5.3.1.
    */
   sheet?: string;
+  /**
+   * Optional cell range for `.xlsx` imports, in A1 notation
+   * (`"A19:H151"`). When set, the host emits
+   * `read_xlsx('<path>', range='A19:H151')` so the import starts at the
+   * detected data table instead of read_xlsx's own first-filled-cell
+   * inference. The renderer computes it with `sniffXlsxTableRange`
+   * (formats/xlsxTableRange.ts). Hosts MUST check it against
+   * `XLSX_RANGE_PATTERN` before interpolating it into SQL. Ignored for
+   * every non-xlsx reader. See docs/backend-protocol.md §5.3.1.
+   */
+  range?: string;
 }
 export interface RegisterFileResult {
   tableName: string;

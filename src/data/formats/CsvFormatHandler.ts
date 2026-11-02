@@ -21,6 +21,11 @@ import { FormatHandler, ImportFileOptions } from "./FormatHandler";
  * no column type can absorb), retry once with `ignore_errors=true`
  * so the user gets *something* in the workspace rather than nothing,
  * and console-warn so the lost rows aren't silent.
+ *
+ * The CREATE uses OR REPLACE, matching every other format handler,
+ * so re-importing a file refreshes its table instead of failing with
+ * "Table already exists". Name collisions between *different* files
+ * are resolved before this point (see `resolveTableName`).
  */
 export async function importCsvText(
   backend: Backend,
@@ -46,7 +51,7 @@ export async function importCsvText(
       .map(([k, v]) => `${k}=${v}`)
       .join(", ");
     return (
-      `CREATE TABLE ${quoteIdent(tableName)} AS ` +
+      `CREATE OR REPLACE TABLE ${quoteIdent(tableName)} AS ` +
       `SELECT * FROM read_csv_auto(${quoteLiteral(effectiveName)}, ${optsSql})`
     );
   };

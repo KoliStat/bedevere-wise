@@ -9,6 +9,8 @@ describe("isEmbedPath", () => {
     expect(isEmbedPath("/")).toBe(false);
     expect(isEmbedPath("/demo")).toBe(false);
     expect(isEmbedPath("/anything")).toBe(false);
+    expect(isEmbedPath("/about")).toBe(false);
+    expect(isEmbedPath("/howto")).toBe(false);
   });
 });
 
@@ -20,7 +22,7 @@ describe("buildCsp", () => {
   });
 
   it("forbids framing and allows the beacon on the main app (incl. arbitrary SPA URLs)", () => {
-    for (const path of ["/", "/index.html", "/demo", "/anything"]) {
+    for (const path of ["/", "/index.html", "/demo", "/anything", "/about", "/about.html", "/howto", "/howto.html"]) {
       const csp = buildCsp(path);
       expect(csp).toContain("frame-ancestors 'self'");
       expect(csp).toContain("https://static.cloudflareinsights.com");

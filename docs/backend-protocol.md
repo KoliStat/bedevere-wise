@@ -441,6 +441,25 @@ cross the wire for picker-opened files.
 { "tableName": "adsl_summary", "totalRows": 1234, "totalColumns": 17 }
 ```
 
+The optional `range` param pins the data table inside an `.xlsx` sheet,
+in A1 notation. `read_xlsx` infers its range from the first filled cell
+and stops at the first empty row, so a sheet with a title, a marker cell
+or an account block above the table imports as one empty column. The
+renderer scans the sheet XML (`sniffXlsxTableRange`, pulling the bytes
+with `readFile` for host-path nodes) and sends the detected range only
+when the table does not start at the first filled row. When present, the
+host emits `read_xlsx('<path>', range='<range>')` (combined with
+`sheet=` when both are given). The host MUST validate the value against
+`^[A-Z]{1,3}[0-9]{1,7}:[A-Z]{1,3}[0-9]{1,7}$` before interpolating it and
+reject anything else with `INVALID_PARAMS`. Every non-xlsx reader
+ignores it.
+
+```jsonc
+{ "path": "/abs/path/statement.xlsx", "tableName": "statement", "range": "A19:H151" }
+// result
+{ "tableName": "statement", "totalRows": 132, "totalColumns": 8 }
+```
+
 The host MUST confine `path` to the file-access grant ledger (a file the
 user opened via the native picker, or one beneath a picked folder); a
 path outside it is rejected with `NOT_FOUND`. This stops a peer that
@@ -450,7 +469,8 @@ Errors:
 
 - `NOT_FOUND` — path does not resolve, or is outside the grant ledger
 - `DUCKDB_ERROR` — reader failed (corrupt file, unsupported extension)
-- `INVALID_PARAMS` — `tableName` is empty or contains illegal characters
+- `INVALID_PARAMS` — `tableName` is empty or contains illegal characters,
+  or `range` is not in `A1:B2` form
 - `UNLICENSED` — file format requires a commercial reader extension the
   user has not licensed (e.g. future paid format support)
 
@@ -578,6 +598,56 @@ used as the Save dialog's default filename. Dismissing the dialog yields
 Errors: `INVALID_PARAMS` (missing params / unknown format), `SQL_ERROR`,
 `DUCKDB_ERROR` (e.g. a stat-format COPY function isn't registered because
 `stats_duck` isn't loaded).
+
+#### 5.3.6 `loadPersistence`
+
+Read the host's key-value store and return all of it. Takes no params.
+The renderer calls this once at boot and caches the result in memory.
+
+Keys are the Bedevere-namespaced strings the web app writes to
+`localStorage` (`bedevere_settings`, `bedevere_environments`,
+`bedevere_queries`, `bedevere_aliases`, `bedevere_keymap`). Each value is
+that key's JSON-stringified payload. The shell MUST skip entries whose
+value is not a string.
+
+A missing store, an unparsable store, or a read failure MUST reply with
+an empty object rather than an error. The renderer then starts on
+defaults. A corrupt store must never block startup.
+
+```jsonc
+// params: {}
+// result
+{
+  "data": {
+    "bedevere_settings": "{\"theme\":\"dark\"}",
+    "bedevere_environments": "{\"schemaVersion\":1,\"environments\":[]}"
+  }
+}
+```
+
+Errors: none in normal operation, see above.
+
+#### 5.3.7 `savePersistence`
+
+Replace the host's key-value store with `data`. The payload is the full
+snapshot, not a delta, so the host can write it in one step. The
+renderer debounces these calls (750 ms) and flushes the pending one when
+the window closes.
+
+The reference host writes `config_dir/persistence.json` through a temp
+file and a rename, so a crash mid-write leaves the previous file intact.
+A failed write MUST reply with an error instead of reporting success, so
+the renderer can log it.
+
+```jsonc
+// params
+{ "data": { "bedevere_settings": "{\"theme\":\"dark\"}" } }
+// result
+{}
+```
+
+Errors: `INVALID_PARAMS` (`data` missing or not an object), `INTERNAL`
+(the write or the rename failed).
 
 ### 5.4 Plugin methods
 

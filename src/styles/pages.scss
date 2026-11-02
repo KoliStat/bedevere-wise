@@ -1,0 +1,100 @@
+// Standalone /about and /howto pages. main.scss provides the theme
+// tokens and the help-panel content styles; this file only lays out
+// the page shell around that content.
+
+html,
+body {
+  height: auto;
+  overflow: auto;
+}
+
+.page-shell {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 20px 48px;
+}
+
+.page-shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 18px 0;
+  border-bottom: 2px solid var(--rule);
+}
+
+.page-shell__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.page-shell__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+
+  a {
+    color: var(--fg-muted);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--fg);
+      text-decoration: underline;
+    }
+
+    &[aria-current="page"] {
+      color: var(--fg);
+      border-bottom: 2px solid var(--duck);
+    }
+  }
+
+  .page-shell__launch {
+    color: var(--accent-text);
+    background: var(--accent);
+    padding: 5px 10px;
+
+    &:hover {
+      background: var(--accent-hover);
+      color: var(--accent-text);
+      text-decoration: none;
+    }
+  }
+}
+
+.page-shell__content {
+  padding-top: 24px;
+}
+
+.page-shell__title {
+  font-size: 22px;
+  margin: 0 0 16px;
+  color: var(--fg);
+}
+
+.page-shell__article {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.page-shell__footer {
+  margin-top: 40px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-muted);
+
+  a {
+    color: var(--fg-muted);
+
+    &:hover {
+      color: var(--fg);
+    }
+  }
+}

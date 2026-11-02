@@ -7,7 +7,7 @@ import {
   matchesBinding,
 } from "@/data/KeymapService";
 import { Command, commandRegistry } from "@/data/CommandRegistry";
-import { renderAboutBody } from "./aboutHtml";
+import { renderAboutBody, type AboutHost } from "./aboutHtml";
 import {
   AUTO_IMPORT_THRESHOLD_PRESETS,
   DEFAULT_AUTO_IMPORT_THRESHOLD,
@@ -19,13 +19,16 @@ import {
   MAX_STRING_LENGTH_PRESETS,
   MIN_CELL_WIDTH_PRESETS,
 } from "./formatPresets";
-import { PENGUINS_TUTORIAL, TutorialNode } from "./tutorial";
+import { PENGUINS_TUTORIAL } from "./tutorial";
+import { buildTutorialNodes } from "./tutorialDom";
 import { ICON_LOCK, ICON_SCALE } from "../icons";
 
 export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "settings" | "about";
 
 export interface HelpPanelOptions {
   version: string;
+  /** Web app or desktop app. Picks the About tab's wording and links. Defaults to web. */
+  host?: AboutHost;
   onLoadSampleDataset: () => Promise<void> | void;
   onShowMessage?: (msg: string, type: "info" | "success" | "error") => void;
   onBrowseFolder?: () => void;
@@ -45,6 +48,9 @@ export interface HelpPanelOptions {
   setCopyOptions?: (opts: { delimiter: "tab" | "comma"; includeHeader: boolean; quoteEscape: "double" | "backslash" }) => void;
   getFormatOptions?: () => FormatPrefs;
   setFormatOptions?: (opts: FormatPrefs) => void;
+  /** Settings → Startup: open the Help panel on every app start. */
+  getShowHelpOnStartup?: () => boolean;
+  setShowHelpOnStartup?: (value: boolean) => void;
   /** Recent folders shortcut list (FSA-API-only browsers). Empty array
    *  hides the section in the Import tab. */
   getRecentFolders?: () => Array<{ id: string; name: string }>;
@@ -303,101 +309,13 @@ export class HelpPanel {
     this.sampleButton?.addEventListener("click", () => this.handleLoadSample());
 
     const tutorialHost = body.querySelector("[data-tutorial]")!;
-    for (const node of PENGUINS_TUTORIAL) {
-      tutorialHost.appendChild(this.buildTutorialNode(node));
+    for (const el of buildTutorialNodes(PENGUINS_TUTORIAL, {
+      onCopyFailed: () => this.options.onShowMessage?.("Copy failed", "error"),
+    })) {
+      tutorialHost.appendChild(el);
     }
 
     return body;
-  }
-
-  private buildTutorialNode(node: TutorialNode): HTMLElement {
-    switch (node.kind) {
-      case "heading": {
-        const h = document.createElement("h4");
-        h.className = "help-panel__tutorial-heading";
-        h.textContent = node.text;
-        return h;
-      }
-      case "prose": {
-        const p = document.createElement("p");
-        p.className = "help-panel__tutorial-prose";
-        p.innerHTML = node.html;
-        return p;
-      }
-      case "tip": {
-        const p = document.createElement("p");
-        p.className = "help-panel__tip";
-        p.innerHTML = `<strong>Tip:</strong> ${node.html}`;
-        return p;
-      }
-      case "snippet":
-        return this.buildTutorialSnippet(node.sql);
-    }
-  }
-
-  private buildTutorialSnippet(sql: string): HTMLElement {
-    const card = document.createElement("div");
-    card.className = "help-panel__snippet help-panel__snippet--titleless";
-
-    const head = document.createElement("div");
-    head.className = "help-panel__snippet-head help-panel__snippet-head--titleless";
-
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "help-panel__copy-btn";
-    copyBtn.textContent = "Copy";
-    copyBtn.addEventListener("click", () => this.handleCopy(sql, copyBtn));
-    head.appendChild(copyBtn);
-
-    const pre = document.createElement("pre");
-    pre.className = "help-panel__snippet-code";
-    const code = document.createElement("code");
-    code.textContent = sql;
-    pre.appendChild(code);
-
-    card.appendChild(head);
-    card.appendChild(pre);
-    return card;
-  }
-
-  private async handleCopy(text: string, btn: HTMLButtonElement): Promise<void> {
-    const ok = await this.copyToClipboard(text);
-    if (ok) {
-      const original = btn.textContent ?? "Copy";
-      btn.textContent = "Copied!";
-      btn.classList.add("help-panel__copy-btn--copied");
-      window.setTimeout(() => {
-        btn.textContent = original;
-        btn.classList.remove("help-panel__copy-btn--copied");
-      }, 1500);
-    } else {
-      this.options.onShowMessage?.("Copy failed", "error");
-    }
-  }
-
-  private async copyToClipboard(text: string): Promise<boolean> {
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch {
-        // fall through to legacy path
-      }
-    }
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      return ok;
-    } catch {
-      return false;
-    }
   }
 
   private async handleLoadSample(): Promise<void> {
@@ -1036,6 +954,26 @@ export class HelpPanel {
       ));
     }));
 
+    // --- Startup ---
+    body.appendChild(this.buildSettingsSection("Startup", (section) => {
+      const row = document.createElement("label");
+      row.className = "help-panel__settings-row help-panel__settings-row--checkbox";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = this.options.getShowHelpOnStartup?.() ?? false;
+      cb.addEventListener("change", () => this.options.setShowHelpOnStartup?.(cb.checked));
+      const cbLabel = document.createElement("span");
+      cbLabel.textContent = "Show Help at startup";
+      row.appendChild(cb);
+      row.appendChild(cbLabel);
+      section.appendChild(row);
+
+      const hint = document.createElement("p");
+      hint.className = "help-panel__hint";
+      hint.textContent = "Off: the app starts clean. The first visit still opens the How-To introduction once.";
+      section.appendChild(hint);
+    }));
+
     // --- Import ---
     body.appendChild(this.buildSettingsSection("Import", (section) => {
       const hint = document.createElement("p");
@@ -1179,7 +1117,7 @@ export class HelpPanel {
     body.className = "help-panel__tab-body help-panel__tab-body--about";
     this.tabBodies.set("about", body);
 
-    body.innerHTML = renderAboutBody(this.options.version);
+    body.innerHTML = renderAboutBody(this.options.version, this.options.host);
 
     return body;
   }

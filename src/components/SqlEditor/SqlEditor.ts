@@ -706,9 +706,8 @@ export class SqlEditor implements FocusableComponent {
       // reload doesn't re-bloat from the stale storage value.
       if (cleanedIds.length !== fresh.workspace.openQueryIds.length) {
         environmentService.setWorkspace(envId, {
-          openDataNodeIds: fresh.workspace.openDataNodeIds,
+          ...fresh.workspace,
           openQueryIds: cleanedIds,
-          activeTab: fresh.workspace.activeTab,
         });
       }
 
@@ -762,7 +761,7 @@ export class SqlEditor implements FocusableComponent {
     });
     if (!q) return;
     environmentService.setWorkspace(env.id, {
-      openDataNodeIds: env.workspace.openDataNodeIds,
+      ...env.workspace,
       openQueryIds: [q.id],
       activeTab: { kind: "query", id: q.id },
     });
@@ -880,11 +879,16 @@ export class SqlEditor implements FocusableComponent {
     this.lastAutoSavedText = target.state.doc.toString();
   }
 
+  /**
+   * The workspace is shared with the dataset tab strip. Spread the
+   * stored object so fields other writers own (openDataNodeIds,
+   * activeDataNodeId) survive.
+   */
   private persistWorkspace(envId: string): void {
     const env = environmentService.get(envId);
     if (!env) return;
     environmentService.setWorkspace(envId, {
-      openDataNodeIds: env.workspace.openDataNodeIds,
+      ...env.workspace,
       openQueryIds: this.tabs.map((t) => t.queryId),
       activeTab: this.activeQueryId
         ? { kind: "query", id: this.activeQueryId }

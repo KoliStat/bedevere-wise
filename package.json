@@ -1,6 +1,6 @@
 {
   "name": "@kolistat/bedevere-wise",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "author": "Massimo Meneghello",
   "repository": {
     "type": "git",
@@ -31,9 +31,9 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
-    "@duckdb/duckdb-wasm": "1.32.0",
+    "@duckdb/duckdb-wasm": "1.33.1-dev65.0",
     "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@fontsource/source-serif-4": "^5.2.9",
+    "@fontsource/source-sans-3": "^5.3.1",
     "@lezer/highlight": "^1.2.3",
     "@types/node": "^20.11.19",
     "@vitest/ui": "^3.2.4",
@@ -53,7 +53,7 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
-    "@duckdb/duckdb-wasm": "1.32.0",
+    "@duckdb/duckdb-wasm": "1.33.1-dev65.0",
     "@lezer/highlight": "^1.2.0",
     "apache-arrow": "^17.0.0",
     "codemirror": "^6.0.0",
@@ -162,8 +162,8 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "notices": "bun scripts/notices.mjs --product \"Bedevere web app\" --out public/third-party-licenses.txt --tail scripts/notices-tail.txt --include-peers --extra @fontsource/ibm-plex-mono --extra @fontsource/source-serif-4",
-    "notices:check": "bun scripts/notices.mjs --product \"Bedevere web app\" --out public/third-party-licenses.txt --tail scripts/notices-tail.txt --include-peers --extra @fontsource/ibm-plex-mono --extra @fontsource/source-serif-4 --check"
+    "notices": "bun scripts/notices.mjs --product \"Bedevere web app\" --out public/third-party-licenses.txt --tail scripts/notices-tail.txt --include-peers --extra @fontsource/ibm-plex-mono --extra @fontsource/source-sans-3",
+    "notices:check": "bun scripts/notices.mjs --product \"Bedevere web app\" --out public/third-party-licenses.txt --tail scripts/notices-tail.txt --include-peers --extra @fontsource/ibm-plex-mono --extra @fontsource/source-sans-3 --check"
   },
   "type": "module",
   "types": "dist/index.d.ts",

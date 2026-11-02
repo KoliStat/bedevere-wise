@@ -165,8 +165,14 @@ export interface Backend {
    * `sheet=` argument so the chosen sheet is imported; backends that
    * decode bytes in-process (DuckDB-WASM) read sheets through
    * registerFileBuffer + a SQL `sheet=` instead and ignore it here.
+   *
+   * `range` is an optional cell range in A1 notation (`"A19:H151"`)
+   * that pins the data table inside the sheet when it does not start at
+   * the first filled cell (see `sniffXlsxTableRange`). The host forwards
+   * it as `read_xlsx`'s `range=` argument. In-process backends ignore it
+   * for the same reason as `sheet`.
    */
-  registerFileURL(name: string, url: string, sheet?: string): Promise<void>;
+  registerFileURL(name: string, url: string, sheet?: string, range?: string): Promise<void>;
 
   /**
    * Register an in-memory text blob as a virtual file. Backends that

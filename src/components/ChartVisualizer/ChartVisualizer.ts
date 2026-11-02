@@ -6,6 +6,7 @@ import vegaEmbed, { type Result, type VisualizationSpec } from "vega-embed";
 // the vegaEmbed call below), needing no eval.
 import { expressionInterpreter } from "vega-interpreter";
 import { listenForThemeChanges, detectCurrentTheme } from "../SpreadsheetVisualizer/utils/theme";
+import { chartThemeConfig } from "./chartTheme";
 
 /**
  * Renders a Vega-Lite spec produced by stats_duck's `VISUALIZE … DRAW <mark>`
@@ -14,8 +15,8 @@ import { listenForThemeChanges, detectCurrentTheme } from "../SpreadsheetVisuali
  *
  * Keeps lifecycle parity with SpreadsheetVisualizer: subscribe to theme
  * changes on mount, tear down on destroy. The chart re-embeds on theme flip
- * with a fresh Tokyonight-flavoured `config` block so axes / labels / grids
- * blend with the rest of the UI.
+ * with a fresh `config` block from {@link chartThemeConfig}, so axes /
+ * labels / grids blend with the rest of the UI.
  */
 export class ChartVisualizer {
   private host: HTMLElement;
@@ -153,59 +154,7 @@ export class ChartVisualizer {
    */
   private applyTheme(spec: VisualizationSpec): VisualizationSpec {
     const css = getComputedStyle(document.body);
-    const v = (name: string) => css.getPropertyValue(name).trim();
-    const ct = detectCurrentTheme();
-    const isLight = ct === "light" || ct === "classic-light" || ct === "github-light";
-
-    const themeConfig = {
-      background: v("--bg") || (isLight ? "#f7f5ef" : "#171511"),
-      // Ramp A "Field Notes": duck first (the report's marker), ink second
-      // (theme-resolved via --rule), then four fixed mid-tone hues that hold
-      // ≥3:1 on both paper and night. Danger/success are semantic-only.
-      range: {
-        category: [
-          v("--duck") || "#ffd939",
-          v("--rule") || (isLight ? "#1a1917" : "#ece7da"),
-          "#c65d3b", "#4e7f71", "#6b7fb3", "#9a6d9e",
-        ],
-      },
-      font: v("--font-mono") || "monospace",
-      view: { stroke: v("--border") || "#d9d5c9" },
-      axis: {
-        domainColor: v("--rule") || "#1a1917",
-        gridColor:   v("--border") || "#d9d5c9",
-        labelColor:  v("--fg-dark") || "#3d3a33",
-        titleColor:  v("--fg") || "#1a1917",
-        tickColor:   v("--rule") || "#1a1917",
-        labelFont:   v("--font-mono") || "monospace",
-        titleFont:   v("--font-mono") || "monospace",
-        // Vega-Lite's 10px default reads tiny next to the app's 11px mono
-        // UI — most visibly on ordinal/nominal axes (bar / boxplot
-        // category labels).
-        labelFontSize: 11,
-        titleFontSize: 12,
-      },
-      legend: {
-        labelColor: v("--fg-dark") || "#3d3a33",
-        titleColor: v("--fg") || "#1a1917",
-        labelFont:  v("--font-mono") || "monospace",
-        titleFont:  v("--font-mono") || "monospace",
-        labelFontSize: 11,
-        titleFontSize: 12,
-      },
-      // Facet headers (violin renders its categories as a `column` facet —
-      // these ARE its visible x labels). Without this block Vega-Lite's
-      // default near-black header text disappears on the dark themes.
-      header: {
-        labelColor: v("--fg-dark") || "#3d3a33",
-        titleColor: v("--fg") || "#1a1917",
-        labelFont:  v("--font-mono") || "monospace",
-        titleFont:  v("--font-mono") || "monospace",
-        labelFontSize: 11,
-        titleFontSize: 12,
-      },
-      title: { color: v("--fg") || "#1a1917", font: v("--font-mono") || "monospace" },
-    };
+    const themeConfig = chartThemeConfig(detectCurrentTheme(), (name) => css.getPropertyValue(name).trim());
 
     // Merge with any user-provided config in the spec; user wins.
     const existing = (spec as { config?: Record<string, unknown> }).config ?? {};

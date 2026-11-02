@@ -44,3 +44,8 @@ export type { CommandBarOptions, CellInfo } from "./components/CommandBar/Comman
 // before constructing BedevereApp.
 export { PersistenceService, persistenceService } from "./data/PersistenceService";
 export type { AppSettings, QueryBookmark, RecentFolderEntry } from "./data/PersistenceService";
+
+// The user-facing version string of the bundled package. Hosts that
+// embed BedevereApp (bedevere-desktop) show this in the status bar
+// instead of keeping their own copy, which drifts between releases.
+export { APP_VERSION } from "./version";
