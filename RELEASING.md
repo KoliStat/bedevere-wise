@@ -1,6 +1,6 @@
 # Releasing
 
-Bedevere Wise and bedevere-desktop release **in lockstep**: same version, same codename, same release date. The version string in `package.json` is **clean semver** (no codename suffix) so npm's `@latest` dist-tag works; the codename lives in the git tag, the CHANGELOG heading, and the user-visible About display.
+bedevere wise and bedevere desktop release **in lockstep**: same version, same codename, same release date. The version string in `package.json` is **clean semver** (no codename suffix) so npm's `@latest` dist-tag works; the codename lives in the git tag, the CHANGELOG heading, and the user-visible About display.
 
 ## When to release
 
@@ -10,23 +10,26 @@ A release does **not** require a desktop binary change — if only wise changed,
 
 ## Lockstep version strings
 
-Each release bumps **four** version strings, two per repo:
+Each release bumps **five** version strings:
 
 | Repo | File | Field | Format |
 | --- | --- | --- | --- |
 | bedevere-wise | `package.json` | `version` | `0.X.0` (npm-clean, no codename) |
-| bedevere-wise | `src/main.ts` | `appVersion` | `0.X-codename` (user-visible display) |
+| bedevere-wise | `src/version.ts` | `APP_VERSION` | `0.X-codename` (shown in the status bar, the About tab and `/about`) |
 | bedevere-desktop | `renderer/package.json` | `version` | `0.X.0` (matches wise) |
 | bedevere-desktop | `CMakeLists.txt` | `project(... VERSION 0.X.0)` | `0.X.0` (matches wise) |
+| bedevere-desktop | `package-helper.bat` | `VERSION` | `0.X.0` (names the installer file) |
 
-Plus two text bumps that always go with the four version strings:
+Text updates that go with them:
 
-- bedevere-wise `src/components/HelpPanel/aboutHtml.ts`: `"What's new in 0.X"` heading + bullet list (rewrite for the cycle's actual work)
-- bedevere-wise `CHANGELOG.md`: prepend `## v0.X-codename` section with the release notes
+- bedevere-wise `src/components/HelpPanel/aboutHtml.ts`: the `"What's new in 0.X"` heading and bullet list, rewritten for the cycle's work. A test fails when the heading does not match `APP_VERSION`.
+- bedevere-wise `CHANGELOG.md`: rename `## Unreleased` to `## v0.X-codename`. Check that every user-facing change of the cycle has an entry: `git log --no-merges v<previous tag>..dev-0.X`.
+- bedevere-desktop `THIRD-PARTY-NOTICES.txt`: the versions of the bundled components, and the release named in the header.
+- If `@duckdb/duckdb-wasm` changed during the cycle, the stats_duck file under `public/extensions/stats-duck/<duckdb version>/` must be built for the new DuckDB version. A file built for another version does not load, and `VISUALIZE` stops working.
 
 ## Codename theme
 
-Monty Python — specifically the witch scene from *Monty Python and the Holy Grail*. Each release picks a line:
+Monty Python: the opening scene of *Monty Python and the Holy Grail*, at the castle, where Arthur and Patsy arrive with the coconuts. Each release takes the next line:
 
 | Released | Codename |
 | --- | --- |
@@ -43,122 +46,89 @@ Monty Python — specifically the witch scene from *Monty Python and the Holy Gr
 | 0.11 | `sovereign-of-all-england` |
 | 0.12 | `pull-the-other-one` |
 | 0.13 | `i-am` |
+| 0.14 | `and-this` |
+| 0.15 | `my-trusty-servant` |
+| 0.16 | `patsy` |
 
 When in doubt, watch the scene and pick the next thing said.
 
 ## Release ritual
 
-Done from the maintainer's machine. Assumes `dev-0.X` on both repos is feature-complete + tests green.
+Done from the maintainer's machine. Assumes `dev-0.X` on both repos is feature-complete and CI is green.
 
 ### 1. Pick the codename
 
 Per the table above. Write it down — you'll type it ~10 times.
 
-### 2. Wise: prep + tag + publish
+### 2. Release prep on `dev-0.X`
+
+Open one pull request per repo into `dev-0.X` with the version strings and text updates above. Before merging the wise one, run:
 
 ```sh
-cd bedevere-wise
-git checkout dev-0.X && git pull
-
-# Bump the strings (codename only on display + tag + changelog)
-# - package.json `version` → "0.X.0"
-# - src/main.ts `appVersion` → "0.X-codename"
-# - src/components/HelpPanel/aboutHtml.ts heading + bullets
-# - CHANGELOG.md prepend ## v0.X-codename
-
-# Verify clean
-bun x tsc --noEmit
+bunx vitest run
+bun run notices:check
+bun run build          # type checks, production build, output check
 bun run build:lib
-npm pack --dry-run     # check tarball file list + size
-
-# Commit + tag + merge
-git add -A
-git commit -m "Release v0.X-codename"
-git tag -a "v0.X-codename" -m "v0.X-codename"
-
-git checkout main
-git merge --no-ff dev-0.X -m "Merge dev-0.X: release v0.X-codename"
-git push origin main
-git push origin "v0.X-codename"
-
-# Publish to npm (prepublishOnly script rebuilds via bun run build:lib)
-npm publish              # publishes as @latest because 0.X.0 is clean semver
 ```
 
-After this, `npm view @kolistat/bedevere-wise dist-tags` should show `latest: 0.X.0`.
+The desktop pull request's CI builds the exe and the installer.
 
-### 3. Desktop: bump wise pin + tag
+### 3. Wise: merge to main, tag, publish
 
-```sh
-cd ../kolistat/bedevere-desktop
-git checkout dev-0.X && git pull
+1. Open a pull request from `dev-0.X` to `main` and merge it with a merge commit.
+2. Tag the merge commit and push the tag:
 
-# Pin the wise dependency to the just-published version
-# renderer/package.json:
-#   "@kolistat/bedevere-wise": "0.X.0"
-cd renderer && bun install     # locks the new pin into bun.lock
-cd ..
+   ```sh
+   git checkout main && git pull
+   git tag -a "v0.X-codename" -m "v0.X-codename"
+   git push origin "v0.X-codename"
+   ```
 
-# Verify the lockstep version strings already match (should already
-# have been bumped to 0.X.0 when the cycle opened — see "Opening the
-# next cycle" below)
+3. Publish from `main`. `prepublishOnly` rebuilds the library, and `npm publish` needs the maintainer's npm login:
 
-# Build + smoke test
-cmd /C "build-helper.bat"      # one-shot conan install
-cmd /C "dev-helper.bat"        # build + stage DLLs
-# launch the .exe, confirm renderer reads from the just-published
-# wise version (not bun link) and the test query runs
+   ```sh
+   npm publish                                         # lands as @latest
+   npm dist-tag add @kolistat/bedevere-wise@0.X.0 next
+   ```
 
-# Commit + tag + merge
-git add -A
-git commit -m "Release v0.X-codename"
-git tag -a "v0.X-codename" -m "v0.X-codename"
+   `npm view @kolistat/bedevere-wise dist-tags` should then show `latest` and `next` at `0.X.0`.
 
-git checkout main
-git merge --no-ff dev-0.X -m "Merge dev-0.X: release v0.X-codename"
-git push origin main
-git push origin "v0.X-codename"
-```
+The web app deploys by itself when `main` changes (`.github/workflows/deploy.yml`).
 
-### 4. Build + upload installers
+### 4. Desktop: pin wise, merge to main, tag
 
-Out of scope for this doc until Phase 3 packaging lands (see PROJECT_PLAN.md §7 in bedevere-desktop). When it does: the installer build + winget manifest + Homebrew cask + AppImage all carry `0.X.0` (the lockstep version).
+Merge the wise release first. The desktop CI builds the renderer against the wise branch with the same name, so the desktop release pull request builds against wise `main`.
 
-### 5. Opening the next cycle
+1. On `dev-0.X`, pin the renderer to the published version, and update the lockfile:
 
-Immediately after merging the release to main:
+   ```sh
+   # renderer/package.json:  "@kolistat/bedevere-wise": "0.X.0"
+   cd renderer && bun install
+   ```
 
-```sh
-# wise
-cd bedevere-wise
-git checkout main && git pull
-git checkout -b dev-0.X+1
+2. Open a pull request from `dev-0.X` to `main`, and merge it with a merge commit once CI is green.
+3. Tag the merge commit `v0.X-codename` and push the tag, as in step 3.
 
-# bump the four version strings to 0.X+1.0 (codename can be a placeholder
-# like "tbd" until the release picks one)
-# - package.json `version` → "0.X+1.0"
-# - src/main.ts `appVersion` → "0.X+1-tbd"
-# - aboutHtml.ts heading → "What's new in 0.X+1" + empty bullet list
-# - CHANGELOG.md: optional placeholder section
+### 5. Publish the desktop installer
 
-git add -A
-git commit -m "Open dev-0.X+1"
-git push -u origin dev-0.X+1
+1. Take `bedevere-wise-0.X.0-setup.exe` from the `bedevere-wise-setup` artifact of the `main` build.
+2. In KoliStat/bedevere-desktop-releases, draft a pre-release `v0.X.0-beta`. Upload the installer as `Bedevere-Desktop-0.X.0-win-x64-setup.exe` and put its SHA-256 in the release text. Update `README.md`, `CHANGELOG.md`, `LICENSE.txt` (the EULA, ASCII only) and `THIRD-PARTY-NOTICES.txt` on a branch.
+3. Install the exact uploaded file and smoke-test it. Then merge the docs and publish the draft.
+4. Point the installer link on kolistat.com (`products/bedevere.html`) at the new file.
 
-# desktop — same shape
-cd ../kolistat/bedevere-desktop
-git checkout main && git pull
-git checkout -b dev-0.X+1
+### 6. Close the cycle
 
-# bump
-# - renderer/package.json `version` → "0.X+1.0"
-# - CMakeLists.txt project VERSION → 0.X+1.0
-# - renderer/package.json wise dep back to "next" (so dev tracks pre-release builds)
+1. Review the `0.X` milestone in both repos. Close the issues that shipped: GitHub does not close an issue when the pull request that fixed it targeted `dev-0.X`, not `main`. Move the rest to the next milestone, then close `0.X`.
+2. Open the next cycle, wise first, because the desktop CI looks for the wise branch with the same name:
 
-git add -A
-git commit -m "Open dev-0.X+1"
-git push -u origin dev-0.X+1
-```
+   ```sh
+   # in bedevere-wise, then in bedevere-desktop
+   git checkout main && git pull
+   git checkout -b dev-0.X+1
+   git push -u origin dev-0.X+1
+   ```
+
+   The version strings stay at the shipped values until the next release prep. In bedevere-desktop, set the renderer's wise dependency back to `"next"`.
 
 Per [[feedback-release-branches]] in memory: the moment a release is tagged + merged, `dev-X.Y` is closed. Post-release work goes on `dev-X.(Y+1)`.
 
@@ -166,7 +136,7 @@ Per [[feedback-release-branches]] in memory: the moment a release is tagged + me
 
 - **npm version is clean semver**: `0.13.0`, not `0.13.0-i-am`. Anything after a `-` is a pre-release per semver, and npm refuses to assign `@latest` to pre-release versions automatically. Keeping the codename out of `package.json` means `npm publish` Just Works.
 - **The codename is the release identity** for humans: git tag, CHANGELOG heading, About tab, blog post, GitHub Release page. All those carry `v0.X-codename`.
-- **Releases publish from `main` only**: every `npm publish` runs from `main`, after the `dev-0.X` → `main` merge (step 2 above) — never from a `dev-0.X` branch. Publishing a clean `0.X.0` from a dev branch consumes the release version number before the real release ships (it happened once with `0.13.0` — the recovery was to release as `0.13.1`). During active dev the desktop renderer tracks wise through a local `bun link` (see `renderer/README.md`) rather than a published `@next` build; the release ritual then pins the renderer to the exact published version so the tagged desktop release is reproducible. Keep `@next` aligned to the latest published release (`npm dist-tag add @kolistat/bedevere-wise@0.X.Y next`) so it never points at stale bytes.
+- **Releases publish from `main` only**: every `npm publish` runs from `main`, after the `dev-0.X` → `main` merge (step 3 above) — never from a `dev-0.X` branch. Publishing a clean `0.X.0` from a dev branch consumes the release version number before the real release ships (it happened once with `0.13.0` — the recovery was to release as `0.13.1`). During active dev the desktop renderer tracks wise through a local `bun link` (see `renderer/README.md`) rather than a published `@next` build, and the desktop CI builds wise from source. The release ritual then pins the renderer to the exact published version so the tagged desktop release is reproducible. Keep `@next` aligned to the latest published release (`npm dist-tag add @kolistat/bedevere-wise@0.X.Y next`) so it never points at stale bytes.
 - **Patch releases**: same ritual, patch level only. Bump `package.json` to `0.X.1` on both; the **git tag stays `v0.X-codename`** to match the tag series — the patch level lives only in `package.json`, never in the tag. `v0.13` shipped exactly this way: npm `0.13.1` (because `0.13.0` was burned by the premature publish), git tag `v0.13-i-am`.
 - **Desktop-only fix between wise releases**: bump both repos' patch level. Wise's publish is essentially a no-op (same code, new version) but preserves the version invariant. For now this is rare and tolerable; if it becomes frequent, revisit the lockstep model.
 

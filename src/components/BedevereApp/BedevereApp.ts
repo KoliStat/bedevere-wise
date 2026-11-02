@@ -60,6 +60,7 @@ import { EmbedBuilderDialog } from "../EmbedBuilderDialog/EmbedBuilderDialog";
 import { shouldShowDesktopHint, renderDesktopHint } from "./desktopHint";
 import { startupHelpTab } from "./startupHelp";
 import { DESKTOP_DOWNLOAD_URL } from "../../appLinks";
+import { aboutHostForBackend } from "../HelpPanel/aboutHtml";
 
 // Pre-filled SQL for the /demo route — see runDemo(). Kept verbatim from
 // the user's paste so the comments and formatting render exactly as
@@ -431,6 +432,7 @@ export class BedevereApp implements EventHandler {
     // Help panel (mounted on body so it overlays the entire app)
     this.helpPanel = new HelpPanel(document.body, {
       version: this.version,
+      host: aboutHostForBackend(this.backend.id),
       onLoadSampleDataset: () => this.loadSampleDataset(),
       onShowMessage: (msg, type) => this.showMessage(msg, type),
       onBrowseFolder: () => this.leftPanel?.openFolderPicker(),
