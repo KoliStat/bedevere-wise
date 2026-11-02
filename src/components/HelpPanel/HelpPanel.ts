@@ -7,7 +7,7 @@ import {
   matchesBinding,
 } from "@/data/KeymapService";
 import { Command, commandRegistry } from "@/data/CommandRegistry";
-import { renderAboutBody } from "./aboutHtml";
+import { renderAboutBody, type AboutHost } from "./aboutHtml";
 import {
   AUTO_IMPORT_THRESHOLD_PRESETS,
   DEFAULT_AUTO_IMPORT_THRESHOLD,
@@ -27,6 +27,8 @@ export type HelpPanelTab = "howto" | "import" | "shortcuts" | "commands" | "sett
 
 export interface HelpPanelOptions {
   version: string;
+  /** Web app or desktop app. Picks the About tab's wording and links. Defaults to web. */
+  host?: AboutHost;
   onLoadSampleDataset: () => Promise<void> | void;
   onShowMessage?: (msg: string, type: "info" | "success" | "error") => void;
   onBrowseFolder?: () => void;
@@ -1115,7 +1117,7 @@ export class HelpPanel {
     body.className = "help-panel__tab-body help-panel__tab-body--about";
     this.tabBodies.set("about", body);
 
-    body.innerHTML = renderAboutBody(this.options.version);
+    body.innerHTML = renderAboutBody(this.options.version, this.options.host);
 
     return body;
   }
