@@ -113,8 +113,15 @@ Merge the wise release first. The desktop CI builds the renderer against the wis
 
 1. Take `bedevere-wise-0.X.0-setup.exe` from the `bedevere-wise-setup` artifact of the `main` build.
 2. In KoliStat/bedevere-desktop-releases, draft a pre-release `v0.X.0-beta`. Upload the installer as `Bedevere-Desktop-0.X.0-win-x64-setup.exe` and put its SHA-256 in the release text. Update `README.md`, `CHANGELOG.md`, `LICENSE.txt` (the EULA, ASCII only) and `THIRD-PARTY-NOTICES.txt` on a branch.
-3. Install the exact uploaded file and smoke-test it. Then merge the docs and publish the draft.
-4. Point the installer link on kolistat.com (`products/bedevere.html`) at the new file.
+3. Install the exact uploaded file and smoke-test it. Then merge the docs and publish the draft. GitHub creates the `v0.X.0-beta` tag on `main` when the draft is published.
+4. Check the download link before the website changes:
+
+   ```sh
+   curl -sI https://github.com/KoliStat/bedevere-desktop-releases/releases/download/v0.X.0-beta/Bedevere-Desktop-0.X.0-win-x64-setup.exe | head -1
+   ```
+
+   A published release answers `302 Found`. A draft answers `404 Not Found`.
+5. Point the installer link on kolistat.com (`products/bedevere.html`) at the new file. The site deploys when its `main` changes, so merge that change only after step 4 passes. For 0.16 the site went live 26 minutes before the draft was published, and the download button returned 404 in between.
 
 ### 6. Close the cycle
 
