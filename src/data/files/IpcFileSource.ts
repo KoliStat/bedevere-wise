@@ -81,18 +81,13 @@ export class IpcFileSource implements FileSource {
   }
 
   async openFolder(id: string): Promise<FileSourceFolder | null> {
-    // The host can re-open a folder by its path id without a picker —
-    // we just verify it's still readable by asking for its file list.
-    // If the list throws (path deleted, permission denied, or the host
-    // simply doesn't implement listFolderFiles yet), we treat the
-    // folder as unavailable.
+    // The id is the folder's path, and the host re-opens a folder by path
+    // with no picker. So this hands the path back and asks the host
+    // nothing. Do not list the folder here to see whether it is still
+    // readable: a listing makes the host walk the whole folder, and the
+    // caller lists it anyway. That one call tells the caller whether the
+    // folder can be read (bedevere-wise#25).
     if (this.unsupported.has("listFolderFiles")) return null;
-    try {
-      await this.bridge.call("listFolderFiles", { folderId: id });
-    } catch (err) {
-      this.handleUnknownMethod(err, "listFolderFiles");
-      return null;
-    }
     // Surface the leaf as the display name; the host doesn't currently
     // round-trip a separate metadata RPC.
     const leaf = id.split(/[\\/]/).filter(Boolean).pop() ?? id;
