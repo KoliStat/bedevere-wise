@@ -31,7 +31,8 @@ export interface HelpPanelOptions {
   host?: AboutHost;
   onLoadSampleDataset: () => Promise<void> | void;
   onShowMessage?: (msg: string, type: "info" | "success" | "error") => void;
-  onBrowseFolder?: () => void;
+  /** Opens the folder picker. A rejected promise is reported through onShowMessage. */
+  onBrowseFolder?: () => Promise<void> | void;
   onFilesReceived?: (files: File[]) => void | Promise<void>;
   supportedFormats?: string[];
   // Live getter (not a captured value) — mirrors getCopyOptions below, so a
@@ -54,7 +55,8 @@ export interface HelpPanelOptions {
   /** Recent folders shortcut list (FSA-API-only browsers). Empty array
    *  hides the section in the Import tab. */
   getRecentFolders?: () => Array<{ id: string; name: string }>;
-  onRecentFolderClick?: (id: string) => void;
+  /** Re-opens a recent folder. A rejected promise is reported through onShowMessage. */
+  onRecentFolderClick?: (id: string) => Promise<void> | void;
 }
 
 const TAB_ORDER: HelpPanelTab[] = ["howto", "import", "shortcuts", "commands", "settings", "about"];
@@ -401,8 +403,7 @@ export class HelpPanel {
     folderBtn.className = "help-panel__import-btn help-panel__import-btn--secondary";
     folderBtn.textContent = "Browse Folder";
     folderBtn.addEventListener("click", () => {
-      this.options.onBrowseFolder?.();
-      this.hide();
+      void this.openFolder(() => this.options.onBrowseFolder?.());
     });
     actions.appendChild(folderBtn);
 
@@ -436,8 +437,7 @@ export class HelpPanel {
         btn.title = entry.name;
         btn.textContent = entry.name;
         btn.addEventListener("click", () => {
-          this.options.onRecentFolderClick?.(entry.id);
-          this.hide();
+          void this.openFolder(() => this.options.onRecentFolderClick?.(entry.id));
         });
         list.appendChild(btn);
       }
@@ -452,6 +452,24 @@ export class HelpPanel {
     body.appendChild(status);
 
     return body;
+  }
+
+  /**
+   * Browse Folder and the recent folders: start opening the folder, close
+   * the panel, then wait for the result. `start` runs before anything is
+   * awaited, because the browser's folder dialog only opens from inside the
+   * click. A failure goes to the status bar, because the panel and its own
+   * status line are gone by then.
+   */
+  private async openFolder(start: () => Promise<void> | void): Promise<void> {
+    const opening = start();
+    this.hide();
+    try {
+      await opening;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      this.options.onShowMessage?.(`Failed to open folder: ${reason}`, "error");
+    }
   }
 
   private async handleImportFiles(files: File[]): Promise<void> {

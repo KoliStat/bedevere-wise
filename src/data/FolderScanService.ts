@@ -16,6 +16,9 @@ export class FolderScanService {
   /** Open a directory picker (File System Access API, Chrome/Edge).
    *  Returns the picked handle alongside the scanned tree so callers
    *  can persist the handle for the recent-folders list.
+   *
+   *  Returns null when the user cancels the dialog. Any other failure
+   *  rejects, so the caller can tell the user that the folder did not open.
    */
   public async scanWithDirectoryPicker(): Promise<{ handle: FileSystemDirectoryHandle; tree: FileTreeNode } | null> {
     try {
@@ -23,11 +26,8 @@ export class FolderScanService {
       const tree = await this.buildTreeFromHandle(dirHandle, "");
       return { handle: dirHandle, tree };
     } catch (error) {
-      // User cancelled or API not available
-      if ((error as Error).name !== "AbortError") {
-        console.error("Directory picker failed:", error);
-      }
-      return null;
+      if ((error as Error).name === "AbortError") return null;
+      throw error;
     }
   }
 

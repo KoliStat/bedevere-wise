@@ -145,6 +145,14 @@ export class ControlPanel {
    * imported twice at the same time.
    */
   private pendingAutoImport: Promise<void> | null = null;
+  /**
+   * The tree of the folder that attachFolderTree is binding to an
+   * environment, set only for the length of that call. If the binding
+   * switches the environment, applyActiveEnvironment starts inside the same
+   * call and takes this tree, so it does not ask the host for a second
+   * listing of a folder that was listed a moment ago.
+   */
+  private folderBeingBound: { folderHandleId: string; tree: FileTreeNode } | null = null;
 
   // Accordion
   private accordionSections: Map<string, AccordionSection> = new Map();
@@ -236,24 +244,27 @@ export class ControlPanel {
     // we guard with `lastActiveEnvId` so unrelated changes (rename,
     // addQuery, …) don't trigger a needless re-scan.
     this.lastActiveEnvId = environmentService.getActiveId();
-    this.envUnsubscribe = environmentService.onChange(() => {
-      const nextId = environmentService.getActiveId();
-      // Saved Queries lists the active env's queries — re-render on
-      // every emit so add/delete/rename are reflected without waiting
-      // for a switch.
-      this.renderSavedQueries();
-      if (nextId === this.lastActiveEnvId) return;
-      this.lastActiveEnvId = nextId;
-      if (nextId) {
-        this.applyActiveEnvironment(nextId).catch((err) => {
-          console.error("Apply active environment failed:", err);
-        });
-      }
-    });
+    this.envUnsubscribe = environmentService.onChange(() => this.onEnvironmentChange());
 
     // Tab activation is the one transition that does not pass through a
     // panel method. Hook it so the active dataset tab is recorded too.
     this.tabManager.setOnTabActivatedCallback(() => this.persistDataWorkspace());
+  }
+
+  /** The environment service calls this on every mutation, not only on a switch. */
+  private onEnvironmentChange(): void {
+    const nextId = environmentService.getActiveId();
+    // Saved Queries lists the active env's queries — re-render on
+    // every emit so add/delete/rename are reflected without waiting
+    // for a switch.
+    this.renderSavedQueries();
+    if (nextId === this.lastActiveEnvId) return;
+    this.lastActiveEnvId = nextId;
+    if (nextId) {
+      this.applyActiveEnvironment(nextId).catch((err) => {
+        console.error("Apply active environment failed:", err);
+      });
+    }
   }
 
   private buildAccordion(): void {
@@ -735,8 +746,14 @@ export class ControlPanel {
     if (!this.fileSource) return;
     const folder = await this.fileSource.pickFolder();
     if (!folder) return;
-    const files = await this.fileSource.listFolderFiles(folder);
-    const tree = this.buildIpcFolderTree(folder, files);
+    let tree: FileTreeNode;
+    try {
+      tree = await this.listIpcFolder(folder);
+    } catch (err) {
+      // This also replaces the progress line, which would stay otherwise.
+      this.onShowMessageCallback?.(`Failed to open folder: ${formatError(err).message}`, "error");
+      throw err;
+    }
     // Prefix the folderHandleId with "ipc:" so `applyActiveEnvironment`
     // can tell it apart from FSA's `folder_<ts>_<rand>` ids on restore.
     // Without the marker, env-restore would route through
@@ -750,20 +767,50 @@ export class ControlPanel {
    * applyActiveEnvironment on boot when the active env's folderHandleId
    * has the "ipc:" prefix. Shape is symmetric to openRecentFolder but
    * routes through the host instead of FSA's IDB store.
+   *
+   * `listedTree` is the tree of this folder when it was listed a moment
+   * ago, by the pick that switched to its environment. The host is not
+   * asked again then.
    */
-  private async restoreIpcFolder(folderPath: string): Promise<void> {
+  private async restoreIpcFolder(folderPath: string, listedTree?: FileTreeNode): Promise<void> {
     if (!this.fileSource) return;
+    if (listedTree) {
+      this.attachFolderTree(listedTree, "ipc:" + folderPath);
+      return;
+    }
     const folder = await this.fileSource.openFolder(folderPath);
-    if (!folder) {
+    let tree: FileTreeNode | null = null;
+    if (folder) {
+      try {
+        tree = await this.listIpcFolder(folder);
+      } catch (err) {
+        console.warn(`Listing "${folderPath}" failed:`, err);
+      }
+    }
+    if (!tree) {
       this.onShowMessageCallback?.(
         `Couldn't re-open "${folderPath}" — folder may have moved or been deleted.`,
         "warning",
       );
       return;
     }
-    const files = await this.fileSource.listFolderFiles(folder);
+    this.attachFolderTree(tree, "ipc:" + folderPath);
+  }
+
+  /**
+   * Ask the host for the files of a folder and build its tree. This is one
+   * RPC. The host walks the whole folder for it, which takes long on a
+   * network share or in a folder with many files, so the status bar says
+   * that a listing runs. Rejects when the host cannot list the folder. The
+   * progress line then stays until the caller shows a message of its own.
+   */
+  private async listIpcFolder(folder: FileSourceFolder): Promise<FileTreeNode> {
+    this.onShowMessageCallback?.(`Listing folder "${folder.name}"…`, "info", { duration: 0 });
+    const files = await this.fileSource!.listFolderFiles(folder);
     const tree = this.buildIpcFolderTree(folder, files);
-    this.attachFolderTree(tree, "ipc:" + folder.id);
+    const count = this.collectFileLeaves(tree).length;
+    this.onShowMessageCallback?.(`Folder "${folder.name}": ${count} ${count === 1 ? "file" : "files"}`, "info");
+    return tree;
   }
 
   /**
@@ -999,7 +1046,12 @@ export class ControlPanel {
       this.expandSection("datasets");
     }
     const activeBefore = environmentService.getActiveId();
-    this.bindFolderToEnvironment(tree, folderHandleId);
+    this.folderBeingBound = folderHandleId ? { folderHandleId, tree } : null;
+    try {
+      this.bindFolderToEnvironment(tree, folderHandleId);
+    } finally {
+      this.folderBeingBound = null;
+    }
 
     // If binding just switched the active environment, the onChange
     // subscriber is already running applyActiveEnvironment. That call
@@ -1149,6 +1201,10 @@ export class ControlPanel {
    * converge here through the service emit.
    */
   private async applyActiveEnvironment(envId: string): Promise<void> {
+    // Read this before the first await. When a folder pick switched to this
+    // environment, the pick's attachFolderTree call is still on the stack
+    // and holds the tree it just listed.
+    const justListed = this.folderBeingBound ?? null;
     let restoreRan = false;
     // Saving is suspended for the whole apply. The active id has already
     // moved to `envId`, so the tab closes below would otherwise write a
@@ -1193,8 +1249,10 @@ export class ControlPanel {
 
       if (env.kind === "folder" && env.folderHandleId) {
         if (env.folderHandleId.startsWith("ipc:")) {
-          // Desktop / IPC env: re-acquire by path via the host.
-          await this.restoreIpcFolder(env.folderHandleId.slice("ipc:".length));
+          // Desktop / IPC env: re-acquire by path via the host. A folder
+          // that was listed a moment ago is not listed again.
+          const listedTree = justListed?.folderHandleId === env.folderHandleId ? justListed.tree : undefined;
+          await this.restoreIpcFolder(env.folderHandleId.slice("ipc:".length), listedTree);
         } else if (this.fileSource && this.fileSource.id !== "fsa") {
           // Non-FSA runtime + an env saved before the "ipc:" prefix
           // landed. The id is a raw OS path; route it through the host.
